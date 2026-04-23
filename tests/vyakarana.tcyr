@@ -579,6 +579,66 @@ fn main() {
     }
     assert_eq(any_err, 0, "char-escape backslash doesn't error");
 
+    test_group("M3 typescript grammar — loads and tokenizes cleanly");
+    var gts = grammar_load("grammars/typescript.cyml");
+    assert_neq(gts, 0, "grammar_load typescript returned non-null");
+    assert_eq(streq(grammar_name(gts), "typescript"), 1, "name is 'typescript'");
+
+    # Template literal `...${expr}...` as one string token.
+    var tb_t1 = tokenbuf_new();
+    var src_t1 = "`hi ${x} bye`";
+    tokenize_with_grammar(gts, src_t1, strlen(src_t1), tb_t1);
+    assert_eq(tokenbuf_count(tb_t1), 1, "template literal is one token");
+    assert_eq(tokenbuf_kind(tb_t1, 0), TK_STRING, "template is string");
+
+    # `=>` arrow, `??` nullish coalesce, `?.` optional chain.
+    var tb_t2 = tokenbuf_new();
+    var src_t2 = "a => b ?? c?.d";
+    tokenize_with_grammar(gts, src_t2, strlen(src_t2), tb_t2);
+    var saw_arrow = 0;
+    var saw_coalesce = 0;
+    var saw_optchain = 0;
+    var t2i = 0;
+    var t2n = tokenbuf_count(tb_t2);
+    while (t2i < t2n) {
+        if (tokenbuf_kind(tb_t2, t2i) == TK_OPERATOR) {
+            var s = tokenbuf_start(tb_t2, t2i);
+            var l = tokenbuf_len(tb_t2, t2i);
+            if ((l == 2) && (memeq(src_t2 + s, "=>", 2) == 1)) { saw_arrow = 1; }
+            if ((l == 2) && (memeq(src_t2 + s, "??", 2) == 1)) { saw_coalesce = 1; }
+            if ((l == 2) && (memeq(src_t2 + s, "?.", 2) == 1)) { saw_optchain = 1; }
+        }
+        t2i = t2i + 1;
+    }
+    assert_eq(saw_arrow,    1, "=> op");
+    assert_eq(saw_coalesce, 1, "?? op");
+    assert_eq(saw_optchain, 1, "?. op");
+
+    # `$` is valid in idents: `$x`, `jQuery$`.
+    var tb_t3 = tokenbuf_new();
+    var src_t3 = "$foo";
+    tokenize_with_grammar(gts, src_t3, strlen(src_t3), tb_t3);
+    assert_eq(tokenbuf_count(tb_t3), 1,          "$foo is one token");
+    assert_eq(tokenbuf_kind(tb_t3, 0), TK_IDENT, "$foo ident");
+    assert_eq(tokenbuf_len(tb_t3, 0),  4,        "$foo len 4");
+
+    test_group("M3 javascript grammar — loads and tokenizes cleanly");
+    var gjs = grammar_load("grammars/javascript.cyml");
+    assert_neq(gjs, 0, "grammar_load javascript returned non-null");
+    assert_eq(streq(grammar_name(gjs), "javascript"), 1, "name is 'javascript'");
+
+    # JS has `function` as keyword but no `interface` / `type`.
+    var tb_js1 = tokenbuf_new();
+    var src_js1 = "function f() {}";
+    tokenize_with_grammar(gjs, src_js1, strlen(src_js1), tb_js1);
+    assert_eq(tokenbuf_kind(tb_js1, 0), TK_KEYWORD, "function keyword");
+    assert_eq(tokenbuf_len(tb_js1, 0),  8,          "function len 8");
+
+    var tb_js2 = tokenbuf_new();
+    var src_js2 = "interface F";
+    tokenize_with_grammar(gjs, src_js2, strlen(src_js2), tb_js2);
+    assert_eq(tokenbuf_kind(tb_js2, 0), TK_IDENT, "interface is NOT a JS keyword");
+
     test_group("version string shape");
     # Keep in sync with VYK_VERSION in src/main.cyr and with VERSION.
     var v = "vyk 0.1.0";

@@ -56,12 +56,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `#include <stdio.h>` tokenizes as `#` op + ident + ... (no
   unified preprocessor kind in M3). Added `\` to operators to
   cover char-escape bytes in `'\0'`, `'\n'`, etc.
+- `grammars/typescript.cyml` + `tests/corpus/typescript.ts` —
+  TypeScript grammar (vidya-backed). 2009 tokens, 0 errors,
+  coverage 8473/8473. `//` comments; three pair-rule string types
+  (template `` ` ``, double `"`, single `'`) all with backslash
+  escape; `$` as ident char; TS-specific multi-char operators
+  (`=>`, `??`, `?.`, `**`, `===`, `!==`, `...`). Template
+  interpolation `${expr}` stays inside the string span (not
+  re-tokenized, per ADR 0003 convention).
+- `grammars/javascript.cyml` + `tests/corpus/concept.js` —
+  JavaScript grammar (hand-rolled stand-in per ADR 0006). 1275
+  tokens, 0 errors, coverage 4827/4827. Shares defaults and three
+  string types with TypeScript; keyword list is TS minus the type
+  layer (`interface`, `type`, `enum`, `namespace`, visibility
+  modifiers, `readonly`, `abstract`, `declare`, `implements`).
 - `detect_language` maps `.sh`/`.bash` → shell, `.toml` → toml,
   `.json` → json, `.cyr` → cyrius, `.cyml` → toml, `.rs` → rust,
   `.yaml`/`.yml` → yaml, `.md`/`.markdown` → markdown, `.c`/`.h`
-  → c.
+  → c, `.ts` → typescript, `.js`/`.mjs`/`.cjs` → javascript.
 - `--list-languages` emits `shell`, `toml`, `json`, `cyrius`,
-  `rust`, `yaml`, `markdown`, `c`.
+  `rust`, `yaml`, `markdown`, `c`, `typescript`, `javascript`.
 - `scripts/smoke.sh` M3 section: generic corpus-round-trip loop
   (one line per `lang:corpus` pair) checking exit 0, zero error
   tokens, and coverage invariant.

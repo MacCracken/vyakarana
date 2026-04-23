@@ -45,6 +45,10 @@ fn bootstrap_grammars() {
     if (gm != 0) { registry_add(gm); }
     var gcc = grammar_load("grammars/c.cyml");
     if (gcc != 0) { registry_add(gcc); }
+    var gts = grammar_load("grammars/typescript.cyml");
+    if (gts != 0) { registry_add(gts); }
+    var gjs = grammar_load("grammars/javascript.cyml");
+    if (gjs != 0) { registry_add(gjs); }
     return 0;
 }
 
