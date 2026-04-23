@@ -534,6 +534,51 @@ fn main() {
     assert_eq(tokenbuf_kind(tb_m6, 1), TK_IDENT,    "bold ident");
     assert_eq(tokenbuf_kind(tb_m6, 2), TK_OPERATOR, "closing **");
 
+    test_group("M3 c grammar — loads and tokenizes cleanly");
+    var gc = grammar_load("grammars/c.cyml");
+    assert_neq(gc, 0, "grammar_load c returned non-null");
+    assert_eq(streq(grammar_name(gc), "c"), 1, "name is 'c'");
+
+    # `//` line comment, not `#`.
+    var tb_cc1 = tokenbuf_new();
+    var src_cc1 = "// note\nint x;";
+    tokenize_with_grammar(gc, src_cc1, strlen(src_cc1), tb_cc1);
+    assert_eq(tokenbuf_kind(tb_cc1, 0), TK_COMMENT, "// comment");
+    assert_eq(tokenbuf_len(tb_cc1, 0),  7,          "// note len 7");
+    assert_eq(tokenbuf_kind(tb_cc1, 2), TK_KEYWORD, "int keyword");
+
+    # `->` and `++` multi-char operators.
+    var tb_cc2 = tokenbuf_new();
+    var src_cc2 = "p->n++";
+    tokenize_with_grammar(gc, src_cc2, strlen(src_cc2), tb_cc2);
+    assert_eq(tokenbuf_count(tb_cc2), 4, "p -> n ++ = 4 tokens");
+    assert_eq(tokenbuf_kind(tb_cc2, 1), TK_OPERATOR, "-> op");
+    assert_eq(tokenbuf_len(tb_cc2, 1),  2,           "-> len 2");
+    assert_eq(tokenbuf_kind(tb_cc2, 3), TK_OPERATOR, "++ op");
+    assert_eq(tokenbuf_len(tb_cc2, 3),  2,           "++ len 2");
+
+    # Preprocessor-shaped line tokenizes as # + ident + ... (no
+    # special preprocessor kind in M3).
+    var tb_cc3 = tokenbuf_new();
+    var src_cc3 = "#include";
+    tokenize_with_grammar(gc, src_cc3, strlen(src_cc3), tb_cc3);
+    assert_eq(tokenbuf_count(tb_cc3), 2, "# + include = 2 tokens");
+    assert_eq(tokenbuf_kind(tb_cc3, 0), TK_OPERATOR, "# operator");
+    assert_eq(tokenbuf_kind(tb_cc3, 1), TK_IDENT,    "include ident (not a C keyword)");
+
+    # Backslash in char escape like '\0' must not error.
+    var tb_cc4 = tokenbuf_new();
+    var src_cc4 = "char c = '\\0';";
+    tokenize_with_grammar(gc, src_cc4, strlen(src_cc4), tb_cc4);
+    var cc4i = 0;
+    var cc4n = tokenbuf_count(tb_cc4);
+    var any_err = 0;
+    while (cc4i < cc4n) {
+        if (tokenbuf_kind(tb_cc4, cc4i) == TK_ERROR) { any_err = 1; }
+        cc4i = cc4i + 1;
+    }
+    assert_eq(any_err, 0, "char-escape backslash doesn't error");
+
     test_group("version string shape");
     # Keep in sync with VYK_VERSION in src/main.cyr and with VERSION.
     var v = "vyk 0.1.0";

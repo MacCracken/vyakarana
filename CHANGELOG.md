@@ -47,11 +47,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   outside strings/comments. The markdown stand-in corpus swaps
   `—` for `--` to side-step. Next ADR candidate: `unicode_ident =
   true` default making high bytes valid `ident_cont`.
+- `grammars/c.cyml` + `tests/corpus/c.c` — C grammar (vidya-backed).
+  2451 tokens, 0 errors, coverage 9429/9429. 21 distinct keywords
+  detected in corpus (break, case, char, const, default, else,
+  enum, for, if, int, long, return, sizeof, static, struct,
+  switch, typedef, union, unsigned, void, while). `//` line
+  comments; `->`, `++` etc. as multi-char operators;
+  `#include <stdio.h>` tokenizes as `#` op + ident + ... (no
+  unified preprocessor kind in M3). Added `\` to operators to
+  cover char-escape bytes in `'\0'`, `'\n'`, etc.
 - `detect_language` maps `.sh`/`.bash` → shell, `.toml` → toml,
   `.json` → json, `.cyr` → cyrius, `.cyml` → toml, `.rs` → rust,
-  `.yaml`/`.yml` → yaml, `.md`/`.markdown` → markdown.
+  `.yaml`/`.yml` → yaml, `.md`/`.markdown` → markdown, `.c`/`.h`
+  → c.
 - `--list-languages` emits `shell`, `toml`, `json`, `cyrius`,
-  `rust`, `yaml`, `markdown`.
+  `rust`, `yaml`, `markdown`, `c`.
 - `scripts/smoke.sh` M3 section: generic corpus-round-trip loop
   (one line per `lang:corpus` pair) checking exit 0, zero error
   tokens, and coverage invariant.

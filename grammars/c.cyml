@@ -1,0 +1,103 @@
+# c — C tokenizer grammar
+#
+# Rule scheme per ADR 0005. C is close to Rust at the token level:
+# `//` line comments, double-quoted strings, C-family operators, a
+# slightly-larger reserved-word set including type keywords.
+#
+# Corpus: tests/corpus/c.c (vidya-backed).
+#
+# Known gaps for future ADRs (not triggered by the vidya sample):
+#   - Block comments `/* ... */`. The vidya sample uses only `//`
+#     line comments. A language with `/* */` will force a `block`
+#     rule type (start/end pair spanning multiple lines without
+#     escape-aware content). ADR candidate when C's own test corpus
+#     or a future C sample includes them.
+#   - Char literals `'x'` split into three operator tokens. Same
+#     pattern as Rust; promoting to an ADR for a `char_literal`
+#     default with small lookahead is the likely fix.
+#   - Preprocessor directives (`#include`, `#define`, `#ifdef`) are
+#     tokenized as `#` op + keyword-or-ident + ... rather than a
+#     unified `preprocessor` kind. `<stdio.h>` becomes
+#     `<` + ident + `.` + ident + `>`. Coverage and no-error bars
+#     hold; a principled preprocessor mode is ADR-worthy later.
+
+[grammar]
+name = "c"
+extensions = [".c", ".h"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+ident_start = "A-Za-z_"
+ident_cont  = "A-Za-z0-9_"
+
+number_decimal = true
+number_0x      = true
+number_0b      = false
+number_0o      = false
+
+special_vars = false
+
+# Operators in longest-match order. C-specific: `->` (struct deref),
+# `++` / `--` (increment), compound assignment, `&&`/`||`,
+# comparison, bit shifts, `?` for ternary, `'` for char-lit (splits
+# into 3 tokens — see grammar header). `#` for preprocessor.
+operators = [
+    "<<=", ">>=",
+    "<<", ">>",
+    "&&", "||",
+    "==", "!=", "<=", ">=",
+    "++", "--",
+    "+=", "-=", "*=", "/=", "%=",
+    "&=", "|=", "^=",
+    "->",
+    "=", "+", "-", "*", "/", "%",
+    "!", "~", "&", "|", "^",
+    "<", ">",
+    "?", "'", "\\",
+    "#",
+]
+
+# Punctuation, longest-match.
+punctuation = [
+    "(", ")", "{", "}", "[", "]",
+    ";", ",", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+[[rules]]
+kind = "comment"
+match = "line"
+start = "//"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # Control flow
+    "if", "else", "while", "for", "do", "switch", "case", "default",
+    "break", "continue", "return", "goto",
+    # Type-declaration
+    "typedef", "struct", "union", "enum",
+    # Storage-class / qualifiers
+    "auto", "register", "static", "extern", "const", "volatile",
+    "inline", "restrict",
+    # Primitive types
+    "void", "char", "short", "int", "long",
+    "float", "double", "signed", "unsigned",
+    "_Bool", "_Complex",
+    # Operator-like keywords
+    "sizeof",
+]

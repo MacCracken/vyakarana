@@ -43,6 +43,8 @@ fn bootstrap_grammars() {
     if (gy != 0) { registry_add(gy); }
     var gm = grammar_load("grammars/markdown.cyml");
     if (gm != 0) { registry_add(gm); }
+    var gcc = grammar_load("grammars/c.cyml");
+    if (gcc != 0) { registry_add(gcc); }
     return 0;
 }
 
