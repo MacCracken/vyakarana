@@ -66,8 +66,8 @@ fn main() {
     assert_eq(has_grammar(""),       0, "empty name not loaded");
 
     test_group("tokenize_source returns empty (0) for unknown languages");
-    assert_eq(tokenize_source("print('x')", "python"), 0, "python stub empty");
-    assert_eq(tokenize_source("x",           "rust"),  0, "rust stub empty");
+    assert_eq(tokenize_source("print('x')", "python"), 0, "python not yet loaded");
+    assert_eq(tokenize_source("x",           "zig"),    0, "zig not yet loaded");
 
     test_group("M1 shell grammar — known-offset assertions");
     # Input: `if true; then echo hi; fi`
@@ -382,6 +382,45 @@ fn main() {
     tokenize_with_grammar(gcyr, src_c3, strlen(src_c3), tb_c3);
     assert_eq(tokenbuf_kind(tb_c3, 0), TK_COMMENT, "# comment (not preprocessor)");
     assert_eq(tokenbuf_len(tb_c3, 0),  7,          "# hello len 7");
+
+    test_group("M3 rust grammar — loads and tokenizes cleanly");
+    var grust = grammar_load("grammars/rust.cyml");
+    assert_neq(grust, 0, "grammar_load rust returned non-null");
+    assert_eq(streq(grammar_name(grust), "rust"), 1, "name is 'rust'");
+
+    # `//` line comments, not `#`.
+    var tb_r1 = tokenbuf_new();
+    var src_r1 = "// hi\nfn f";
+    tokenize_with_grammar(grust, src_r1, strlen(src_r1), tb_r1);
+    assert_eq(tokenbuf_kind(tb_r1, 0), TK_COMMENT, "// is comment");
+    assert_eq(tokenbuf_len(tb_r1, 0),  5,          "// hi len 5");
+
+    # `=>` and `->` multi-char operators.
+    var tb_r2 = tokenbuf_new();
+    var src_r2 = "a => b -> c";
+    tokenize_with_grammar(grust, src_r2, strlen(src_r2), tb_r2);
+    assert_eq(tokenbuf_kind(tb_r2, 2), TK_OPERATOR, "=> op");
+    assert_eq(tokenbuf_len(tb_r2, 2),  2,           "=> len 2");
+    assert_eq(tokenbuf_kind(tb_r2, 6), TK_OPERATOR, "-> op");
+    assert_eq(tokenbuf_len(tb_r2, 6),  2,           "-> len 2");
+
+    # `::` path separator, distinct from `:` punctuation.
+    var tb_r3 = tokenbuf_new();
+    var src_r3 = "std::fmt";
+    tokenize_with_grammar(grust, src_r3, strlen(src_r3), tb_r3);
+    assert_eq(tokenbuf_count(tb_r3), 3, "3 tokens: ident :: ident");
+    assert_eq(tokenbuf_kind(tb_r3, 1), TK_OPERATOR, ":: op");
+    assert_eq(tokenbuf_len(tb_r3, 1),  2,           ":: len 2");
+
+    # `#[derive(Debug)]` tokenizes as # op + [ punct + ident + ( + ident + ) + ].
+    var tb_r4 = tokenbuf_new();
+    var src_r4 = "#[derive]";
+    tokenize_with_grammar(grust, src_r4, strlen(src_r4), tb_r4);
+    assert_eq(tokenbuf_count(tb_r4), 4, "4 tokens: # [ derive ]");
+    assert_eq(tokenbuf_kind(tb_r4, 0), TK_OPERATOR,    "# operator");
+    assert_eq(tokenbuf_kind(tb_r4, 1), TK_PUNCTUATION, "[ punct");
+    assert_eq(tokenbuf_kind(tb_r4, 2), TK_IDENT,       "derive ident");
+    assert_eq(tokenbuf_kind(tb_r4, 3), TK_PUNCTUATION, "] punct");
 
     test_group("version string shape");
     # Keep in sync with VYK_VERSION in src/main.cyr and with VERSION.

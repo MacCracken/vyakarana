@@ -37,6 +37,8 @@ fn bootstrap_grammars() {
     if (gj != 0) { registry_add(gj); }
     var gc = grammar_load("grammars/cyrius.cyml");
     if (gc != 0) { registry_add(gc); }
+    var gr = grammar_load("grammars/rust.cyml");
+    if (gr != 0) { registry_add(gr); }
     return 0;
 }
 

@@ -112,6 +112,9 @@ fn detect_language(path) {
     if (n >= 3) {
         if (memeq(path + n - 3, ".sh", 3) == 1) { return "shell"; }
     }
+    if (n >= 3) {
+        if (memeq(path + n - 3, ".rs", 3) == 1) { return "rust"; }
+    }
     if (n >= 4) {
         if (memeq(path + n - 4, ".cyr", 4) == 1) { return "cyrius"; }
     }

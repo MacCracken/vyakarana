@@ -18,10 +18,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   with zero `error` kinds (2508 tokens, coverage 9233/9233). 7
   distinct keywords detected in corpus (`enum`, `fn`, `for`, `if`,
   `include`, `return`, `var`, `while`).
+- `grammars/rust.cyml` + `tests/corpus/rust.rs` — Rust grammar
+  (vidya-backed). 2219 tokens, zero errors, coverage 9473/9473.
+  18 distinct keywords detected. Multi-char operators covered:
+  `=>`, `->`, `::`, `..`, `..=`, `?`. Known gap: char literals
+  (`'+'`, `'x'`) and lifetimes (`'_`) currently both tokenize with
+  `'` as a standalone operator, so char-literals split into three
+  tokens instead of one `string`. Coverage and zero-error bars
+  hold. Likely promoted to an ADR once C ships with the same
+  char-literal pattern.
 - `detect_language` maps `.sh`/`.bash` → shell, `.toml` → toml,
   `.json` → json, `.cyr` → cyrius, `.cyml` → toml (the CYML format
-  is TOML-shaped; see `detect_language` comment).
-- `--list-languages` emits `shell`, `toml`, `json`, `cyrius`.
+  is TOML-shaped; see `detect_language` comment), `.rs` → rust.
+- `--list-languages` emits `shell`, `toml`, `json`, `cyrius`, `rust`.
 - `scripts/smoke.sh` M3 section: generic corpus-round-trip loop
   (one line per `lang:corpus` pair) checking exit 0, zero error
   tokens, and coverage invariant.
