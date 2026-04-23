@@ -1,22 +1,15 @@
-# vyakarana
+# vyakarana — agent working rules
 
-> **Picking this repo up?** Read [HANDOFF.md](./HANDOFF.md) first.
-> It's the landing pad between M0 (scaffold) and M1 (first working
-> grammar) with explicit exit criteria, locked invariants, and
-> pending decisions.
+> **Picking this repo up?** Read [HANDOFF.md](./HANDOFF.md) first
+> for where we are and what's next. Architecture decisions are ADRs
+> under [docs/adrs/](./docs/adrs/); design context is in
+> [vyakarana-design-spec.md](./vyakarana-design-spec.md); milestone
+> plan is [ROADMAP.md](./ROADMAP.md).
 
-Written in [Cyrius](https://github.com/MacCracken/cyrius).
+This file is process, procedure, and prefs only. Repo context and
+invariants live in the docs above.
 
-Source-code grammar / tokenizer library. Consumers: **owl** (M3b), **cyim**
-(planned editor), **vidya** (reference-library rendering + corpus supplier),
-potentially **agnoshi** and **muharrir** downstreams.
-
-**vidya relationship is reciprocal:** vidya supplies test corpus
-(`content/lexing_and_parsing/*`), vyakarana consumes it. Don't break
-this — a grammar that can't round-trip its vidya sample cleanly isn't
-a passing grammar.
-
-## Build
+## Gates — run before trusting status
 
 ```sh
 cyrius deps && cyrius build src/main.cyr build/vyk
@@ -24,29 +17,40 @@ cyrius test tests/vyakarana.tcyr
 sh scripts/smoke.sh build/vyk
 ```
 
-## Key Facts
+Run all three on session entry. Don't take `HANDOFF.md` / `README.md`
+claims of "green" at face value until you've seen the commands
+pass. Use `cyrius build`, never raw `cc5`.
 
-- Library-first. `src/main.cyr` is a thin demo (`vyk`); real consumers
-  include the modules in `src/` via their Cyrius `[deps.vyakarana]` block.
-- Source in `src/`, tests in `tests/`, stdlib in `lib/` (vendored, do not edit).
-- Dependencies declared in `cyrius.cyml`.
-- Toolchain pinned in `cyrius.cyml [package].cyrius`.
-- Grammar format: Cyrius-native CYML. No TextMate, no tree-sitter.
-- Token-kind palette is a small stable enum (10 kinds). Do not grow it
-  without a design review — grammar authors and theme palettes both
-  depend on stability.
-- Token / Span layout is load-bearing for downstream consumers. Changing
-  field order or width is a breaking change; bump minor accordingly.
+## Cyrius dialect gotchas
 
-## Language Notes
-
+- `if (cond) {` / `while (cond) {` — parens required
 - `var buf[N]` is N bytes, not elements
-- `&&`/`||` short-circuit; mixed requires parens: `a && (b || c)`
+- `&&` / `||` short-circuit; mixed requires parens: `a && (b || c)`
 - No closures — use named functions
+- Top-level args pattern: `args_init(); var ac = argc(); var a = argv(i);`
+  (not `fn main(argc, argv)`)
+- Stdlib auto-prepends from `cyrius.cyml [deps] stdlib = [...]` —
+  do not re-`include "lib/..."` inside project files
 - Test exit pattern: `syscall(60, assert_summary())`
+- When dialect is unclear, read `cyrius/programs/*.cyr` — that's
+  the authoritative working reference
 
-## Do Not
+## Do not
 
 - Do not commit or push without user approval
-- Do not modify files in `lib/`
-- Do not depend on `owl` or any consumer — vyakarana is upstream of all of them
+- Do not modify files in `lib/` (vendored stdlib; re-synced by
+  `cyrius deps`)
+- Do not depend on `owl` or any consumer — vyakarana is upstream
+- Do not add a token kind or change the `Token` layout without an
+  ADR under `docs/adrs/` and a CHANGELOG entry
+- Do not take three failed attempts at the same problem — stop,
+  open an ADR (if the decision is load-bearing) or a `TODO(M?)`
+  note, and defer
+
+## Writing decisions
+
+- If a choice will confuse a future agent ("why did they do it that
+  way?"), open an ADR: `docs/adrs/NNNN-short-kebab-title.md`.
+  Format: see [docs/adrs/README.md](./docs/adrs/README.md).
+- Small implementation notes go in the relevant source file's
+  header comment, not an ADR.

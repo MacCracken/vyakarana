@@ -3,8 +3,8 @@
 > **Read this file before doing anything.** Landing pad from M1
 > (hand-coded shell) to M2 (CYML grammar loader). Design context
 > lives in [vyakarana-design-spec.md](./vyakarana-design-spec.md);
-> milestone detail lives in [ROADMAP.md](./ROADMAP.md); decisions
-> that didn't fit there live in [DECISIONS.md](./DECISIONS.md).
+> milestone detail lives in [ROADMAP.md](./ROADMAP.md); architecture
+> decisions live as ADRs under [docs/adrs/](./docs/adrs/).
 
 ---
 
@@ -41,9 +41,9 @@ Re-run them on session entry before trusting this line.
    `--list-languages` are covered by the smoke test. Additions are
    fine; renames/removals are breaking.
 
-If you think you need to break any of these, **write a memo in
-`DECISIONS.md` (create it if absent) explaining the forcing
-function, and don't break the contract until the user ACKs.**
+If you think you need to break any of these, **open an ADR in
+`docs/adrs/` explaining the forcing function, and don't break the
+contract until the user ACKs.**
 
 ---
 
@@ -70,20 +70,17 @@ function, and don't break the contract until the user ACKs.**
 
 ### Decisions made during M1
 
-See [DECISIONS.md](./DECISIONS.md) for the long-form:
+All architectural choices are ADRs under [docs/adrs/](./docs/adrs/);
+read them before overriding any:
 
-1. **Corpus sync** — checked-in snapshot (HANDOFF option 1). Revisit
-   at M3 with ~10 files in `tests/corpus/`.
-2. **Token storage** — `tokenbuf` (contiguous 12-byte records) in
-   `src/token.cyr` rather than stdlib `Vec<i64>`. Matches the
-   design-spec §6 "no allocations per token" NFR.
-3. **Expansion inside strings** — `"${x}"` / `"$(...)"` are NOT
-   re-tokenized in M1; the whole run is one `string` token. M2's
-   CYML loader can add nested-rule support if needed.
-4. **Builtins vs. keywords** — `local`, `declare`, `export`, `set`,
-   `eval`, `true`, `false` are emitted as `ident`, not `keyword`.
-   They are bash built-ins, not reserved words; theme authors can
-   style them distinctly via token-text rules.
+- [ADR 0001 — Corpus sync: checked-in snapshot](./docs/adrs/0001-corpus-sync-policy.md).
+  Revisit at M3.
+- [ADR 0002 — Token storage: contiguous 12-byte `tokenbuf`](./docs/adrs/0002-token-storage-layout.md).
+  Revisit at M5.
+- [ADR 0003 — Shell string expansions are flat in M1](./docs/adrs/0003-string-expansion-not-retokenized.md).
+  Revisit at M2 or M3.
+- [ADR 0004 — Shell built-ins emit as `ident`, not `keyword`](./docs/adrs/0004-shell-builtins-as-ident.md).
+  Revisit at M4.
 
 ### Invariants that survived M1 and carry into M2+
 
@@ -100,7 +97,8 @@ honor them by default.
   dedicated rule helper — don't reach for regex.
 - **Zero-copy invariant.** Tokens reference into the caller's buffer
   as `(kind, start, len)`. `tokenbuf` is the only allocation and
-  grows by doubling, not per-token (see DECISIONS.md).
+  grows by doubling, not per-token (see
+  [ADR 0002](./docs/adrs/0002-token-storage-layout.md)).
 
 ---
 
@@ -114,12 +112,14 @@ Pointers for M2 and later agents:
 - `src/tokenize.cyr` — dispatch. `tokenize_source(src, lang)` returns
   a `tokenbuf` handle, or `0` when `lang` isn't loaded.
 - `src/token.cyr` — palette, `Token` layout notes, and `tokenbuf`
-  (contiguous 12-byte records). Accessors: `tokenbuf_count/kind/
-  start/len` are the consumer contract.
+  (contiguous 12-byte records; see
+  [ADR 0002](./docs/adrs/0002-token-storage-layout.md)). Accessors:
+  `tokenbuf_count/kind/start/len` are the consumer contract.
 - `src/main.cyr` — `vyk` CLI. NDJSON emitter in `emit_ndjson`;
   file read + tokenize in `tokenize_file`.
 - `tests/corpus/shell.sh` — snapshot of the vidya sample. Re-sync
-  manually when vidya updates (see DECISIONS.md).
+  manually when vidya updates (see
+  [ADR 0001](./docs/adrs/0001-corpus-sync-policy.md)).
 - `tests/vyakarana.tcyr` — 89 assertions total, with an M1 section
   covering known-offset, coverage-invariant, and no-error-tokens.
 - `scripts/smoke.sh` — M0 flags + an M1 section that round-trips the
@@ -174,7 +174,8 @@ criteria. Read it before starting the milestone.
   Cyrius.
 - Test after every change. One change at a time.
 - If you hit three failed attempts at the same problem, stop, write
-  a note in `DECISIONS.md`, and defer.
+  a note (or an ADR under `docs/adrs/` if the decision is
+  load-bearing), and defer.
 
 ---
 
