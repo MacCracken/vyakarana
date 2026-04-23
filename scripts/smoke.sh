@@ -99,4 +99,29 @@ rc=$?
 set -e
 [ "$rc" = "0" ] || fail "--language=shell on extensionless: rc=$rc, stderr=$(cat "$TMPDIR/err")"
 
-echo "smoke: OK ($v_long) — M0 + M1 gates passing"
+# ============================================================
+# M2 — CYML-driven shell grammar matches M1 hand-coded byte-for-byte
+# ============================================================
+
+GRAMMAR="grammars/shell.cyml"
+[ -f "$GRAMMAR" ] || fail "grammar missing: $GRAMMAR"
+
+# --list-languages now includes shell via the grammar registry.
+printf '%s\n' "$llist" | grep -q "^shell\$" \
+    || fail "--list-languages: shell not listed after M2 registry load"
+
+# Regression: hand-coded (M1) vs data-driven (M2) token output must
+# be byte-identical. --handcoded is an undocumented diagnostic flag
+# wired only for this check.
+"$BIN" --handcoded "$CORPUS" > "$TMPDIR/m1.ndjson" 2> "$TMPDIR/err" \
+    || fail "handcoded oracle run failed: $(cat "$TMPDIR/err")"
+"$BIN" "$CORPUS" > "$TMPDIR/m2.ndjson" 2> "$TMPDIR/err" \
+    || fail "data-driven run failed: $(cat "$TMPDIR/err")"
+
+if ! diff -q "$TMPDIR/m1.ndjson" "$TMPDIR/m2.ndjson" > /dev/null; then
+    echo "smoke: M2 REGRESSION — data-driven differs from M1 oracle" >&2
+    diff "$TMPDIR/m1.ndjson" "$TMPDIR/m2.ndjson" | head -20 >&2
+    fail "CYML-driven shell grammar drifts from hand-coded reference"
+fi
+
+echo "smoke: OK ($v_long) — M0 + M1 + M2 gates passing"

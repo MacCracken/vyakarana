@@ -1,28 +1,30 @@
 # vyakarana — Agent handoff
 
-> **Read this file before doing anything.** Landing pad from M1
-> (hand-coded shell) to M2 (CYML grammar loader). Design context
-> lives in [vyakarana-design-spec.md](./vyakarana-design-spec.md);
-> milestone detail lives in [ROADMAP.md](./ROADMAP.md); architecture
-> decisions live as ADRs under [docs/adrs/](./docs/adrs/).
+> **Read this file before doing anything.** Landing pad from M2
+> (CYML loader + data-driven scanner) to M3 (ten-grammar starter
+> set). Design context lives in
+> [vyakarana-design-spec.md](./vyakarana-design-spec.md); milestone
+> detail lives in [ROADMAP.md](./ROADMAP.md); architecture decisions
+> live as ADRs under [docs/adrs/](./docs/adrs/).
 
 ---
 
 ## Where we are
 
-- **Version:** 0.1.0 in `VERSION` (the M1 additions are under
-  `[Unreleased]` in CHANGELOG; user cuts tags)
-- **Status:** M0 + M1 complete (2026-04-23). Shell grammar is
-  hand-coded and round-trips the vidya sample with zero `error`
-  kinds. `vyk <file.sh>` prints NDJSON tokens.
-- **Consumer pressure:** owl's M3b (token highlighting) can now add
-  `[deps.vyakarana]` and import `tokenize_source(src, "shell")`.
-  Other consumers (cyim, vidya, agnoshi) pick up in their own
-  timelines.
+- **Version:** 0.1.0 in `VERSION` (M1 + M2 additions are under
+  `[Unreleased]` in CHANGELOG; user cuts tags).
+- **Status:** M0 + M1 + M2 complete (2026-04-23). Shell grammar
+  is data (`grammars/shell.cyml`), loaded by a CYML parser at
+  runtime, and tokenized by the data-driven default scanner. Output
+  is byte-identical to the hand-coded M1 tokenizer on the vidya
+  sample — enforced by a diff check in `scripts/smoke.sh`.
+- **Consumer pressure:** owl's M3b unblocked at M1 and stays
+  unblocked through M2 (the public `tokenize_source` signature and
+  `tokenbuf` accessors didn't change).
 
-Gates are green against the M1 implementation: `cyrius build`,
-`cyrius test` (89 assertions), and `sh scripts/smoke.sh` all pass.
-Re-run them on session entry before trusting this line.
+Gates are green: `cyrius build`, `cyrius test` (267 assertions),
+and `sh scripts/smoke.sh` (M0 + M1 + M2 sections) all pass. Re-run
+them on session entry before trusting this line.
 
 ---
 
@@ -47,28 +49,19 @@ contract until the user ACKs.**
 
 ---
 
-## M1 — what shipped
+## What shipped (M1 + M2)
 
-**Goal (met):** shell files tokenize end-to-end, proving the runtime.
+**M1 goal (met):** shell files tokenize end-to-end via a hand-coded
+recognizer. Proved the runtime shape + the Token / tokenbuf contract.
 
-### Concrete checklist
+**M2 goal (met):** grammars are data. `grammars/shell.cyml` +
+CYML loader + configured default scanner produce byte-identical
+tokens to the M1 hand-coded path, enforced by
+`scripts/smoke.sh`'s diff check. Adding a new language is now a
+new `.cyml` file plus whatever `[defaults]` / `[[rules]]` fields
+its grammar needs.
 
-- [x] Hand-coded shell tokenizer in `src/grammars/shell.cyr`.
-- [x] Wired `tokenize_source(src, "shell")` in `src/tokenize.cyr`.
-- [x] `vyk <shell-file>` prints NDJSON tokens, one per line.
-- [x] Coverage invariant holds (smoke-script check + test assertion).
-- [x] `tests/corpus/shell.sh` (snapshot from vidya) tokenizes with
-      zero `error` kinds.
-- [x] Hand-audit: 14 distinct keywords detected; shebang is
-      `preprocessor`; `[[` / `]]` / `((` / `))` / `;;` are 2-char
-      `punctuation`; strings respect backslash escapes in `"..."`
-      but not in `'...'`; `$#` does not start a comment.
-- [x] 58 new M1 test assertions in `tests/vyakarana.tcyr`
-      (known-offset + coverage-invariant + no-error-tokens).
-- [x] `scripts/smoke.sh` has an M1 section that runs `vyk` on the
-      corpus and enforces exit 0 + zero error tokens + coverage sum.
-
-### Decisions made during M1
+### Decisions recorded during M1/M2
 
 All architectural choices are ADRs under [docs/adrs/](./docs/adrs/);
 read them before overriding any:
@@ -81,59 +74,95 @@ read them before overriding any:
   Revisit at M2 or M3.
 - [ADR 0004 — Shell built-ins emit as `ident`, not `keyword`](./docs/adrs/0004-shell-builtins-as-ident.md).
   Revisit at M4.
+- [ADR 0005 — M2 rule-type scope: narrow rules + configured scanner](./docs/adrs/0005-m2-rule-type-scope.md).
+  Revisit when a language needs a rule type beyond the current set.
 
-### Invariants that survived M1 and carry into M2+
+### Invariants that survived M1/M2 and carry into M3+
 
-These constraints shaped M1 and continue to hold; M2 agents should
-honor them by default.
+These constraints shaped M1 and M2 and continue to hold; M3 agents
+should honor them by default.
 
-- **No CYML grammar loader in M1.** Hand-coded Cyrius first so we
-  could iterate on recognizer shape without also designing the
-  serialization format. M2 re-expresses the shell grammar as data.
-- **One grammar only.** Python / Rust / etc. land in M3 after M2
-  proves the loader.
 - **No regex rules.** Explicitly out of the M2 rule set (design-spec
-  §5). If a shell construct seems to need lookahead, write a
-  dedicated rule helper — don't reach for regex.
+  §5, [ADR 0005](./docs/adrs/0005-m2-rule-type-scope.md)). If a
+  language construct seems to need lookahead, propose a new rule
+  type (`chars`, `exact`, `indent`, …) in a new ADR — don't reach
+  for regex.
 - **Zero-copy invariant.** Tokens reference into the caller's buffer
   as `(kind, start, len)`. `tokenbuf` is the only allocation and
   grows by doubling, not per-token (see
   [ADR 0002](./docs/adrs/0002-token-storage-layout.md)).
+- **Data-driven by default.** New grammars are new `.cyml` files.
+  If a grammar needs behavior the default scanner doesn't support,
+  extend the scanner (and record via an ADR); don't add per-language
+  Cyrius paths.
+- **Regression oracle retained until M3.** `src/grammars/shell.cyr`
+  (hand-coded) is on disk so smoke.sh's diff check works. Delete it
+  after M3 makes a second grammar pass the same bar.
 
 ---
 
-## Where M1 landed
+## Where the code lives
 
-Pointers for M2 and later agents:
+Pointers for M3 and later agents:
 
-- `src/grammars/shell.cyr` — hand-coded shell tokenizer. Entry:
-  `tokenize_shell(src, src_len, tb)`. Scanner helpers (`_scan_*`)
-  are module-local.
-- `src/tokenize.cyr` — dispatch. `tokenize_source(src, lang)` returns
-  a `tokenbuf` handle, or `0` when `lang` isn't loaded.
-- `src/token.cyr` — palette, `Token` layout notes, and `tokenbuf`
-  (contiguous 12-byte records; see
-  [ADR 0002](./docs/adrs/0002-token-storage-layout.md)). Accessors:
+- `grammars/shell.cyml` — shell grammar as data. Template for new
+  grammars: `[grammar]` header, `[defaults]` table for built-in
+  scanner stages, `[[rules]]` entries for line / pair / words.
+- `src/grammar.cyr` — `Grammar` record, rule sub-records, char-class
+  tables, CYML parser (minimal TOML dialect), and the in-memory
+  registry.
+- `src/grammars/default_scanner.cyr` — `tokenize_with_grammar(g,
+  src, src_len, tb)`. The data-driven scanner that every grammar
+  runs through. Scanner priority is documented inline and in
+  [ADR 0005](./docs/adrs/0005-m2-rule-type-scope.md).
+- `src/grammars/shell.cyr` — hand-coded M1 tokenizer, retained as
+  a regression oracle. Wired into `vyk --handcoded` and the smoke
+  diff check. Delete in a post-M3 cleanup.
+- `src/tokenize.cyr` — dispatch. `tokenize_source(src, lang)` loads
+  bundled grammars lazily, looks up `lang` in the registry, calls
+  the default scanner. `bootstrap_grammars()` is the explicit-load
+  hook for callers that bypass `tokenize_source`.
+- `src/token.cyr` — palette, `Token` layout, `tokenbuf` (see
+  [ADR 0002](./docs/adrs/0002-token-storage-layout.md)). Accessors
   `tokenbuf_count/kind/start/len` are the consumer contract.
-- `src/main.cyr` — `vyk` CLI. NDJSON emitter in `emit_ndjson`;
-  file read + tokenize in `tokenize_file`.
-- `tests/corpus/shell.sh` — snapshot of the vidya sample. Re-sync
-  manually when vidya updates (see
-  [ADR 0001](./docs/adrs/0001-corpus-sync-policy.md)).
-- `tests/vyakarana.tcyr` — 89 assertions total, with an M1 section
-  covering known-offset, coverage-invariant, and no-error-tokens.
-- `scripts/smoke.sh` — M0 flags + an M1 section that round-trips the
-  corpus and enforces the coverage invariant.
+- `src/main.cyr` — `vyk` CLI. `emit_ndjson`, `tokenize_file`, and
+  the hidden `--handcoded` flag used by the regression diff.
+- `tests/corpus/shell.sh` — snapshot of the vidya sample.
+  ([ADR 0001](./docs/adrs/0001-corpus-sync-policy.md)).
+- `tests/vyakarana.tcyr` — 267 assertions covering palette,
+  tokenbuf, M1 hand-coded known offsets, M2 grammar loader +
+  char-class + cross-tokenizer equality.
+- `scripts/smoke.sh` — M0 flags + M1 corpus round-trip + M2
+  hand-vs-data-driven byte-identical diff.
 
 ---
 
-## Next up — M2
+## Next up — M3
 
-- **M2** — CYML grammar loader. Re-express shell as data; ship the
-  format that all future grammars use. See design-spec §5 for the
-  rule-type set. The hand-coded `tokenize_shell` stays on disk as a
-  regression reference until the CYML-driven version produces
-  byte-identical output.
+- **M3** — nine more grammars: python, javascript, typescript,
+  rust, c, cyrius, toml, json, yaml, markdown. Each gets a
+  `grammars/<lang>.cyml` file and a corpus file snapshotted from
+  `vidya/content/lexing_and_parsing/<lang>.*`. Pass bar (per
+  ROADMAP): zero `error` tokens + coverage invariant + hand-audit
+  on ~30 tokens per grammar.
+
+### M3 entry checklist
+
+- [ ] Pick a first language and write its `.cyml`.
+- [ ] Snapshot the vidya sample into `tests/corpus/<lang>.*`.
+- [ ] Wire the grammar name into `bootstrap_grammars()` in
+  `src/tokenize.cyr` (a ~3-line change per grammar — or better,
+  replace the hardcoded list with a directory scan of `grammars/`).
+- [ ] Extend `detect_language()` in `src/main.cyr` for the new
+  extensions.
+- [ ] Run vyk on the corpus, audit tokens, add tests.
+- [ ] Extend smoke.sh M1 block to run each corpus file.
+- [ ] When a grammar hits a shape the default scanner can't
+  express, stop and open an ADR before piling Cyrius around it.
+- [ ] After the second grammar passes green, consider deleting
+  `src/grammars/shell.cyr` (the M1 oracle) — we'll have enough
+  data-driven coverage that the hand-coded reference is more
+  confusing than useful.
 - **M3** — Nine more grammars (python, js, ts, rust, c, cyrius, toml,
   json, yaml, markdown). Each gets a vidya sample as test corpus.
 - **M4** — Theme-palette contract with owl. Coordinate with whoever
@@ -179,5 +208,6 @@ criteria. Read it before starting the milestone.
 
 ---
 
-*Handoff first written 2026-04-23 (M0 shipped). Rewritten 2026-04-23
-after M1 landed. Update this file when M2 completes.*
+*Handoff first written 2026-04-23 (M0 shipped). Updated 2026-04-23
+after M1 landed. Updated again 2026-04-23 after M2 landed.
+Update this file when M3 completes.*

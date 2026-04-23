@@ -1,28 +1,690 @@
-# vyakarana — Grammar record stub
+# vyakarana — grammar record + CYML loader + registry
 #
-# M0 defines the placeholder type so consumers can reference a grammar
-# handle even though no grammar is loaded yet. M1 hand-codes the shell
-# grammar directly; M2 replaces the hand-coded grammar with a CYML
-# loader.
+# Loaded grammars drive the data-driven scanner in
+# src/grammars/default_scanner.cyr (see ADR 0005). This module owns:
+#   - Grammar record layout and accessors
+#   - A minimal TOML-ish parser (purpose-built for the grammar files
+#     in grammars/*.cyml — not a general CYML/TOML implementation)
+#   - A tiny registry so tokenize_source can look up "shell" and
+#     find its loaded grammar.
 #
-# No grammars are registered in v0.1.0. `list_languages()` returns an
-# empty list. Consumers should treat "language not found" as a normal
-# no-op path until M1.
+# File cap per grammar: 32KB (plenty; shell.cyml is ~2KB).
 
-# Opaque grammar handle — fields will land in M1 when we know what we
-# need. For now, the name is the only observable.
-fn grammar_name(g) {
-    # Stub: grammars aren't loaded yet. Present for consumer typing.
-    return "";
+include "src/token.cyr"
+
+var GRAMMAR_FILE_CAP = 32768;
+
+# ── Grammar record ──────────────────────────────────────────────────
+# Layout (offsets in bytes):
+#    0  name                cstr ptr
+#    8  extensions          Vec<cstr>
+#   16  shebangs            Vec<cstr>
+#   24  shebang_on          i64  (0/1)
+#   32  whitespace_on       i64
+#   40  ident_start_tbl     ptr to 256-byte char-class lookup
+#   48  ident_cont_tbl      ptr to 256-byte char-class lookup
+#   56  number_decimal      i64
+#   64  number_0x           i64
+#   72  number_0b           i64
+#   80  number_0o           i64
+#   88  special_vars        i64
+#   96  operators           Vec<cstr>   longest-first ordering
+#  104  punctuation         Vec<cstr>   longest-first ordering
+#  112  line_rules          Vec<LineRule>
+#  120  pair_rules          Vec<PairRule>
+#  128  words_rules         Vec<WordsRule>
+#  -----
+#  136 bytes total
+
+var GRAMMAR_SIZE = 136;
+
+fn grammar_new() {
+    var g = alloc(GRAMMAR_SIZE);
+    var i = 0;
+    while (i < GRAMMAR_SIZE) {
+        store8(g + i, 0);
+        i = i + 1;
+    }
+    store64(g + 8,   vec_new());   # extensions
+    store64(g + 16,  vec_new());   # shebangs
+    store64(g + 96,  vec_new());   # operators
+    store64(g + 104, vec_new());   # punctuation
+    store64(g + 112, vec_new());   # line_rules
+    store64(g + 120, vec_new());   # pair_rules
+    store64(g + 128, vec_new());   # words_rules
+    return g;
 }
 
-# Returns 0 (none loaded) in M0. M2 loader will populate a registry.
-fn grammar_count() {
+fn grammar_name(g)           { return load64(g); }
+fn grammar_extensions(g)     { return load64(g + 8); }
+fn grammar_shebangs(g)       { return load64(g + 16); }
+fn grammar_shebang_on(g)     { return load64(g + 24); }
+fn grammar_whitespace_on(g)  { return load64(g + 32); }
+fn grammar_ident_start(g)    { return load64(g + 40); }
+fn grammar_ident_cont(g)     { return load64(g + 48); }
+fn grammar_number_decimal(g) { return load64(g + 56); }
+fn grammar_number_0x(g)      { return load64(g + 64); }
+fn grammar_number_0b(g)      { return load64(g + 72); }
+fn grammar_number_0o(g)      { return load64(g + 80); }
+fn grammar_special_vars(g)   { return load64(g + 88); }
+fn grammar_operators(g)      { return load64(g + 96); }
+fn grammar_punctuation(g)    { return load64(g + 104); }
+fn grammar_line_rules(g)     { return load64(g + 112); }
+fn grammar_pair_rules(g)     { return load64(g + 120); }
+fn grammar_words_rules(g)    { return load64(g + 128); }
+
+# ── Rule sub-records ────────────────────────────────────────────────
+
+var LINE_RULE_SIZE = 16;
+fn line_rule_new(kind, start) {
+    var r = alloc(LINE_RULE_SIZE);
+    store64(r,     kind);
+    store64(r + 8, start);
+    return r;
+}
+fn line_rule_kind(r)  { return load64(r); }
+fn line_rule_start(r) { return load64(r + 8); }
+
+var PAIR_RULE_SIZE = 32;
+fn pair_rule_new(kind, start, end, escape_byte) {
+    var r = alloc(PAIR_RULE_SIZE);
+    store64(r,      kind);
+    store64(r + 8,  start);
+    store64(r + 16, end);
+    store64(r + 24, escape_byte);
+    return r;
+}
+fn pair_rule_kind(r)   { return load64(r); }
+fn pair_rule_start(r)  { return load64(r + 8); }
+fn pair_rule_end(r)    { return load64(r + 16); }
+fn pair_rule_escape(r) { return load64(r + 24); }
+
+var WORDS_RULE_SIZE = 16;
+fn words_rule_new(kind, words_vec) {
+    var r = alloc(WORDS_RULE_SIZE);
+    store64(r,     kind);
+    store64(r + 8, words_vec);
+    return r;
+}
+fn words_rule_kind(r)  { return load64(r); }
+fn words_rule_words(r) { return load64(r + 8); }
+
+# ── Char-class lookup tables ────────────────────────────────────────
+# A 256-byte table indexed by byte; value is 0 or 1. Built from a
+# char-class spec like "A-Za-z_" or "0-9". The spec syntax is a small
+# deliberate subset: `X-Y` is a range; any other single char is that
+# literal byte; concatenation is disjunction.
+
+fn char_class_new(spec) {
+    var tbl = alloc(256);
+    var i = 0;
+    while (i < 256) { store8(tbl + i, 0); i = i + 1; }
+    if (spec == 0) { return tbl; }
+    var n = strlen(spec);
+    var p = 0;
+    while (p < n) {
+        var c = load8(spec + p);
+        # Range `X-Y`
+        if (p + 2 < n) {
+            if (load8(spec + p + 1) == 45) {  # `-`
+                var lo = c;
+                var hi = load8(spec + p + 2);
+                var b = lo;
+                while (b <= hi) {
+                    store8(tbl + b, 1);
+                    b = b + 1;
+                }
+                p = p + 3;
+                continue;
+            }
+        }
+        store8(tbl + c, 1);
+        p = p + 1;
+    }
+    return tbl;
+}
+
+fn char_class_match(tbl, byte) {
+    return load8(tbl + byte);
+}
+
+# ── cstr helpers (local; stdlib's string/str don't quite fit) ───────
+
+# Copy n bytes from src into a freshly-allocated null-terminated
+# buffer. Returns the pointer.
+fn _g_cstr_copy(src, n) {
+    var s = alloc(n + 1);
+    var i = 0;
+    while (i < n) { store8(s + i, load8(src + i)); i = i + 1; }
+    store8(s + n, 0);
+    return s;
+}
+
+# ── CYML parser ─────────────────────────────────────────────────────
+# Grammar files are a deliberately small TOML dialect:
+#   - `[section]` header
+#   - `[[rules]]` entry marker
+#   - `key = value` lines (value is "string", true/false, or ["a","b"])
+#   - `#` line comments
+#   - arrays may span lines
+#
+# Whitespace is liberal. Escape sequences inside strings: `\\`, `\"`,
+# `\n`, `\t`. That's enough for grammar files; we don't need the
+# full TOML escape set.
+
+fn _gp_is_space(b) {
+    if (b == 32) { return 1; }
+    if (b == 9)  { return 1; }
+    if (b == 13) { return 1; }
     return 0;
 }
 
-# Empty in M0; M2 returns grammar names from the registry.
+# Skip spaces and tabs (not newlines) at buf[pos].
+fn _gp_skip_hspace(buf, len, pos) {
+    while (pos < len) {
+        var b = load8(buf + pos);
+        if (_gp_is_space(b) == 0) { return pos; }
+        pos = pos + 1;
+    }
+    return pos;
+}
+
+# Skip spaces, tabs, newlines, and `#` line-comments.
+fn _gp_skip_ws_and_comments(buf, len, pos) {
+    while (pos < len) {
+        var b = load8(buf + pos);
+        if (_gp_is_space(b) == 1) { pos = pos + 1; continue; }
+        if (b == 10) { pos = pos + 1; continue; }
+        if (b == 35) {  # `#` comment to EOL
+            while (pos < len) {
+                if (load8(buf + pos) == 10) { pos = pos + 1; break; }
+                pos = pos + 1;
+            }
+            continue;
+        }
+        return pos;
+    }
+    return pos;
+}
+
+# Advance past end-of-line (consumes the `\n`).
+fn _gp_skip_to_eol(buf, len, pos) {
+    while (pos < len) {
+        if (load8(buf + pos) == 10) { return pos + 1; }
+        pos = pos + 1;
+    }
+    return pos;
+}
+
+# Parse a quoted string starting at buf[pos] (first byte must be `"`).
+# Writes the resulting cstr to *out_ptr and returns the position just
+# past the closing `"`. Handles \\, \", \n, \t escapes.
+fn _gp_parse_string(buf, len, pos, out_ptr) {
+    if (load8(buf + pos) != 34) { store64(out_ptr, 0); return pos; }
+    pos = pos + 1;
+    # First pass: compute the decoded length so we can allocate once.
+    var p = pos;
+    var dlen = 0;
+    while (p < len) {
+        var b = load8(buf + p);
+        if (b == 34) { p = p; break; }
+        if (b == 92) {   # `\`
+            if (p + 1 >= len) { p = len; break; }
+            p = p + 2;
+            dlen = dlen + 1;
+        } else {
+            p = p + 1;
+            dlen = dlen + 1;
+        }
+    }
+    var s = alloc(dlen + 1);
+    var q = pos;
+    var di = 0;
+    while (q < len) {
+        var b = load8(buf + q);
+        if (b == 34) { q = q + 1; break; }
+        if (b == 92) {
+            if (q + 1 >= len) { q = len; break; }
+            var esc = load8(buf + q + 1);
+            var out = esc;
+            if (esc == 110) { out = 10; }   # \n
+            if (esc == 116) { out = 9; }    # \t
+            # \\ and \" pass through as the next byte itself.
+            store8(s + di, out);
+            di = di + 1;
+            q = q + 2;
+        } else {
+            store8(s + di, b);
+            di = di + 1;
+            q = q + 1;
+        }
+    }
+    store8(s + di, 0);
+    store64(out_ptr, s);
+    return q;
+}
+
+# Parse an array literal starting at buf[pos] (first byte must be `[`).
+# Pushes each element (as a cstr) into out_vec. Returns position past `]`.
+fn _gp_parse_string_array(buf, len, pos, out_vec) {
+    if (load8(buf + pos) != 91) { return pos; }
+    pos = pos + 1;
+    while (pos < len) {
+        pos = _gp_skip_ws_and_comments(buf, len, pos);
+        if (pos >= len) { return pos; }
+        var b = load8(buf + pos);
+        if (b == 93) { return pos + 1; }    # `]`
+        if (b == 44) { pos = pos + 1; continue; }  # `,`
+        if (b == 34) {
+            var out_slot = alloc(8);
+            store64(out_slot, 0);
+            pos = _gp_parse_string(buf, len, pos, out_slot);
+            var sptr = load64(out_slot);
+            if (sptr != 0) { vec_push(out_vec, sptr); }
+            continue;
+        }
+        # Unknown token — advance to avoid infinite loop.
+        pos = pos + 1;
+    }
+    return pos;
+}
+
+# Parse a bare word (letters / digits / underscore / hyphen) at buf[pos].
+# Returns length.
+fn _gp_read_word(buf, len, pos) {
+    var p = pos;
+    while (p < len) {
+        var b = load8(buf + p);
+        var ok = 0;
+        if ((b >= 48) && (b <= 57))  { ok = 1; }   # 0-9
+        if ((b >= 65) && (b <= 90))  { ok = 1; }   # A-Z
+        if ((b >= 97) && (b <= 122)) { ok = 1; }   # a-z
+        if (b == 95) { ok = 1; }                   # _
+        if (b == 45) { ok = 1; }                   # -
+        if (ok == 0) { return p - pos; }
+        p = p + 1;
+    }
+    return p - pos;
+}
+
+# Parse a bool literal (`true` / `false`) at buf[pos]. Returns 1/0;
+# writes the parsed value to *out_val. Returns the advanced position.
+fn _gp_parse_bool(buf, len, pos, out_val) {
+    if ((pos + 4 <= len) && (memeq(buf + pos, "true", 4) == 1)) {
+        store64(out_val, 1);
+        return pos + 4;
+    }
+    if ((pos + 5 <= len) && (memeq(buf + pos, "false", 5) == 1)) {
+        store64(out_val, 0);
+        return pos + 5;
+    }
+    store64(out_val, 0);
+    return pos;
+}
+
+# Streq-for-slice: does the byte span at buf[pos..pos+slen) equal cstr?
+fn _gp_slice_eq(buf, pos, slen, cstr) {
+    var clen = strlen(cstr);
+    if (slen != clen) { return 0; }
+    return memeq(buf + pos, cstr, clen);
+}
+
+# Apply a key=value pair to the grammar based on (section, key).
+# value_start / value_len slice into buf and point at the raw RHS
+# (still quoted / bracketed / bare). Returns 0.
+fn _gp_apply_kv(g, current_rule, section, buf, len, key_pos, key_len, value_pos) {
+    # Normalize section into an i64 code:
+    #   1 = [grammar]
+    #   2 = [defaults]
+    #   3 = [[rules]]
+    # (passed in as `section`; we just branch on it.)
+    var out_str_slot = alloc(8); store64(out_str_slot, 0);
+    var out_bool_slot = alloc(8); store64(out_bool_slot, 0);
+
+    if (section == 1) {   # [grammar]
+        if (_gp_slice_eq(buf, key_pos, key_len, "name") == 1) {
+            _gp_parse_string(buf, len, value_pos, out_str_slot);
+            store64(g, load64(out_str_slot));
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "extensions") == 1) {
+            _gp_parse_string_array(buf, len, value_pos, grammar_extensions(g));
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "shebangs") == 1) {
+            _gp_parse_string_array(buf, len, value_pos, grammar_shebangs(g));
+            return 0;
+        }
+        return 0;
+    }
+
+    if (section == 2) {   # [defaults]
+        if (_gp_slice_eq(buf, key_pos, key_len, "shebang") == 1) {
+            _gp_parse_bool(buf, len, value_pos, out_bool_slot);
+            store64(g + 24, load64(out_bool_slot));
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "whitespace") == 1) {
+            _gp_parse_bool(buf, len, value_pos, out_bool_slot);
+            store64(g + 32, load64(out_bool_slot));
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "ident_start") == 1) {
+            _gp_parse_string(buf, len, value_pos, out_str_slot);
+            store64(g + 40, char_class_new(load64(out_str_slot)));
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "ident_cont") == 1) {
+            _gp_parse_string(buf, len, value_pos, out_str_slot);
+            store64(g + 48, char_class_new(load64(out_str_slot)));
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "number_decimal") == 1) {
+            _gp_parse_bool(buf, len, value_pos, out_bool_slot);
+            store64(g + 56, load64(out_bool_slot));
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "number_0x") == 1) {
+            _gp_parse_bool(buf, len, value_pos, out_bool_slot);
+            store64(g + 64, load64(out_bool_slot));
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "number_0b") == 1) {
+            _gp_parse_bool(buf, len, value_pos, out_bool_slot);
+            store64(g + 72, load64(out_bool_slot));
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "number_0o") == 1) {
+            _gp_parse_bool(buf, len, value_pos, out_bool_slot);
+            store64(g + 80, load64(out_bool_slot));
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "special_vars") == 1) {
+            _gp_parse_bool(buf, len, value_pos, out_bool_slot);
+            store64(g + 88, load64(out_bool_slot));
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "operators") == 1) {
+            _gp_parse_string_array(buf, len, value_pos, grammar_operators(g));
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "punctuation") == 1) {
+            _gp_parse_string_array(buf, len, value_pos, grammar_punctuation(g));
+            return 0;
+        }
+        return 0;
+    }
+
+    if (section == 3) {   # [[rules]] — populate current_rule slots
+        # current_rule layout: kind @ 0, match_type @ 8, start @ 16,
+        # end @ 24, escape_byte @ 32, words @ 40 (Vec).
+        if (_gp_slice_eq(buf, key_pos, key_len, "kind") == 1) {
+            _gp_parse_string(buf, len, value_pos, out_str_slot);
+            var kname = load64(out_str_slot);
+            store64(current_rule, _gp_kind_from_name(kname));
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "match") == 1) {
+            _gp_parse_string(buf, len, value_pos, out_str_slot);
+            var mname = load64(out_str_slot);
+            var mt = 0;
+            if (streq(mname, "line")  == 1) { mt = 1; }
+            if (streq(mname, "pair")  == 1) { mt = 2; }
+            if (streq(mname, "words") == 1) { mt = 3; }
+            store64(current_rule + 8, mt);
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "start") == 1) {
+            _gp_parse_string(buf, len, value_pos, out_str_slot);
+            store64(current_rule + 16, load64(out_str_slot));
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "end") == 1) {
+            _gp_parse_string(buf, len, value_pos, out_str_slot);
+            store64(current_rule + 24, load64(out_str_slot));
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "escape") == 1) {
+            _gp_parse_string(buf, len, value_pos, out_str_slot);
+            var es = load64(out_str_slot);
+            var eb = 0;
+            if (es != 0) {
+                if (strlen(es) > 0) { eb = load8(es); }
+            }
+            store64(current_rule + 32, eb);
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "words") == 1) {
+            var v = vec_new();
+            _gp_parse_string_array(buf, len, value_pos, v);
+            store64(current_rule + 40, v);
+            return 0;
+        }
+        return 0;
+    }
+    return 0;
+}
+
+# Map a kind name cstr (e.g. "keyword") to a TK_* constant.
+fn _gp_kind_from_name(name) {
+    if (name == 0) { return TK_ERROR; }
+    if (streq(name, "ident") == 1)        { return TK_IDENT; }
+    if (streq(name, "keyword") == 1)      { return TK_KEYWORD; }
+    if (streq(name, "string") == 1)       { return TK_STRING; }
+    if (streq(name, "number") == 1)       { return TK_NUMBER; }
+    if (streq(name, "comment") == 1)      { return TK_COMMENT; }
+    if (streq(name, "operator") == 1)     { return TK_OPERATOR; }
+    if (streq(name, "punctuation") == 1)  { return TK_PUNCTUATION; }
+    if (streq(name, "whitespace") == 1)   { return TK_WHITESPACE; }
+    if (streq(name, "preprocessor") == 1) { return TK_PREPROCESSOR; }
+    if (streq(name, "error") == 1)        { return TK_ERROR; }
+    return TK_ERROR;
+}
+
+# Finalize the in-progress rule (accumulator) into the appropriate
+# typed vec on the grammar.
+fn _gp_close_rule(g, rule_acc) {
+    if (rule_acc == 0) { return 0; }
+    var kind = load64(rule_acc);
+    var mt   = load64(rule_acc + 8);
+    var start = load64(rule_acc + 16);
+    var endp  = load64(rule_acc + 24);
+    var esc   = load64(rule_acc + 32);
+    var words = load64(rule_acc + 40);
+    if (mt == 1) {
+        vec_push(grammar_line_rules(g), line_rule_new(kind, start));
+        return 0;
+    }
+    if (mt == 2) {
+        vec_push(grammar_pair_rules(g), pair_rule_new(kind, start, endp, esc));
+        return 0;
+    }
+    if (mt == 3) {
+        vec_push(grammar_words_rules(g), words_rule_new(kind, words));
+        return 0;
+    }
+    return 0;
+}
+
+fn _gp_new_rule_acc() {
+    var r = alloc(48);
+    var i = 0;
+    while (i < 48) { store8(r + i, 0); i = i + 1; }
+    return r;
+}
+
+# Main parse loop.
+fn _gp_parse(buf, len) {
+    var g = grammar_new();
+    var section = 0;      # 0=unset, 1=grammar, 2=defaults, 3=rules
+    var current_rule = 0;
+    var pos = 0;
+
+    while (pos < len) {
+        pos = _gp_skip_ws_and_comments(buf, len, pos);
+        if (pos >= len) { break; }
+        var b = load8(buf + pos);
+
+        if (b == 91) {    # `[`
+            # Either `[[rules]]` or `[section]`
+            if ((pos + 1 < len) && (load8(buf + pos + 1) == 91)) {
+                # Close previous rule if any
+                if (current_rule != 0) { _gp_close_rule(g, current_rule); }
+                # Expect `[[rules]]`
+                pos = pos + 2;
+                var wlen = _gp_read_word(buf, len, pos);
+                # Ignore the actual word — all `[[...]]` markers start
+                # a rule entry in vyakarana grammar files today.
+                pos = pos + wlen;
+                if ((pos + 1 < len) && (load8(buf + pos) == 93) && (load8(buf + pos + 1) == 93)) {
+                    pos = pos + 2;
+                }
+                pos = _gp_skip_to_eol(buf, len, pos);
+                section = 3;
+                current_rule = _gp_new_rule_acc();
+                continue;
+            }
+            # `[section]`
+            pos = pos + 1;
+            var sp = pos;
+            var slen = _gp_read_word(buf, len, pos);
+            pos = pos + slen;
+            if ((pos < len) && (load8(buf + pos) == 93)) { pos = pos + 1; }
+            pos = _gp_skip_to_eol(buf, len, pos);
+            if (_gp_slice_eq(buf, sp, slen, "grammar")  == 1) { section = 1; }
+            if (_gp_slice_eq(buf, sp, slen, "defaults") == 1) { section = 2; }
+            continue;
+        }
+
+        # Must be a key = value line
+        var key_pos = pos;
+        var key_len = _gp_read_word(buf, len, pos);
+        if (key_len == 0) {
+            # Not a word — skip this byte to avoid looping.
+            pos = pos + 1;
+            continue;
+        }
+        pos = pos + key_len;
+        pos = _gp_skip_hspace(buf, len, pos);
+        if ((pos < len) && (load8(buf + pos) == 61)) {   # `=`
+            pos = pos + 1;
+            pos = _gp_skip_hspace(buf, len, pos);
+            _gp_apply_kv(g, current_rule, section, buf, len, key_pos, key_len, pos);
+            # Advance past the value. For strings the parse already
+            # consumes; for arrays/bools too. We just advance to EOL
+            # (arrays may already span lines, but the parser consumed
+            # them; the trailing characters on this line, if any, are
+            # whitespace/comment).
+            pos = _gp_skip_to_eol_past_array(buf, len, pos);
+            continue;
+        }
+        pos = _gp_skip_to_eol(buf, len, pos);
+    }
+
+    if (current_rule != 0) { _gp_close_rule(g, current_rule); }
+    return g;
+}
+
+# Advance past the value starting at buf[pos], honoring array
+# bracket depth and quoted strings. Leaves pos just past the final
+# `\n` after the value.
+fn _gp_skip_to_eol_past_array(buf, len, pos) {
+    var depth = 0;
+    var in_str = 0;
+    while (pos < len) {
+        var b = load8(buf + pos);
+        if (in_str == 1) {
+            if (b == 92) {                  # backslash
+                if (pos + 1 < len) { pos = pos + 2; continue; }
+                pos = pos + 1;
+                continue;
+            }
+            if (b == 34) { in_str = 0; pos = pos + 1; continue; }
+            pos = pos + 1;
+            continue;
+        }
+        if (b == 34) { in_str = 1; pos = pos + 1; continue; }
+        if (b == 91) { depth = depth + 1; pos = pos + 1; continue; }
+        if (b == 93) {
+            if (depth > 0) { depth = depth - 1; pos = pos + 1; continue; }
+            pos = pos + 1;
+            continue;
+        }
+        if ((b == 10) && (depth == 0)) { return pos + 1; }
+        pos = pos + 1;
+    }
+    return pos;
+}
+
+# ── Public load API ─────────────────────────────────────────────────
+
+# Read and parse a grammar file. Returns a grammar handle or 0 on
+# I/O error.
+fn grammar_load(path) {
+    var buf = alloc(GRAMMAR_FILE_CAP);
+    var n = file_read_all(path, buf, GRAMMAR_FILE_CAP - 1);
+    if (n <= 0) { return 0; }
+    store8(buf + n, 0);
+    return _gp_parse(buf, n);
+}
+
+# ── Registry ────────────────────────────────────────────────────────
+# A flat vec of grammar handles. `registry_init` is idempotent so
+# tokenize_source can call it lazily.
+
+var _registry = 0;
+
+fn registry_init() {
+    if (_registry == 0) { _registry = vec_new(); }
+    return _registry;
+}
+
+fn registry_add(g) {
+    registry_init();
+    vec_push(_registry, g);
+    return 0;
+}
+
+fn registry_count() {
+    registry_init();
+    return vec_len(_registry);
+}
+
+fn registry_get(i) {
+    registry_init();
+    return vec_get(_registry, i);
+}
+
+fn registry_find_by_name(name) {
+    registry_init();
+    var n = vec_len(_registry);
+    var i = 0;
+    while (i < n) {
+        var g = vec_get(_registry, i);
+        var gn = grammar_name(g);
+        if (gn != 0) {
+            if (streq(gn, name) == 1) { return g; }
+        }
+        i = i + 1;
+    }
+    return 0;
+}
+
+# Stub overrides for the M0-era accessors declared in src/grammar.cyr
+# previously. These now return real values from the registry.
+fn grammar_count() {
+    return registry_count();
+}
+
 fn list_languages_into(out_vec) {
-    # Nothing to push.
+    registry_init();
+    var n = vec_len(_registry);
+    var i = 0;
+    while (i < n) {
+        var g = vec_get(_registry, i);
+        var gn = grammar_name(g);
+        if (gn != 0) { vec_push(out_vec, gn); }
+        i = i + 1;
+    }
     return 0;
 }

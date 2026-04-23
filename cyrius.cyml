@@ -18,8 +18,8 @@ output = "vyk"
 #   fs                    — reading files to tokenize
 #   hashmap               — keyword tables, extension→grammar map
 #   assert                — tests/vyakarana.tcyr
-# CYML parser deps land in M2 when grammar-from-CYML loads. Until then
-# vyakarana is first-party — no [deps.<name>] blocks yet.
+#   cyml                  — grammar loader (M2)
+# vyakarana is still first-party — no [deps.<name>] blocks yet.
 [deps]
 stdlib = [
     "syscalls",
@@ -33,4 +33,5 @@ stdlib = [
     "args",
     "hashmap",
     "assert",
+    "cyml",
 ]

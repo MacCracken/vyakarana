@@ -1,28 +1,54 @@
 # vyakarana — Tokenize runtime
 #
-# M1 landing: dispatches `tokenize_source(src, "shell")` to the
-# hand-coded shell tokenizer in src/grammars/shell.cyr. Other language
-# names fall through to a null return (no grammar loaded).
+# M2 (current):
+#   - `tokenize_source(src, lang)` looks up `lang` in the grammar
+#     registry and dispatches to the data-driven default scanner.
+#   - On first call, grammars are loaded from `grammars/<lang>.cyml`
+#     (relative to cwd for now — see ADR 0005 / M3 for a real
+#     resolution strategy).
+#   - `tokenize_source_handcoded(src, "shell")` is the hand-coded
+#     M1 path, retained as a regression oracle for smoke.sh's
+#     byte-identical diff check. It will go away once M2 lands
+#     green and we're confident in the data-driven path.
 #
-# M2 will replace the if-ladder with a registry populated from CYML
-# grammar files in grammars/<lang>.cyml.
-#
-# API shape:
-#   tokenize_source(src, lang) -> tokenbuf handle, or 0 when no grammar
-#   has_grammar(lang)          -> 1 if loaded, 0 otherwise
-#
-# owl M3b imports both. Don't rename without a CHANGELOG entry.
+# owl M3b imports `tokenize_source`. Don't rename without a
+# CHANGELOG entry.
 
 include "src/token.cyr"
 include "src/grammar.cyr"
 include "src/grammars/shell.cyr"
+include "src/grammars/default_scanner.cyr"
 
-# Top-level entry. Returns a tokenbuf handle (opaque pointer) whose
-# contents are addressable via tokenbuf_count / tokenbuf_kind /
-# tokenbuf_start / tokenbuf_len (all in src/token.cyr). Returns 0
-# when `lang` isn't a loaded grammar — an empty tokenbuf would also
-# be a valid sentinel, but 0 is cheaper and simpler for callers.
+var _grammars_bootstrapped = 0;
+
+# Load every bundled grammar on first use. Idempotent. Callers that
+# don't exercise tokenize_source / has_grammar (e.g. `vyk
+# --list-languages`) should call this explicitly before reading the
+# registry. This is the M2 shape — M3 will swap the hardcoded list
+# for an index file or directory scan.
+fn bootstrap_grammars() {
+    if (_grammars_bootstrapped == 1) { return 0; }
+    _grammars_bootstrapped = 1;
+    var g = grammar_load("grammars/shell.cyml");
+    if (g != 0) { registry_add(g); }
+    return 0;
+}
+
+# Public entry point. Returns a tokenbuf handle (see src/token.cyr)
+# or 0 when no grammar matches `lang`.
 fn tokenize_source(src, lang) {
+    bootstrap_grammars();
+    var g = registry_find_by_name(lang);
+    if (g == 0) { return 0; }
+    var tb = tokenbuf_new();
+    tokenize_with_grammar(g, src, strlen(src), tb);
+    return tb;
+}
+
+# M1 hand-coded path — regression oracle only. Not exported via
+# owl's consumer path; available for scripts/smoke.sh's diff check
+# and for anyone debugging a CYML-driven tokenization.
+fn tokenize_source_handcoded(src, lang) {
     if (streq(lang, "shell") == 1) {
         var tb = tokenbuf_new();
         tokenize_shell(src, strlen(src), tb);
@@ -31,9 +57,8 @@ fn tokenize_source(src, lang) {
     return 0;
 }
 
-# Predicate for "is this language loaded?" — fast path for callers
-# that want to branch before paying the tokenbuf alloc.
 fn has_grammar(lang) {
-    if (streq(lang, "shell") == 1) { return 1; }
-    return 0;
+    bootstrap_grammars();
+    if (registry_find_by_name(lang) == 0) { return 0; }
+    return 1;
 }

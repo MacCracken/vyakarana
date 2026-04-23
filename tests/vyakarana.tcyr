@@ -172,6 +172,83 @@ fn main() {
     assert_eq(tokenbuf_kind(tb7, 1),  TK_WHITESPACE, "slot 1 kind");
     assert_eq(tokenbuf_start(tb7, 1), 3,             "slot 1 start");
 
+    test_group("M2 grammar loader — shell.cyml parses cleanly");
+    var gshell = grammar_load("grammars/shell.cyml");
+    assert_neq(gshell, 0, "grammar_load returned non-null");
+    assert_eq(streq(grammar_name(gshell), "shell"), 1, "name is 'shell'");
+    assert_eq(grammar_shebang_on(gshell),      1, "shebang default enabled");
+    assert_eq(grammar_whitespace_on(gshell),   1, "whitespace default enabled");
+    assert_eq(grammar_number_decimal(gshell),  1, "number_decimal enabled");
+    assert_eq(grammar_number_0x(gshell),       1, "number_0x enabled");
+    assert_eq(grammar_number_0b(gshell),       1, "number_0b enabled");
+    assert_eq(grammar_number_0o(gshell),       1, "number_0o enabled");
+    assert_eq(grammar_special_vars(gshell),    1, "special_vars enabled");
+
+    var exts = grammar_extensions(gshell);
+    assert_eq(vec_len(exts), 2, "2 extensions loaded");
+    assert_eq(streq(vec_get(exts, 0), ".sh"),   1, "ext[0] == '.sh'");
+    assert_eq(streq(vec_get(exts, 1), ".bash"), 1, "ext[1] == '.bash'");
+
+    var ops = grammar_operators(gshell);
+    assert(vec_len(ops) > 0, "operators list non-empty");
+    assert_eq(streq(vec_get(ops, 0), "<<<"), 1, "operators[0] == '<<<' (longest first)");
+
+    var lrs = grammar_line_rules(gshell);
+    var prs = grammar_pair_rules(gshell);
+    var wrs = grammar_words_rules(gshell);
+    assert_eq(vec_len(lrs), 1, "1 line rule (# comment)");
+    assert_eq(vec_len(prs), 2, "2 pair rules (\" and ')");
+    assert_eq(vec_len(wrs), 1, "1 words rule (keywords)");
+
+    var kw = vec_get(wrs, 0);
+    assert_eq(words_rule_kind(kw), TK_KEYWORD, "words rule kind is keyword");
+    assert_eq(vec_len(words_rule_words(kw)), 19, "19 shell keywords");
+
+    test_group("M2 char-class tables");
+    var cc = char_class_new("A-Za-z_");
+    assert_eq(char_class_match(cc, 65), 1, "A matches");   # A
+    assert_eq(char_class_match(cc, 90), 1, "Z matches");   # Z
+    assert_eq(char_class_match(cc, 97), 1, "a matches");   # a
+    assert_eq(char_class_match(cc, 122), 1, "z matches");  # z
+    assert_eq(char_class_match(cc, 95), 1, "_ matches");   # _
+    assert_eq(char_class_match(cc, 48), 0, "0 does not match"); # 0
+    assert_eq(char_class_match(cc, 32), 0, "space does not match");
+
+    test_group("M2 data-driven scanner matches hand-coded on small inputs");
+    # Same fixture strings as the M1 suite, now run through both
+    # tokenizers; counts and first-few kinds must agree.
+    var probe_inputs = vec_new();
+    vec_push(probe_inputs, "if true; then echo hi; fi");
+    vec_push(probe_inputs, "#!/bin/sh\n# comment\nx");
+    vec_push(probe_inputs, "x=\"a b\" y='c d'");
+    vec_push(probe_inputs, "42 0xff 0b10 0o7");
+    vec_push(probe_inputs, "[[ a != b ]] && c || d");
+    var pi = 0;
+    while (pi < vec_len(probe_inputs)) {
+        var inp = vec_get(probe_inputs, pi);
+        var tb_hand = tokenbuf_new();
+        tokenize_shell(inp, strlen(inp), tb_hand);
+        var tb_data = tokenbuf_new();
+        tokenize_with_grammar(gshell, inp, strlen(inp), tb_data);
+        assert_eq(tokenbuf_count(tb_hand), tokenbuf_count(tb_data),
+                  "handcoded/data-driven token count match");
+        var tk_n = tokenbuf_count(tb_hand);
+        var tk_i = 0;
+        while (tk_i < tk_n) {
+            assert_eq(tokenbuf_kind(tb_hand, tk_i),
+                      tokenbuf_kind(tb_data, tk_i),
+                      "kind match");
+            assert_eq(tokenbuf_start(tb_hand, tk_i),
+                      tokenbuf_start(tb_data, tk_i),
+                      "start match");
+            assert_eq(tokenbuf_len(tb_hand, tk_i),
+                      tokenbuf_len(tb_data, tk_i),
+                      "len match");
+            tk_i = tk_i + 1;
+        }
+        pi = pi + 1;
+    }
+
     test_group("version string shape");
     # Keep in sync with VYK_VERSION in src/main.cyr and with VERSION.
     var v = "vyk 0.1.0";

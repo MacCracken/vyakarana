@@ -4,6 +4,42 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (M2)
+- CYML grammar loader: `grammar_load("grammars/<lang>.cyml")` parses
+  a grammar file into a `Grammar` record with `[grammar]` / `[defaults]`
+  / `[[rules]]` sections (minimal TOML dialect — quoted strings,
+  booleans, string arrays; arrays may span lines).
+- Data-driven default scanner (`src/grammars/default_scanner.cyr`)
+  tokenizes any grammar's source with configured shebang / line /
+  pair / words / ident / number / operator / punctuation /
+  whitespace / special-var stages. Scanner dispatch follows
+  [ADR 0005](docs/adrs/0005-m2-rule-type-scope.md).
+- `grammars/shell.cyml` — the shell grammar as data. Produces
+  byte-identical NDJSON to the hand-coded `tokenize_shell` on
+  `tests/corpus/shell.sh` (regression check enforced by smoke.sh).
+- Grammar registry (`src/grammar.cyr`) with lazy bootstrap:
+  `tokenize_source` / `has_grammar` / `print_list_languages` all
+  trigger the load of bundled grammars on first use.
+- `char_class_new(spec)` / `char_class_match(tbl, b)` — 256-byte
+  lookup tables for ident starts/continuations, built from specs
+  like `"A-Za-z_"`.
+- `vyk --handcoded` — undocumented diagnostic flag routing through
+  the M1 hand-coded path, used by the smoke-script regression diff.
+- 178 new tcyr assertions covering the grammar loader, char-class
+  helper, and a cross-tokenizer equality check on 5 probe inputs
+  (267 total assertions).
+- `cyml` added to `cyrius.cyml [deps] stdlib`.
+
+### Changed (M2)
+- `tokenize_source(src, "shell")` now goes through the CYML-loaded
+  grammar rather than a hand-coded `if streq(lang, "shell")` branch.
+- `--list-languages` enumerates from the registry (was hardcoded
+  `println("shell")` in M1).
+- `has_grammar(lang)` consults the registry.
+- Hand-coded `tokenize_shell` retained on disk as a regression oracle
+  (per [ADR 0005](docs/adrs/0005-m2-rule-type-scope.md)); will be
+  removed in a follow-up once M3 has additional grammars.
+
 ### Added (M1)
 - Hand-coded shell tokenizer (`src/grammars/shell.cyr`) with full
   recognizers for shebang, comments, strings (single/double, escape-

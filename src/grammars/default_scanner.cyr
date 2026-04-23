@@ -1,0 +1,375 @@
+# vyakarana — data-driven default scanner
+#
+# Consumes a loaded grammar record (see src/grammar.cyr) and tokenizes
+# source bytes into a tokenbuf. Scanner dispatch follows ADR 0005:
+#
+#   1. shebang (#! on line 0, column 0)              → preprocessor
+#   2. [[rules]] match="line"                         → kind
+#   3. [[rules]] match="pair"                         → kind
+#   4. defaults.special_vars ($X, X = #?@!*$-)        → operator, 2 bytes
+#   5. defaults.special_vars lone $                   → operator, 1 byte
+#   6. defaults.ident_start/ident_cont                → ident, or keyword
+#      via [[rules]] match="words" lookup
+#   7. defaults.number_decimal/_0x/_0b/_0o            → number
+#   8. defaults.operators (longest match)             → operator
+#   9. defaults.punctuation (longest match)           → punctuation
+#  10. defaults.whitespace (run)                      → whitespace
+#  11. fallthrough                                    → error (1 byte)
+#
+# Coverage invariant holds at every step — the main loop advances by
+# `len` on each iteration and a fallback error emits 1 byte when no
+# rule matched.
+#
+# Perf notes for later: the operators / punctuation lists are scanned
+# linearly longest-first; a trie or length-indexed bucket scan is an
+# easy speedup at M5 benchmark time.
+
+include "src/token.cyr"
+include "src/grammar.cyr"
+
+# ── Scanner helpers (mirror the hand-coded shell.cyr shape) ─────────
+
+fn _ds_is_space(b) {
+    if (b == 32) { return 1; }
+    if (b == 9)  { return 1; }
+    if (b == 10) { return 1; }
+    if (b == 13) { return 1; }
+    return 0;
+}
+
+fn _ds_is_digit(b) {
+    if (b < 48) { return 0; }
+    if (b > 57) { return 0; }
+    return 1;
+}
+
+fn _ds_is_hex_digit(b) {
+    if (_ds_is_digit(b) == 1) { return 1; }
+    if ((b >= 97) && (b <= 102)) { return 1; }
+    if ((b >= 65) && (b <= 70))  { return 1; }
+    return 0;
+}
+
+fn _ds_is_bin_digit(b) {
+    if (b == 48) { return 1; }
+    if (b == 49) { return 1; }
+    return 0;
+}
+
+fn _ds_is_oct_digit(b) {
+    if (b < 48) { return 0; }
+    if (b > 55) { return 0; }
+    return 1;
+}
+
+fn _ds_is_special_var_char(b) {
+    if (b == 35) { return 1; }   # #
+    if (b == 63) { return 1; }   # ?
+    if (b == 64) { return 1; }   # @
+    if (b == 33) { return 1; }   # !
+    if (b == 42) { return 1; }   # *
+    if (b == 36) { return 1; }   # $
+    if (b == 45) { return 1; }   # -
+    return 0;
+}
+
+# ── Per-rule try-match functions ────────────────────────────────────
+# Each returns a length > 0 if it matched at src[i], else 0.
+
+fn _ds_try_shebang(g, src, src_len, i) {
+    if (grammar_shebang_on(g) == 0) { return 0; }
+    if (i != 0) { return 0; }
+    if (src_len < 2) { return 0; }
+    if (load8(src) != 35) { return 0; }      # #
+    if (load8(src + 1) != 33) { return 0; }  # !
+    var j = i;
+    while (j < src_len) {
+        if (load8(src + j) == 10) { return j - i; }
+        j = j + 1;
+    }
+    return src_len - i;
+}
+
+# Try each [[rules]] match="line" in order. Returns kind packed into
+# high 8 bits and len in low 56 bits — 0 if none matched. (This is
+# the cheapest multi-return I could find without tuples.)
+fn _ds_try_line_rules(g, src, src_len, i) {
+    var rules = grammar_line_rules(g);
+    var n = vec_len(rules);
+    var r_i = 0;
+    while (r_i < n) {
+        var r = vec_get(rules, r_i);
+        var marker = line_rule_start(r);
+        var mlen = strlen(marker);
+        if ((i + mlen <= src_len) && (memeq(src + i, marker, mlen) == 1)) {
+            var j = i;
+            while (j < src_len) {
+                if (load8(src + j) == 10) { break; }
+                j = j + 1;
+            }
+            var len = j - i;
+            return (line_rule_kind(r) << 56) | len;
+        }
+        r_i = r_i + 1;
+    }
+    return 0;
+}
+
+# Try each [[rules]] match="pair". Returns packed (kind << 56) | len.
+fn _ds_try_pair_rules(g, src, src_len, i) {
+    var rules = grammar_pair_rules(g);
+    var n = vec_len(rules);
+    var r_i = 0;
+    while (r_i < n) {
+        var r = vec_get(rules, r_i);
+        var start = pair_rule_start(r);
+        var slen = strlen(start);
+        if ((i + slen <= src_len) && (memeq(src + i, start, slen) == 1)) {
+            var endp = pair_rule_end(r);
+            var elen = strlen(endp);
+            var esc = pair_rule_escape(r);
+            var j = i + slen;
+            while (j < src_len) {
+                var b = load8(src + j);
+                if ((esc != 0) && (b == esc)) {
+                    j = j + 2;
+                    continue;
+                }
+                if ((j + elen <= src_len) && (memeq(src + j, endp, elen) == 1)) {
+                    var len = j - i + elen;
+                    return (pair_rule_kind(r) << 56) | len;
+                }
+                j = j + 1;
+            }
+            # Unterminated — consume to EOF.
+            var len_eof = src_len - i;
+            return (pair_rule_kind(r) << 56) | len_eof;
+        }
+        r_i = r_i + 1;
+    }
+    return 0;
+}
+
+# Exact-match longest-first list (operators or punctuation). Returns
+# the matched length, or 0 if nothing matched.
+fn _ds_try_exact_list(list_vec, src, src_len, i) {
+    var n = vec_len(list_vec);
+    var li = 0;
+    while (li < n) {
+        var s = vec_get(list_vec, li);
+        var slen = strlen(s);
+        if ((i + slen <= src_len) && (memeq(src + i, s, slen) == 1)) {
+            return slen;
+        }
+        li = li + 1;
+    }
+    return 0;
+}
+
+# Identifier run. Caller has already confirmed the first byte is in
+# ident_start. Returns len.
+fn _ds_scan_ident(g, src, src_len, i) {
+    var cont_tbl = grammar_ident_cont(g);
+    var j = i + 1;
+    while (j < src_len) {
+        if (char_class_match(cont_tbl, load8(src + j)) == 0) { return j - i; }
+        j = j + 1;
+    }
+    return src_len - i;
+}
+
+# Returns 1 if the byte span [start, start+len) matches a word in any
+# words rule — and writes the matched rule's kind to *out_kind.
+# Otherwise returns 0.
+fn _ds_lookup_keyword(g, src, start, len, out_kind) {
+    var rules = grammar_words_rules(g);
+    var n = vec_len(rules);
+    var r_i = 0;
+    while (r_i < n) {
+        var r = vec_get(rules, r_i);
+        var words = words_rule_words(r);
+        var wn = vec_len(words);
+        var w_i = 0;
+        while (w_i < wn) {
+            var w = vec_get(words, w_i);
+            var wlen = strlen(w);
+            if (wlen == len) {
+                if (memeq(src + start, w, wlen) == 1) {
+                    store64(out_kind, words_rule_kind(r));
+                    return 1;
+                }
+            }
+            w_i = w_i + 1;
+        }
+        r_i = r_i + 1;
+    }
+    return 0;
+}
+
+# Number with optional 0x/0b/0o prefix. Returns length; 0 if not a
+# number. Caller has already checked is_digit on src[i].
+fn _ds_scan_number(g, src, src_len, i) {
+    if (load8(src + i) == 48) {                # leading 0
+        if (i + 1 < src_len) {
+            var p = load8(src + i + 1);
+            if ((grammar_number_0x(g) == 1) && ((p == 120) || (p == 88))) {
+                var j = i + 2;
+                while (j < src_len) {
+                    if (_ds_is_hex_digit(load8(src + j)) == 0) { return j - i; }
+                    j = j + 1;
+                }
+                return src_len - i;
+            }
+            if ((grammar_number_0b(g) == 1) && ((p == 98) || (p == 66))) {
+                var j = i + 2;
+                while (j < src_len) {
+                    if (_ds_is_bin_digit(load8(src + j)) == 0) { return j - i; }
+                    j = j + 1;
+                }
+                return src_len - i;
+            }
+            if ((grammar_number_0o(g) == 1) && ((p == 111) || (p == 79))) {
+                var j = i + 2;
+                while (j < src_len) {
+                    if (_ds_is_oct_digit(load8(src + j)) == 0) { return j - i; }
+                    j = j + 1;
+                }
+                return src_len - i;
+            }
+        }
+    }
+    if (grammar_number_decimal(g) == 0) { return 0; }
+    var j = i + 1;
+    while (j < src_len) {
+        if (_ds_is_digit(load8(src + j)) == 0) { return j - i; }
+        j = j + 1;
+    }
+    return src_len - i;
+}
+
+# Whitespace run.
+fn _ds_scan_whitespace(src, src_len, i) {
+    var j = i;
+    while (j < src_len) {
+        if (_ds_is_space(load8(src + j)) == 0) { return j - i; }
+        j = j + 1;
+    }
+    return src_len - i;
+}
+
+# ── Entry point ─────────────────────────────────────────────────────
+
+fn tokenize_with_grammar(g, src, src_len, tb) {
+    var i = 0;
+    while (i < src_len) {
+        var b = load8(src + i);
+        var kind = TK_ERROR;
+        var len  = 0;
+
+        # 1. Shebang
+        if (len == 0) {
+            len = _ds_try_shebang(g, src, src_len, i);
+            if (len > 0) { kind = TK_PREPROCESSOR; }
+        }
+
+        # 2. Line rules
+        if (len == 0) {
+            var packed = _ds_try_line_rules(g, src, src_len, i);
+            if (packed != 0) {
+                kind = packed >> 56;
+                len  = packed & 0x00FFFFFFFFFFFFFF;
+            }
+        }
+
+        # 3. Pair rules
+        if (len == 0) {
+            var packed2 = _ds_try_pair_rules(g, src, src_len, i);
+            if (packed2 != 0) {
+                kind = packed2 >> 56;
+                len  = packed2 & 0x00FFFFFFFFFFFFFF;
+            }
+        }
+
+        # 4. Special var `$X`
+        if (len == 0) {
+            if ((grammar_special_vars(g) == 1) && (b == 36)) {
+                if (i + 1 < src_len) {
+                    if (_ds_is_special_var_char(load8(src + i + 1)) == 1) {
+                        kind = TK_OPERATOR;
+                        len = 2;
+                    }
+                }
+            }
+        }
+
+        # 5. Lone `$` as operator (only if special_vars is on; otherwise
+        # `$` will be caught by the operators list or fall through).
+        if (len == 0) {
+            if ((grammar_special_vars(g) == 1) && (b == 36)) {
+                kind = TK_OPERATOR;
+                len = 1;
+            }
+        }
+
+        # 6. Identifier / keyword
+        if (len == 0) {
+            var start_tbl = grammar_ident_start(g);
+            if ((start_tbl != 0) && (char_class_match(start_tbl, b) == 1)) {
+                len = _ds_scan_ident(g, src, src_len, i);
+                var kw_slot = alloc(8); store64(kw_slot, 0);
+                if (_ds_lookup_keyword(g, src, i, len, kw_slot) == 1) {
+                    kind = load64(kw_slot);
+                } else {
+                    kind = TK_IDENT;
+                }
+            }
+        }
+
+        # 7. Number
+        if (len == 0) {
+            if (_ds_is_digit(b) == 1) {
+                var nlen = _ds_scan_number(g, src, src_len, i);
+                if (nlen > 0) {
+                    kind = TK_NUMBER;
+                    len = nlen;
+                }
+            }
+        }
+
+        # 8. Operator (longest match)
+        if (len == 0) {
+            var olen = _ds_try_exact_list(grammar_operators(g), src, src_len, i);
+            if (olen > 0) {
+                kind = TK_OPERATOR;
+                len = olen;
+            }
+        }
+
+        # 9. Punctuation (longest match)
+        if (len == 0) {
+            var plen = _ds_try_exact_list(grammar_punctuation(g), src, src_len, i);
+            if (plen > 0) {
+                kind = TK_PUNCTUATION;
+                len = plen;
+            }
+        }
+
+        # 10. Whitespace
+        if (len == 0) {
+            if ((grammar_whitespace_on(g) == 1) && (_ds_is_space(b) == 1)) {
+                kind = TK_WHITESPACE;
+                len = _ds_scan_whitespace(src, src_len, i);
+            }
+        }
+
+        # 11. Fallback — keep coverage invariant by advancing 1 byte.
+        if (len == 0) {
+            kind = TK_ERROR;
+            len = 1;
+        }
+
+        tokenbuf_push(tb, kind, i, len);
+        i = i + len;
+    }
+    return tokenbuf_count(tb);
+}

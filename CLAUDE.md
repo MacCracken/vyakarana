@@ -29,8 +29,14 @@ pass. Use `cyrius build`, never raw `cc5`.
 - No closures — use named functions
 - Top-level args pattern: `args_init(); var ac = argc(); var a = argv(i);`
   (not `fn main(argc, argv)`)
-- Stdlib auto-prepends from `cyrius.cyml [deps] stdlib = [...]` —
-  do not re-`include "lib/..."` inside project files
+- `cyrius.cyml [deps] stdlib = [names]` auto-prepends the listed
+  modules — only the ones named, not all of stdlib. Add what you
+  need to the list; don't re-`include "lib/..."` for modules
+  already in it. For single-file programs outside a project (e.g.
+  `cyrius/programs/*.cyr`), explicit `include "lib/..."` at the
+  top is the pattern. See yukti's `cyrius.cyml` for a fuller
+  example of `[deps] stdlib`, `[deps.<name>]` git deps, and
+  `[lib] modules = [...]` for distlib.
 - Test exit pattern: `syscall(60, assert_summary())`
 - When dialect is unclear, read `cyrius/programs/*.cyr` — that's
   the authoritative working reference

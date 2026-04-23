@@ -13,6 +13,7 @@ Context → Decision → Consequences, with a Status line at the top.
 | 0002 | [Token storage — contiguous 12-byte records via `tokenbuf`](0002-token-storage-layout.md) | Accepted | 2026-04-23 |
 | 0003 | [Shell string expansions are not re-tokenized in M1](0003-string-expansion-not-retokenized.md) | Accepted | 2026-04-23 |
 | 0004 | [Shell built-ins emit as `ident`, not `keyword`](0004-shell-builtins-as-ident.md)         | Accepted | 2026-04-23 |
+| 0005 | [M2 rule-type scope — narrow spec rules + configured default scanner](0005-m2-rule-type-scope.md) | Accepted | 2026-04-23 |
 
 ## Conventions
 

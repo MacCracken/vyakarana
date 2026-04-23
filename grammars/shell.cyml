@@ -1,0 +1,98 @@
+# shell — bash / sh / zsh / dash tokenizer grammar
+#
+# Rule scheme per ADR 0005: narrow [[rules]] (line / pair / words)
+# plus a [defaults] table that parameterizes the built-in scanner
+# (shebang / ident / number / operator / punctuation / whitespace /
+# special-var).
+#
+# Regression bar: tokens produced from this file must be byte-
+# identical to the hand-coded tokenize_shell in src/grammars/shell.cyr
+# on tests/corpus/shell.sh. The diff check lives in scripts/smoke.sh.
+
+[grammar]
+name = "shell"
+extensions = [".sh", ".bash"]
+shebangs = ["sh", "bash", "zsh", "dash"]
+
+[defaults]
+# Emit `#!` on line 0, column 0 as TK_PREPROCESSOR (to EOL).
+shebang = true
+
+# Whitespace runs (space, tab, \n, \r) emit as TK_WHITESPACE.
+whitespace = true
+
+# Identifiers: [A-Za-z_] followed by [A-Za-z0-9_]*.
+# The char-class syntax is a small subset — ranges A-Z, a-z, 0-9 and
+# individual characters, joined. Runs are emitted as TK_IDENT unless
+# they match a keyword (see the [[rules]] match = "words" below),
+# in which case TK_KEYWORD.
+ident_start = "A-Za-z_"
+ident_cont  = "A-Za-z0-9_"
+
+# Numbers: decimal, plus 0x / 0b / 0o prefixes.
+number_decimal = true
+number_0x      = true
+number_0b      = true
+number_0o      = true
+
+# `$X` where X is #/?/@/!/*/$/- emits as a 2-char TK_OPERATOR so
+# that e.g. `$#` doesn't start a comment. Bare `$` is a 1-char op.
+special_vars = true
+
+# Operators in longest-match order. The scanner tries them in this
+# sequence for each position; first match wins.
+operators = [
+    "<<<",
+    "&&", "||", "==", "!=", "=~", "<=", ">=", ">>", "<<", "<>",
+    "++", "--", "+=", "-=", "*=", "/=", "%=", "->",
+    "=", "|", "&", "<", ">", "+", "-", "*", "/", "%", "!", "~",
+    "?", "@", "^", "\\",
+]
+
+# Punctuation, longest-match order.
+punctuation = [
+    "[[", "]]", "((", "))", ";;",
+    "(", ")", "{", "}", "[", "]", ";", ":", ",", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+# Rule priority (applied before defaults.ident/number/operator/etc.):
+#   1. line-comment rule
+#   2. pair rules (strings)
+#   3. words rules (keyword list — applied over an identifier run)
+# See ADR 0005 for the full scanner dispatch order.
+
+
+[[rules]]
+kind = "comment"
+match = "line"
+start = "#"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "'"
+end = "'"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    "if", "then", "else", "elif", "fi",
+    "for", "while", "until", "do", "done",
+    "case", "esac", "in",
+    "function", "return",
+    "break", "continue",
+    "select", "time",
+]

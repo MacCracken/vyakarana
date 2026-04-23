@@ -61,9 +61,20 @@ fn print_list_kinds() {
 }
 
 fn print_list_languages() {
-    # M1: "shell" is the only loaded grammar. M2+ enumerates from the
-    # CYML registry. One line per language, alphabetical order.
-    println("shell");
+    # Enumerate loaded grammars via the registry (src/grammar.cyr).
+    # bootstrap_grammars ensures the bundled grammars are loaded —
+    # this path doesn't go through tokenize_source / has_grammar so
+    # it needs to trigger the load explicitly. M3 will revisit the
+    # bootstrap shape when there are more grammars.
+    bootstrap_grammars();
+    var names = vec_new();
+    list_languages_into(names);
+    var n = vec_len(names);
+    var i = 0;
+    while (i < n) {
+        println(vec_get(names, i));
+        i = i + 1;
+    }
     return 0;
 }
 
@@ -136,8 +147,9 @@ fn emit_ndjson(tb) {
 }
 
 # Read file, tokenize with the given language, emit NDJSON. Returns
-# an exit code.
-fn tokenize_file(path, lang) {
+# an exit code. `handcoded = 1` routes through the M1 oracle path
+# (see src/tokenize.cyr) for the M2 regression diff.
+fn tokenize_file(path, lang, handcoded) {
     var buf = alloc(VYK_SRC_CAP);
     var n = file_read_all(path, buf, VYK_SRC_CAP - 1);
     if (n < 0) {
@@ -146,7 +158,12 @@ fn tokenize_file(path, lang) {
     }
     # NUL-terminate so strlen inside tokenize_source returns n.
     store8(buf + n, 0);
-    var tb = tokenize_source(buf, lang);
+    var tb = 0;
+    if (handcoded == 1) {
+        tb = tokenize_source_handcoded(buf, lang);
+    } else {
+        tb = tokenize_source(buf, lang);
+    }
     if (tb == 0) {
         no_grammar_error(path);
         return EXIT_NO_GRAMMAR;
@@ -176,11 +193,13 @@ fn main() {
         return EXIT_OK;
     }
 
-    # Two-pass: collect an optional --language= override and the
-    # first non-flag arg (the file path). Flags may appear in any
-    # order.
+    # Two-pass: collect an optional --language= override, an optional
+    # --handcoded flag (regression oracle — see src/tokenize.cyr),
+    # and the first non-flag arg (the file path). Flags may appear
+    # in any order.
     var lang_override = 0;
     var path = 0;
+    var handcoded = 0;
 
     var i = 1;
     while (i < ac) {
@@ -191,6 +210,11 @@ fn main() {
         if (streq(a, "--version") == 1) { print_version(); return EXIT_OK; }
         if (streq(a, "--list-kinds") == 1) { print_list_kinds(); return EXIT_OK; }
         if (streq(a, "--list-languages") == 1) { print_list_languages(); return EXIT_OK; }
+        if (streq(a, "--handcoded") == 1) {
+            handcoded = 1;
+            i = i + 1;
+            continue;
+        }
 
         var langv = parse_language_arg(a);
         if (langv != 0) {
@@ -231,7 +255,7 @@ fn main() {
         return EXIT_NO_GRAMMAR;
     }
 
-    return tokenize_file(path, lang);
+    return tokenize_file(path, lang, handcoded);
 }
 
 var exit_code = main();
