@@ -1,0 +1,91 @@
+# toml — TOML tokenizer grammar
+#
+# Rule scheme per ADR 0005: narrow [[rules]] + configured default
+# scanner. TOML is the simplest possible test for M3's "new grammar
+# = new .cyml file" promise — structurally close to our own grammar
+# file format.
+#
+# Scope: keys, strings ("..." / '...' with escape-in-double-only),
+# line comments, decimal/hex/oct/bin numbers, `=` / `.` operators,
+# `[...]` / `[[...]]` / `{...}` / `,` punctuation, true/false/inf/nan
+# keywords.
+#
+# Out of scope for the first pass (not in the vidya corpus):
+#   - Multi-line strings """...""" / '''...'''
+#   - Float literals (`3.14`)
+#   - Date/datetime literals (`1979-05-27T07:32:00Z`)
+# These are ADR candidates if a future corpus needs them.
+
+[grammar]
+name = "toml"
+extensions = [".toml"]
+
+[defaults]
+# No shebang; TOML isn't an executable format.
+shebang = false
+
+# Whitespace runs (space, tab, \n, \r) emit as TK_WHITESPACE.
+whitespace = true
+
+# Bare keys: letters/underscore to start, letters/digits/underscore/
+# hyphen to continue. Putting `-` in ident_cont but not ident_start
+# lets `foo-bar` be one ident while `-42` still tokenizes as
+# `operator(-) + number(42)`.
+ident_start = "A-Za-z_"
+ident_cont  = "A-Za-z0-9_-"
+
+number_decimal = true
+number_0x      = true
+number_0b      = true
+number_0o      = true
+
+# No shell-style $X variable syntax.
+special_vars = false
+
+# TOML has only a few structural operators. `=` is assignment,
+# `.` separates dotted keys (pkg.name = 1), `+` and `-` prefix signed
+# numbers (`-42`, `+inf`). Without `+`/`-` here, signed number
+# literals fall through to TK_ERROR.
+operators = [
+    "=",
+    ".",
+    "+", "-",
+]
+
+# Punctuation, longest-match order. `[[` / `]]` for array-of-tables;
+# `[` / `]` for single tables; `{` / `}` / `,` for inline tables.
+punctuation = [
+    "[[", "]]",
+    "[", "]", "{", "}", ",",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+[[rules]]
+kind = "comment"
+match = "line"
+start = "#"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "'"
+end = "'"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    "true", "false", "inf", "nan",
+]

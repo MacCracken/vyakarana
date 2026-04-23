@@ -45,10 +45,14 @@ for k in ident keyword string number comment operator punctuation whitespace pre
     printf '%s\n' "$klist" | grep -q "^$k\$" || fail "--list-kinds missing '$k'"
 done
 
-# --list-languages lists loaded grammars. Since M1, this is `shell`.
+# --list-languages lists loaded grammars (see bootstrap_grammars in
+# src/tokenize.cyr). Assert presence rather than exact order so that
+# adding grammars in M3 is a one-line change here.
 llist=$("$BIN" --list-languages)
-printf '%s\n' "$llist" | grep -q "^shell\$" \
-    || fail "--list-languages missing 'shell': '$llist'"
+for lang in shell toml; do
+    printf '%s\n' "$llist" | grep -q "^$lang\$" \
+        || fail "--list-languages missing '$lang': '$llist'"
+done
 
 # Unknown option → exit 2, error on stderr.
 set +e
@@ -124,4 +128,41 @@ if ! diff -q "$TMPDIR/m1.ndjson" "$TMPDIR/m2.ndjson" > /dev/null; then
     fail "CYML-driven shell grammar drifts from hand-coded reference"
 fi
 
-echo "smoke: OK ($v_long) — M0 + M1 + M2 gates passing"
+# ============================================================
+# M3 — additional bundled grammars
+# ============================================================
+#
+# Each entry is "language:corpus-path". When adding a new grammar
+# in M3, append a line and the loop does the rest.
+
+M3_CORPUS_ENTRIES="
+toml:tests/corpus/concept.toml
+"
+
+for entry in $M3_CORPUS_ENTRIES; do
+    lang="${entry%%:*}"
+    corpus="${entry##*:}"
+    [ -f "$corpus" ] || fail "M3 corpus missing: $corpus"
+
+    set +e
+    "$BIN" "$corpus" > "$TMPDIR/$lang.ndjson" 2> "$TMPDIR/err"
+    rc=$?
+    set -e
+    [ "$rc" = "0" ] \
+        || fail "vyk $corpus ($lang): exit $rc (expected 0); stderr: $(cat "$TMPDIR/err")"
+    [ -s "$TMPDIR/$lang.ndjson" ] \
+        || fail "vyk $corpus ($lang): empty NDJSON"
+
+    if grep -q '"kind":"error"' "$TMPDIR/$lang.ndjson"; then
+        n=$(grep -c '"kind":"error"' "$TMPDIR/$lang.ndjson")
+        fail "$n error-kind tokens for $lang; grammar has a gap"
+    fi
+
+    bytes=$(wc -c < "$corpus" | tr -d ' ')
+    sumlen=$(grep -oE '"len":[0-9]+' "$TMPDIR/$lang.ndjson" | cut -d: -f2 \
+        | awk '{s+=$1} END {print s+0}')
+    [ "$sumlen" = "$bytes" ] \
+        || fail "$lang coverage: token len sum $sumlen != file bytes $bytes"
+done
+
+echo "smoke: OK ($v_long) — M0 + M1 + M2 + M3 gates passing"

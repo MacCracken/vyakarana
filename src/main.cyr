@@ -114,6 +114,7 @@ fn detect_language(path) {
     }
     if (n >= 5) {
         if (memeq(path + n - 5, ".bash", 5) == 1) { return "shell"; }
+        if (memeq(path + n - 5, ".toml", 5) == 1) { return "toml"; }
     }
     return 0;
 }

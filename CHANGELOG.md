@@ -4,6 +4,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (M3, in progress)
+- `grammars/toml.cyml` — TOML grammar as data. Tokenizes
+  `tests/corpus/concept.toml` with zero `error` kinds, coverage
+  sum matches (10341 bytes in, 471 tokens, coverage sum = 10341).
+- `tests/corpus/concept.toml` — snapshot of vidya's TOML reference
+  sample.
+- TOML grammar rules: bare keys allow `-` in continuation only
+  (so `foo-bar` is one ident while `-42` stays operator+number);
+  keywords `true`/`false`/`inf`/`nan`; `[[` / `]]` punctuation for
+  array-of-tables; `=` / `.` / `+` / `-` operators.
+- `detect_language(".toml")` → `"toml"`.
+- `--list-languages` now emits `shell` and `toml`.
+- `scripts/smoke.sh` M3 section: generic corpus-round-trip loop
+  (one line per `lang:corpus` pair) checking exit 0, zero error
+  tokens, and coverage invariant.
+- 23 new tcyr assertions covering toml grammar load and key /
+  number / section / keyword tokenization on small probes
+  (290 total).
+
 ### Added (M2)
 - CYML grammar loader: `grammar_load("grammars/<lang>.cyml")` parses
   a grammar file into a `Grammar` record with `[grammar]` / `[defaults]`

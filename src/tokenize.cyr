@@ -29,8 +29,10 @@ var _grammars_bootstrapped = 0;
 fn bootstrap_grammars() {
     if (_grammars_bootstrapped == 1) { return 0; }
     _grammars_bootstrapped = 1;
-    var g = grammar_load("grammars/shell.cyml");
-    if (g != 0) { registry_add(g); }
+    var gs = grammar_load("grammars/shell.cyml");
+    if (gs != 0) { registry_add(gs); }
+    var gt = grammar_load("grammars/toml.cyml");
+    if (gt != 0) { registry_add(gt); }
     return 0;
 }
 
