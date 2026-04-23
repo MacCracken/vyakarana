@@ -1,0 +1,75 @@
+# json — JSON tokenizer grammar
+#
+# Rule scheme per ADR 0005. JSON is nearly a subset of TOML at the
+# token level: double-quoted strings, decimal numbers, structural
+# punctuation, and the keywords true/false/null.
+#
+# Corpus: tests/corpus/concept.json is a hand-rolled stand-in
+# (see ADR 0006 — vidya doesn't yet ship a JSON reference sample).
+#
+# Scope: valid JSON tokens plus pragmatic permissiveness. vyakarana
+# is a tokenizer, not a validator; bare words outside true/false/null
+# tokenize as TK_IDENT rather than TK_ERROR. A JSON parser layered
+# on top is free to reject.
+#
+# Out of scope (first pass):
+#   - Number exponent form (`1e5`, `1.5e-3`). Current default scanner
+#     handles leading-digit runs + 0x/0b/0o prefixes; no `.`/`e`.
+#     Falls back to multi-token (number + . + number + e + ...).
+#     Not an error, but an ADR candidate when a future corpus shows
+#     it matters.
+#   - Unicode escapes inside strings (`\uNNNN`) — passed through as
+#     part of the string token (bytes preserved, no decoding).
+
+[grammar]
+name = "json"
+extensions = [".json"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+# Bare-word scanner exists just to turn `true`/`false`/`null` into
+# keyword tokens (via the [[rules]] words lookup below). Strict JSON
+# forbids bare words elsewhere; our grammar emits TK_IDENT for them,
+# letting a downstream parser validate.
+ident_start = "A-Za-z_"
+ident_cont  = "A-Za-z0-9_"
+
+number_decimal = true
+number_0x      = false
+number_0b      = false
+number_0o      = false
+
+special_vars = false
+
+# `+`/`-` for signed numbers (JSON allows `-`; `+` is non-standard
+# but cheap to include and keeps output sensible on slightly-loose
+# inputs).
+operators = [
+    "+", "-",
+]
+
+# JSON's structural punctuation.
+punctuation = [
+    "{", "}", "[", "]", ",", ":",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+# JSON has no comments and only double-quoted strings.
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    "true", "false", "null",
+]

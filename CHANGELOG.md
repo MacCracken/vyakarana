@@ -5,23 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added (M3, in progress)
-- `grammars/toml.cyml` — TOML grammar as data. Tokenizes
-  `tests/corpus/concept.toml` with zero `error` kinds, coverage
-  sum matches (10341 bytes in, 471 tokens, coverage sum = 10341).
-- `tests/corpus/concept.toml` — snapshot of vidya's TOML reference
-  sample.
-- TOML grammar rules: bare keys allow `-` in continuation only
-  (so `foo-bar` is one ident while `-42` stays operator+number);
-  keywords `true`/`false`/`inf`/`nan`; `[[` / `]]` punctuation for
-  array-of-tables; `=` / `.` / `+` / `-` operators.
-- `detect_language(".toml")` → `"toml"`.
-- `--list-languages` now emits `shell` and `toml`.
+- `grammars/toml.cyml` + `tests/corpus/concept.toml` — TOML grammar
+  as data. Tokenizes the vidya reference sample with zero `error`
+  kinds (471 tokens, coverage 10341/10341).
+- `grammars/json.cyml` + `tests/corpus/concept.json` — JSON grammar.
+  Tokenizes a hand-rolled stand-in corpus (see
+  [ADR 0006](docs/adrs/0006-standin-corpus-policy.md) for why:
+  vidya doesn't ship a JSON reference sample yet). 376 tokens,
+  coverage 3380/3380.
+- `detect_language` now maps `.toml` → `toml` and `.json` → `json`.
+- `--list-languages` emits `shell`, `toml`, and `json`.
 - `scripts/smoke.sh` M3 section: generic corpus-round-trip loop
   (one line per `lang:corpus` pair) checking exit 0, zero error
   tokens, and coverage invariant.
-- 23 new tcyr assertions covering toml grammar load and key /
-  number / section / keyword tokenization on small probes
-  (290 total).
+- 40 new tcyr assertions (17 toml + 17 json + 6 supporting)
+  covering grammar load, dashed-ident behavior, signed numbers,
+  keywords, and JSON structural tokens (307 total).
+- [ADR 0006](docs/adrs/0006-standin-corpus-policy.md) —
+  stand-in corpus policy for languages vidya doesn't yet cover.
 
 ### Added (M2)
 - CYML grammar loader: `grammar_load("grammars/<lang>.cyml")` parses

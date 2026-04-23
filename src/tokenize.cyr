@@ -33,6 +33,8 @@ fn bootstrap_grammars() {
     if (gs != 0) { registry_add(gs); }
     var gt = grammar_load("grammars/toml.cyml");
     if (gt != 0) { registry_add(gt); }
+    var gj = grammar_load("grammars/json.cyml");
+    if (gj != 0) { registry_add(gj); }
     return 0;
 }
 
