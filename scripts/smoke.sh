@@ -45,9 +45,10 @@ for k in ident keyword string number comment operator punctuation whitespace pre
     printf '%s\n' "$klist" | grep -q "^$k\$" || fail "--list-kinds missing '$k'"
 done
 
-# --list-languages is silent in M0 (no grammars loaded).
+# --list-languages lists loaded grammars. Since M1, this is `shell`.
 llist=$("$BIN" --list-languages)
-[ -z "$llist" ] || fail "--list-languages emitted output in v0.1.0: '$llist'"
+printf '%s\n' "$llist" | grep -q "^shell\$" \
+    || fail "--list-languages missing 'shell': '$llist'"
 
 # Unknown option → exit 2, error on stderr.
 set +e
@@ -58,4 +59,44 @@ set -e
 grep -q "^vyk: unknown option: --frobnicate" "$TMPDIR/err" \
     || fail "unknown-option stderr format wrong: $(cat "$TMPDIR/err")"
 
-echo "smoke: OK ($v_long) — M0 gates passing"
+# ============================================================
+# M1 — shell grammar tokenizes the vidya corpus cleanly
+# ============================================================
+
+CORPUS="tests/corpus/shell.sh"
+[ -f "$CORPUS" ] || fail "corpus missing: $CORPUS"
+
+set +e
+"$BIN" "$CORPUS" > "$TMPDIR/tokens.ndjson" 2> "$TMPDIR/err"
+rc=$?
+set -e
+[ "$rc" = "0" ] || fail "vyk $CORPUS: exit $rc (expected 0); stderr: $(cat "$TMPDIR/err")"
+[ -s "$TMPDIR/tokens.ndjson" ] || fail "vyk $CORPUS: empty NDJSON output"
+
+# Zero error-kind tokens (design-spec §3.2 + §3.1).
+if grep -q '"kind":"error"' "$TMPDIR/tokens.ndjson"; then
+    n=$(grep -c '"kind":"error"' "$TMPDIR/tokens.ndjson")
+    fail "$n error-kind tokens in NDJSON; shell grammar has a gap"
+fi
+
+# Coverage invariant: sum of all len fields == file bytes.
+bytes=$(wc -c < "$CORPUS" | tr -d ' ')
+sumlen=$(grep -oE '"len":[0-9]+' "$TMPDIR/tokens.ndjson" | cut -d: -f2 \
+    | awk '{s+=$1} END {print s+0}')
+[ "$sumlen" = "$bytes" ] \
+    || fail "coverage invariant: token len sum $sumlen != file bytes $bytes"
+
+# First token must be the shebang (preprocessor @0).
+head -1 "$TMPDIR/tokens.ndjson" \
+    | grep -q '^{"kind":"preprocessor","start":0' \
+    || fail "first token is not shebang preprocessor @0: $(head -1 "$TMPDIR/tokens.ndjson")"
+
+# --language override works on an extensionless path.
+cp "$CORPUS" "$TMPDIR/noext"
+set +e
+"$BIN" --language=shell "$TMPDIR/noext" > /dev/null 2> "$TMPDIR/err"
+rc=$?
+set -e
+[ "$rc" = "0" ] || fail "--language=shell on extensionless: rc=$rc, stderr=$(cat "$TMPDIR/err")"
+
+echo "smoke: OK ($v_long) — M0 + M1 gates passing"

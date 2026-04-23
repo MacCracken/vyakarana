@@ -44,3 +44,89 @@ fn kind_is_valid(kind) {
     if (kind >= TK_COUNT) { return 0; }
     return 1;
 }
+
+# ── Token record ────────────────────────────────────────────────────
+#
+# Layout: (kind: u8 @ 0, start: u32 @ 4, len: u32 @ 8) — 12 bytes.
+# Bytes 1..3 are padding so start is 4-byte aligned.
+# See design-spec §4. This layout is the consumer contract for owl M3b
+# and subsequent consumers; do not shuffle fields without a CHANGELOG
+# entry and a minor-version bump.
+var TOKEN_SIZE = 12;
+
+# ── tokenbuf — contiguous growable array of 12-byte Token records ───
+#
+# Design-spec §6 requires "no allocations per token." Stdlib Vec stores
+# 8-byte slots, which doesn't fit the 12-byte Token layout, so this is
+# a purpose-built buffer: three i64 fields (data_ptr, count, byte_cap)
+# at the handle, 12 bytes per record in `data`.
+#
+# Accessors (tokenbuf_kind/start/len) are the shape owl M3b imports.
+# Keep the surface stable — the internal growth policy can evolve.
+
+var _TB_INIT_CAP = 64;   # initial record capacity (768 bytes)
+
+fn tokenbuf_new() {
+    var tb = alloc(24);
+    var bytes = _TB_INIT_CAP * TOKEN_SIZE;
+    var data = alloc(bytes);
+    store64(tb, data);
+    store64(tb + 8, 0);        # count
+    store64(tb + 16, bytes);   # byte_cap
+    return tb;
+}
+
+fn tokenbuf_count(tb) {
+    return load64(tb + 8);
+}
+
+fn _tokenbuf_grow(tb) {
+    var old_data = load64(tb);
+    var old_bytes = load64(tb + 16);
+    var new_bytes = old_bytes * 2;
+    var new_data = alloc(new_bytes);
+    var i = 0;
+    while (i < old_bytes) {
+        store8(new_data + i, load8(old_data + i));
+        i = i + 1;
+    }
+    store64(tb, new_data);
+    store64(tb + 16, new_bytes);
+    return 0;
+}
+
+fn tokenbuf_push(tb, kind, start, len) {
+    var count = load64(tb + 8);
+    var byte_cap = load64(tb + 16);
+    var used = count * TOKEN_SIZE;
+    if (used >= byte_cap) {
+        _tokenbuf_grow(tb);
+    }
+    var data = load64(tb);
+    var slot = data + count * TOKEN_SIZE;
+    store8(slot, kind);
+    store32(slot + 4, start);
+    store32(slot + 8, len);
+    store64(tb + 8, count + 1);
+    return 0;
+}
+
+# Accessors by index (bounds-unchecked — caller must compare to
+# tokenbuf_count). Kept small so the hot-path stays inline-friendly
+# for the streaming work in M5.
+fn _tokenbuf_slot(tb, i) {
+    var data = load64(tb);
+    return data + i * TOKEN_SIZE;
+}
+
+fn tokenbuf_kind(tb, i) {
+    return load8(_tokenbuf_slot(tb, i));
+}
+
+fn tokenbuf_start(tb, i) {
+    return load32(_tokenbuf_slot(tb, i) + 4);
+}
+
+fn tokenbuf_len(tb, i) {
+    return load32(_tokenbuf_slot(tb, i) + 8);
+}

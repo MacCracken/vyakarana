@@ -2,15 +2,13 @@
 #
 # Stdlib auto-included via cyrius.cyml.
 #
-# v0.1.0 scope:
+# Scope (v0.1.x through M1):
 #   vyk --version
 #   vyk --help / -h
 #   vyk --list-kinds        prints the ten token kinds
-#   vyk --list-languages    prints loaded grammars (empty in M0)
-#
-# File tokenization (`vyk <file>`) lands in M1 once the shell grammar
-# exists. Until then, any path argument exits with code 4 (no grammar
-# loaded).
+#   vyk --list-languages    prints loaded grammars (now: shell)
+#   vyk <file>              tokenize a file, NDJSON on stdout
+#   vyk --language=<lang>   override detection (M1: only `shell`)
 
 include "src/token.cyr"
 include "src/grammar.cyr"
@@ -27,8 +25,13 @@ var EXIT_USAGE        = 2;
 var EXIT_IO           = 3;
 var EXIT_NO_GRAMMAR   = 4;
 
+# Source-buffer cap for `vyk <file>`. M1 reads up to 1 MB; M5's
+# streaming tokenizer will remove this ceiling.
+var VYK_SRC_CAP = 1048576;
+
 fn print_version() {
     println(VYK_VERSION);
+    return 0;
 }
 
 fn print_help() {
@@ -37,12 +40,15 @@ fn print_help() {
     println("Usage: vyk [OPTIONS] [FILE]");
     println("");
     println("Options:");
-    println("  -h, --help            Print this help and exit");
-    println("  -V, --version         Print version and exit");
-    println("      --list-kinds      Print the ten token kinds");
-    println("      --list-languages  Print loaded grammars (empty in v0.1.0)");
+    println("  -h, --help             Print this help and exit");
+    println("  -V, --version          Print version and exit");
+    println("      --list-kinds       Print the ten token kinds");
+    println("      --list-languages   Print loaded grammars");
+    println("      --language=<lang>  Override language detection");
     println("");
-    println("Status: v0.1.0 scaffold. Real tokenization lands in M1.");
+    println("If FILE is given, tokens are printed as NDJSON on stdout:");
+    println("  {\"kind\":\"keyword\",\"start\":0,\"len\":2}");
+    return 0;
 }
 
 fn print_list_kinds() {
@@ -55,9 +61,9 @@ fn print_list_kinds() {
 }
 
 fn print_list_languages() {
-    # M0: registry is empty. M2+ enumerates loaded grammars.
-    # Silent empty output is intentional — mirrors the "no grammars
-    # loaded" contract, and keeps stdout scriptable.
+    # M1: "shell" is the only loaded grammar. M2+ enumerates from the
+    # CYML registry. One line per language, alphabetical order.
+    println("shell");
     return 0;
 }
 
@@ -71,6 +77,95 @@ fn usage_error(flag) {
     return 0;
 }
 
+fn io_error(path) {
+    var m1 = "vyk: cannot read ";
+    eprint(m1, strlen(m1));
+    eprint(path, strlen(path));
+    eprint("\n", 1);
+    return 0;
+}
+
+fn no_grammar_error(path) {
+    var m1 = "vyk: no grammar matched for ";
+    eprint(m1, strlen(m1));
+    eprint(path, strlen(path));
+    var m2 = " (try --language=shell)\n";
+    eprint(m2, strlen(m2));
+    return 0;
+}
+
+# Extension-based detection. Returns a language name (string literal)
+# or 0 when nothing matches.
+fn detect_language(path) {
+    var n = strlen(path);
+    if (n >= 3) {
+        if (memeq(path + n - 3, ".sh", 3) == 1) { return "shell"; }
+    }
+    if (n >= 5) {
+        if (memeq(path + n - 5, ".bash", 5) == 1) { return "shell"; }
+    }
+    return 0;
+}
+
+# Emit one NDJSON line per token. Returns 1 if any TK_ERROR token
+# was emitted, else 0.
+fn emit_ndjson(tb) {
+    var count = tokenbuf_count(tb);
+    var i = 0;
+    var any_error = 0;
+    var s_open  = "{\"kind\":\"";
+    var s_mid1  = "\",\"start\":";
+    var s_mid2  = ",\"len\":";
+    var s_close = "}\n";
+    while (i < count) {
+        var k = tokenbuf_kind(tb, i);
+        var s = tokenbuf_start(tb, i);
+        var l = tokenbuf_len(tb, i);
+        if (k == TK_ERROR) { any_error = 1; }
+        var name = kind_name(k);
+        print(s_open, strlen(s_open));
+        print(name, strlen(name));
+        print(s_mid1, strlen(s_mid1));
+        fmt_int(s);
+        print(s_mid2, strlen(s_mid2));
+        fmt_int(l);
+        print(s_close, strlen(s_close));
+        i = i + 1;
+    }
+    return any_error;
+}
+
+# Read file, tokenize with the given language, emit NDJSON. Returns
+# an exit code.
+fn tokenize_file(path, lang) {
+    var buf = alloc(VYK_SRC_CAP);
+    var n = file_read_all(path, buf, VYK_SRC_CAP - 1);
+    if (n < 0) {
+        io_error(path);
+        return EXIT_IO;
+    }
+    # NUL-terminate so strlen inside tokenize_source returns n.
+    store8(buf + n, 0);
+    var tb = tokenize_source(buf, lang);
+    if (tb == 0) {
+        no_grammar_error(path);
+        return EXIT_NO_GRAMMAR;
+    }
+    var had_error = emit_ndjson(tb);
+    if (had_error == 1) { return EXIT_GRAMMAR_FAIL; }
+    return EXIT_OK;
+}
+
+# Parse --language=<val>; returns pointer to value or 0 if arg isn't
+# a --language=... form.
+fn parse_language_arg(a) {
+    var prefix = "--language=";
+    var plen = strlen(prefix);
+    if (strlen(a) <= plen) { return 0; }
+    if (memeq(a, prefix, plen) == 0) { return 0; }
+    return a + plen;
+}
+
 fn main() {
     alloc_init();
     args_init();
@@ -81,33 +176,62 @@ fn main() {
         return EXIT_OK;
     }
 
+    # Two-pass: collect an optional --language= override and the
+    # first non-flag arg (the file path). Flags may appear in any
+    # order.
+    var lang_override = 0;
+    var path = 0;
+
     var i = 1;
     while (i < ac) {
         var a = argv(i);
-        if (streq(a, "-h") || streq(a, "--help")) {
-            print_help();
-            return EXIT_OK;
+        if (streq(a, "-h") == 1) { print_help(); return EXIT_OK; }
+        if (streq(a, "--help") == 1) { print_help(); return EXIT_OK; }
+        if (streq(a, "-V") == 1) { print_version(); return EXIT_OK; }
+        if (streq(a, "--version") == 1) { print_version(); return EXIT_OK; }
+        if (streq(a, "--list-kinds") == 1) { print_list_kinds(); return EXIT_OK; }
+        if (streq(a, "--list-languages") == 1) { print_list_languages(); return EXIT_OK; }
+
+        var langv = parse_language_arg(a);
+        if (langv != 0) {
+            lang_override = langv;
+            i = i + 1;
+            continue;
         }
-        if (streq(a, "-V") || streq(a, "--version")) {
-            print_version();
-            return EXIT_OK;
+
+        # First non-flag: treat as a file path. Reject anything else
+        # starting with `-` as an unknown option.
+        if (load8(a) == 45) {   # `-`
+            usage_error(a);
+            return EXIT_USAGE;
         }
-        if (streq(a, "--list-kinds")) {
-            print_list_kinds();
-            return EXIT_OK;
+        if (path == 0) {
+            path = a;
+            i = i + 1;
+            continue;
         }
-        if (streq(a, "--list-languages")) {
-            print_list_languages();
-            return EXIT_OK;
-        }
-        # Anything else is unsupported in M0.
-        # File paths land in M1 once a grammar exists.
+        # Second positional — treat as a usage error.
         usage_error(a);
         return EXIT_USAGE;
     }
 
-    print_help();
-    return EXIT_OK;
+    if (path == 0) {
+        print_help();
+        return EXIT_OK;
+    }
+
+    var lang = lang_override;
+    if (lang == 0) { lang = detect_language(path); }
+    if (lang == 0) {
+        no_grammar_error(path);
+        return EXIT_NO_GRAMMAR;
+    }
+    if (has_grammar(lang) == 0) {
+        no_grammar_error(path);
+        return EXIT_NO_GRAMMAR;
+    }
+
+    return tokenize_file(path, lang);
 }
 
 var exit_code = main();

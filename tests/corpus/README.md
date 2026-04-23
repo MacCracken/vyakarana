@@ -14,15 +14,19 @@ A grammar "passes" when:
 2. Concatenating every token's bytes reproduces the sample exactly
 3. A hand-audited ~30 tokens per grammar show the expected kinds
 
-## Sync policy (undecided)
+## Sync policy
 
-See [`HANDOFF.md`](../../HANDOFF.md) §Corpus for four options. M1
-agent picks one and records the choice in `../../DECISIONS.md`.
+**Checked-in snapshot** (HANDOFF option 1), decided 2026-04-23.
+See [`../../DECISIONS.md`](../../DECISIONS.md) for the reasoning
+and when to revisit.
 
-**Recommended for M1:** checked-in snapshot (option 1). Copy
-`shell.sh` here when you start M1. Revisit sync automation at M3
-when there are ten files to keep aligned.
+Re-sync manually when vidya updates a sample:
+
+```sh
+cp ../../../vidya/content/lexing_and_parsing/shell.sh ./shell.sh
+```
 
 ## Status
 
-Empty at M0 — populate at M1 start.
+- `shell.sh` — snapshot of `vidya/content/lexing_and_parsing/shell.sh`,
+  8524 bytes (as of M1).

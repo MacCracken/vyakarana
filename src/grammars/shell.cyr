@@ -1,92 +1,534 @@
-# vyakarana — shell grammar (M1 landing pad)
+# vyakarana — shell grammar (M1, hand-coded)
 #
-# ============================================================
-# STATUS: SKELETON — NOT IMPLEMENTED
-# This file is a landing pad for the M1 agent. Read HANDOFF.md
-# at the repo root before editing.
-# ============================================================
+# Tokenizes bash/sh scripts end-to-end. Zero `error` tokens on the
+# vidya shell sample is the pass bar (tests/corpus/shell.sh).
 #
-# Goal for M1: tokenize shell scripts end-to-end with zero `error`
-# tokens on the vidya shell sample.
+# Dispatch table (first match wins, all advance `i` by the token's len):
+#   1. `#!` on column 0 of line 0       → preprocessor (shebang)
+#   2. `#` (not shebang)                 → comment to end of line
+#   3. `"..."` (backslash escape aware)  → string
+#   4. `'...'` (no escapes)              → string
+#   5. `$X` where X is #?@!*$-0..9       → operator, length 2
+#      (shell special variable refs; prevents `$#` starting a comment)
+#   6. `$`                               → operator, length 1
+#   7. identifier start [A-Za-z_]        → keyword-lookup, else ident
+#   8. digit                             → number (decimal, hex, bin, oct)
+#   9. multi-char operators (longest-match: <<< then 2-char then 1-char)
+#  10. multi-char punctuation [[ ]] (( )) ;;
+#  11. single-char punctuation ( ) { } [ ] ; : , .
+#  12. whitespace run                    → single whitespace token
+#  13. anything else                     → error token, length 1
 #
-# Why shell first?
-#   - Simpler grammar than Python/Rust (no indentation semantics,
-#     no complex type syntax)
-#   - Covers every token kind in the palette (has comments, strings,
-#     numbers, keywords, operators, punctuation, and the `#!`
-#     preprocessor case)
-#   - vidya ships a ready-to-tokenize sample at
-#     content/lexing_and_parsing/shell.sh
-#
-# Recognizer priority (process each char in order; first match wins):
-#   1. `#!` on line 0 column 0 → preprocessor (shebang)
-#   2. `#` → comment to end of line
-#   3. `"..."` / `'...'` → string (respect \ escapes inside "..." only)
-#   4. Identifiers then keyword lookup
-#   5. Numbers (decimal, 0x..., 0b..., 0o...)
-#   6. Multi-char operators (&&, ||, ==, !=, >>, <<, <<-, <>)
-#   7. Single-char operators (=, |, &, >, <)
-#   8. Multi-char punctuation ([[, ]], ;;)
-#   9. Single-char punctuation ((, ), {, }, [, ], ;, :)
-#  10. Whitespace (space, tab, newline) — emit as whitespace token
-#  11. Anything else → error token
+# Inside strings, expansions (`${...}`, `$(...)`) are NOT re-tokenized —
+# the entire quoted run is one `string` token. This keeps M1 simple and
+# matches the convention most terminal highlighters follow; M2's CYML
+# loader can add nested-rule support if a grammar calls for it.
 
 include "src/token.cyr"
 
-# Shell keyword list. Exact-match against identifiers; word-boundary
-# aware (don't match `iffy` as `if` + `fy`).
-#
-# TODO(M1): when you add keyword lookup, use a hashmap from the stdlib
-# (already in cyrius.cyml's deps list) or a sorted linear scan — both
-# are fine for a ~20-word list.
-#
-# var SHELL_KEYWORDS = [
-#     "if", "then", "else", "elif", "fi",
-#     "for", "while", "until", "do", "done",
-#     "case", "esac", "in",
-#     "function", "return",
-#     "break", "continue",
-#     "select", "time",
-# ];
+# ── Byte-category predicates ────────────────────────────────────────
 
-# ── Entry point ─────────────────────────────────────────────────────
-#
-# `src` — source bytes (pointer into the caller's buffer)
-# `src_len` — length in bytes
-# `tokens_out` — Vec<Token> to push into
-#
-# Returns the number of tokens pushed, or a negative error code.
-#
-# TODO(M1): implement. For now, pushes zero tokens and returns 0 so
-# the call graph compiles.
-fn tokenize_shell(src, src_len, tokens_out) {
-    # === M1 agent: start here ===
-    #
-    # Outline:
-    #   var i = 0;
-    #   var line_start = 0;
-    #   while (i < src_len) {
-    #       var tok = recognize_one(src, src_len, i, line_start);
-    #       # tok = (kind, start, len)
-    #       vec_push(tokens_out, tok);
-    #       if (is_newline(src[i + tok.len - 1])) { line_start = i + tok.len; }
-    #       i = i + tok.len;
-    #   }
-    #   return vec_len(tokens_out);
-    #
-    # Remember the coverage invariant: every input byte is covered by
-    # exactly one token. If a recognizer can't identify a byte, emit
-    # a `TK_ERROR` token of length 1 and advance — don't skip bytes.
-    # ============================
+fn is_space(b) {
+    if (b == 32) { return 1; }  # space
+    if (b == 9)  { return 1; }  # tab
+    if (b == 10) { return 1; }  # newline
+    if (b == 13) { return 1; }  # CR
     return 0;
 }
 
-# Small helper: is this byte a shell keyword-character? (letters,
-# digits after the first char, underscore)
-# TODO(M1): implement once you decide the identifier-matching shape.
-# fn is_ident_start(b) { ... }
-# fn is_ident_cont(b)  { ... }
+fn is_digit(b) {
+    if (b < 48) { return 0; }
+    if (b > 57) { return 0; }
+    return 1;
+}
 
-# TODO(M1): add per-recognizer helpers. Keep them named and short —
-# the design-spec §6 streaming requirement means M5 will want to
-# call into these one line at a time.
+fn is_hex_digit(b) {
+    if (is_digit(b) == 1) { return 1; }
+    if ((b >= 97) && (b <= 102)) { return 1; }  # a-f
+    if ((b >= 65) && (b <= 70))  { return 1; }  # A-F
+    return 0;
+}
+
+fn is_bin_digit(b) {
+    if (b == 48) { return 1; }  # 0
+    if (b == 49) { return 1; }  # 1
+    return 0;
+}
+
+fn is_oct_digit(b) {
+    if (b < 48) { return 0; }
+    if (b > 55) { return 0; }   # 0-7
+    return 1;
+}
+
+fn is_alpha(b) {
+    if ((b >= 97) && (b <= 122)) { return 1; }  # a-z
+    if ((b >= 65) && (b <= 90))  { return 1; }  # A-Z
+    return 0;
+}
+
+fn is_ident_start(b) {
+    if (is_alpha(b) == 1) { return 1; }
+    if (b == 95) { return 1; }  # _
+    return 0;
+}
+
+fn is_ident_cont(b) {
+    if (is_ident_start(b) == 1) { return 1; }
+    if (is_digit(b) == 1) { return 1; }
+    return 0;
+}
+
+# Shell special-variable char: `$X` where X is one of these emits as a
+# 2-char operator, so the `$#` sequence doesn't start a comment.
+fn is_shell_special_var(b) {
+    if (b == 35) { return 1; }  # #
+    if (b == 63) { return 1; }  # ?
+    if (b == 64) { return 1; }  # @
+    if (b == 33) { return 1; }  # !
+    if (b == 42) { return 1; }  # *
+    if (b == 36) { return 1; }  # $
+    if (b == 45) { return 1; }  # -
+    return 0;
+}
+
+# ── Keyword lookup ──────────────────────────────────────────────────
+# Length-keyed if-ladder. The keyword set follows design-spec §3 and
+# HANDOFF §Landing-pad-files — core reserved words only; builtins
+# like `local`/`declare` are left as `ident` so theme authors can
+# style them distinctly via token-text rules.
+
+fn is_shell_keyword(src, start, len) {
+    if (len == 2) {
+        if (memeq(src + start, "if", 2) == 1) { return 1; }
+        if (memeq(src + start, "fi", 2) == 1) { return 1; }
+        if (memeq(src + start, "do", 2) == 1) { return 1; }
+        if (memeq(src + start, "in", 2) == 1) { return 1; }
+        return 0;
+    }
+    if (len == 3) {
+        if (memeq(src + start, "for", 3) == 1) { return 1; }
+        return 0;
+    }
+    if (len == 4) {
+        if (memeq(src + start, "then", 4) == 1) { return 1; }
+        if (memeq(src + start, "else", 4) == 1) { return 1; }
+        if (memeq(src + start, "elif", 4) == 1) { return 1; }
+        if (memeq(src + start, "done", 4) == 1) { return 1; }
+        if (memeq(src + start, "case", 4) == 1) { return 1; }
+        if (memeq(src + start, "esac", 4) == 1) { return 1; }
+        if (memeq(src + start, "time", 4) == 1) { return 1; }
+        return 0;
+    }
+    if (len == 5) {
+        if (memeq(src + start, "while", 5) == 1) { return 1; }
+        if (memeq(src + start, "until", 5) == 1) { return 1; }
+        if (memeq(src + start, "break", 5) == 1) { return 1; }
+        return 0;
+    }
+    if (len == 6) {
+        if (memeq(src + start, "return", 6) == 1) { return 1; }
+        if (memeq(src + start, "select", 6) == 1) { return 1; }
+        return 0;
+    }
+    if (len == 8) {
+        if (memeq(src + start, "function", 8) == 1) { return 1; }
+        if (memeq(src + start, "continue", 8) == 1) { return 1; }
+        return 0;
+    }
+    return 0;
+}
+
+# ── Scanners (each returns the token length in bytes) ───────────────
+# All scanners guarantee len >= 1 so the main loop always advances.
+
+# Scan from current `#` (or `#!`) to end-of-line, NOT including the
+# newline. The newline is picked up on the next iteration as whitespace.
+fn _scan_to_eol(src, src_len, i) {
+    var j = i;
+    while (j < src_len) {
+        if (load8(src + j) == 10) { return j - i; }
+        j = j + 1;
+    }
+    return src_len - i;
+}
+
+# Double-quoted string: opening `"` at i; find closing `"` honoring
+# backslash escapes. Unterminated → consume to EOF (a design-spec
+# coverage-invariant safety net; the vidya sample won't hit this).
+fn _scan_string_double(src, src_len, i) {
+    var j = i + 1;
+    while (j < src_len) {
+        var b = load8(src + j);
+        if (b == 92) {                # backslash → skip next char
+            j = j + 2;
+        } else {
+            if (b == 34) { return j - i + 1; }   # closing "
+            j = j + 1;
+        }
+    }
+    return src_len - i;
+}
+
+# Single-quoted string: no escapes; closing `'` ends it.
+fn _scan_string_single(src, src_len, i) {
+    var j = i + 1;
+    while (j < src_len) {
+        if (load8(src + j) == 39) { return j - i + 1; }
+        j = j + 1;
+    }
+    return src_len - i;
+}
+
+# Identifier run (caller has already confirmed is_ident_start at i).
+fn _scan_ident(src, src_len, i) {
+    var j = i + 1;
+    while (j < src_len) {
+        if (is_ident_cont(load8(src + j)) == 0) { return j - i; }
+        j = j + 1;
+    }
+    return src_len - i;
+}
+
+# Number: decimal, or 0x.../0b.../0o... prefix. Caller confirmed
+# is_digit(src[i]). Does NOT handle floats in M1 (vidya sample is
+# integers only).
+fn _scan_number(src, src_len, i) {
+    # Check for prefix
+    if (load8(src + i) == 48) {                  # leading 0
+        if (i + 1 < src_len) {
+            var p = load8(src + i + 1);
+            if ((p == 120) || (p == 88)) {       # 0x / 0X
+                var j = i + 2;
+                while (j < src_len) {
+                    if (is_hex_digit(load8(src + j)) == 0) { return j - i; }
+                    j = j + 1;
+                }
+                return src_len - i;
+            }
+            if ((p == 98) || (p == 66)) {        # 0b / 0B
+                var j = i + 2;
+                while (j < src_len) {
+                    if (is_bin_digit(load8(src + j)) == 0) { return j - i; }
+                    j = j + 1;
+                }
+                return src_len - i;
+            }
+            if ((p == 111) || (p == 79)) {       # 0o / 0O
+                var j = i + 2;
+                while (j < src_len) {
+                    if (is_oct_digit(load8(src + j)) == 0) { return j - i; }
+                    j = j + 1;
+                }
+                return src_len - i;
+            }
+        }
+    }
+    var j = i + 1;
+    while (j < src_len) {
+        if (is_digit(load8(src + j)) == 0) { return j - i; }
+        j = j + 1;
+    }
+    return src_len - i;
+}
+
+# Whitespace run.
+fn _scan_whitespace(src, src_len, i) {
+    var j = i;
+    while (j < src_len) {
+        if (is_space(load8(src + j)) == 0) { return j - i; }
+        j = j + 1;
+    }
+    return src_len - i;
+}
+
+# Peek two-byte sequence match; safe past src_len.
+fn _peek2_eq(src, src_len, i, c0, c1) {
+    if (i + 1 >= src_len) { return 0; }
+    if (load8(src + i) != c0) { return 0; }
+    if (load8(src + i + 1) != c1) { return 0; }
+    return 1;
+}
+
+# Peek three-byte sequence match.
+fn _peek3_eq(src, src_len, i, c0, c1, c2) {
+    if (i + 2 >= src_len) { return 0; }
+    if (load8(src + i) != c0) { return 0; }
+    if (load8(src + i + 1) != c1) { return 0; }
+    if (load8(src + i + 2) != c2) { return 0; }
+    return 1;
+}
+
+# ── Entry point ─────────────────────────────────────────────────────
+#
+# `src`      — source bytes (pointer; caller owns the buffer)
+# `src_len`  — byte length
+# `tb`       — tokenbuf to push into (created by caller via tokenbuf_new)
+#
+# Returns the number of tokens pushed.
+#
+# Coverage invariant: every byte of [0, src_len) is covered by exactly
+# one token. The main loop never advances zero bytes.
+fn tokenize_shell(src, src_len, tb) {
+    var i = 0;
+    while (i < src_len) {
+        var b = load8(src + i);
+        var len = 0;
+        var kind = TK_ERROR;
+
+        # 1. Shebang on line 0, column 0
+        if (i == 0) {
+            if (_peek2_eq(src, src_len, 0, 35, 33) == 1) {   # #!
+                kind = TK_PREPROCESSOR;
+                len = _scan_to_eol(src, src_len, i);
+            }
+        }
+
+        # 2. Comment (# to EOL), but not if we just handled a shebang
+        if (len == 0) {
+            if (b == 35) {    # #
+                kind = TK_COMMENT;
+                len = _scan_to_eol(src, src_len, i);
+            }
+        }
+
+        # 3. Double-quoted string
+        if (len == 0) {
+            if (b == 34) {    # "
+                kind = TK_STRING;
+                len = _scan_string_double(src, src_len, i);
+            }
+        }
+
+        # 4. Single-quoted string
+        if (len == 0) {
+            if (b == 39) {    # '
+                kind = TK_STRING;
+                len = _scan_string_single(src, src_len, i);
+            }
+        }
+
+        # 5. `$X` for shell special-variable X
+        if (len == 0) {
+            if (b == 36) {    # $
+                if (i + 1 < src_len) {
+                    var nxt = load8(src + i + 1);
+                    if (is_shell_special_var(nxt) == 1) {
+                        kind = TK_OPERATOR;
+                        len = 2;
+                    }
+                }
+            }
+        }
+
+        # 6. Lone `$`
+        if (len == 0) {
+            if (b == 36) {
+                kind = TK_OPERATOR;
+                len = 1;
+            }
+        }
+
+        # 7. Identifier / keyword
+        if (len == 0) {
+            if (is_ident_start(b) == 1) {
+                len = _scan_ident(src, src_len, i);
+                if (is_shell_keyword(src, i, len) == 1) {
+                    kind = TK_KEYWORD;
+                } else {
+                    kind = TK_IDENT;
+                }
+            }
+        }
+
+        # 8. Number
+        if (len == 0) {
+            if (is_digit(b) == 1) {
+                kind = TK_NUMBER;
+                len = _scan_number(src, src_len, i);
+            }
+        }
+
+        # 9a. 3-char operator: <<<
+        if (len == 0) {
+            if (_peek3_eq(src, src_len, i, 60, 60, 60) == 1) {
+                kind = TK_OPERATOR;
+                len = 3;
+            }
+        }
+
+        # 9b. 2-char operators
+        if (len == 0) {
+            if (_peek2_eq(src, src_len, i, 38, 38) == 1) { kind = TK_OPERATOR; len = 2; }  # &&
+        }
+        if (len == 0) {
+            if (_peek2_eq(src, src_len, i, 124, 124) == 1) { kind = TK_OPERATOR; len = 2; }  # ||
+        }
+        if (len == 0) {
+            if (_peek2_eq(src, src_len, i, 61, 61) == 1) { kind = TK_OPERATOR; len = 2; }  # ==
+        }
+        if (len == 0) {
+            if (_peek2_eq(src, src_len, i, 33, 61) == 1) { kind = TK_OPERATOR; len = 2; }  # !=
+        }
+        if (len == 0) {
+            if (_peek2_eq(src, src_len, i, 61, 126) == 1) { kind = TK_OPERATOR; len = 2; }  # =~
+        }
+        if (len == 0) {
+            if (_peek2_eq(src, src_len, i, 60, 61) == 1) { kind = TK_OPERATOR; len = 2; }  # <=
+        }
+        if (len == 0) {
+            if (_peek2_eq(src, src_len, i, 62, 61) == 1) { kind = TK_OPERATOR; len = 2; }  # >=
+        }
+        if (len == 0) {
+            if (_peek2_eq(src, src_len, i, 62, 62) == 1) { kind = TK_OPERATOR; len = 2; }  # >>
+        }
+        if (len == 0) {
+            if (_peek2_eq(src, src_len, i, 60, 60) == 1) { kind = TK_OPERATOR; len = 2; }  # <<
+        }
+        if (len == 0) {
+            if (_peek2_eq(src, src_len, i, 60, 62) == 1) { kind = TK_OPERATOR; len = 2; }  # <>
+        }
+        if (len == 0) {
+            if (_peek2_eq(src, src_len, i, 43, 43) == 1) { kind = TK_OPERATOR; len = 2; }  # ++
+        }
+        if (len == 0) {
+            if (_peek2_eq(src, src_len, i, 45, 45) == 1) { kind = TK_OPERATOR; len = 2; }  # --
+        }
+        if (len == 0) {
+            if (_peek2_eq(src, src_len, i, 43, 61) == 1) { kind = TK_OPERATOR; len = 2; }  # +=
+        }
+        if (len == 0) {
+            if (_peek2_eq(src, src_len, i, 45, 61) == 1) { kind = TK_OPERATOR; len = 2; }  # -=
+        }
+        if (len == 0) {
+            if (_peek2_eq(src, src_len, i, 42, 61) == 1) { kind = TK_OPERATOR; len = 2; }  # *=
+        }
+        if (len == 0) {
+            if (_peek2_eq(src, src_len, i, 47, 61) == 1) { kind = TK_OPERATOR; len = 2; }  # /=
+        }
+        if (len == 0) {
+            if (_peek2_eq(src, src_len, i, 37, 61) == 1) { kind = TK_OPERATOR; len = 2; }  # %=
+        }
+        if (len == 0) {
+            if (_peek2_eq(src, src_len, i, 45, 62) == 1) { kind = TK_OPERATOR; len = 2; }  # ->
+        }
+
+        # 9c. 2-char punctuation
+        if (len == 0) {
+            if (_peek2_eq(src, src_len, i, 91, 91) == 1) { kind = TK_PUNCTUATION; len = 2; }  # [[
+        }
+        if (len == 0) {
+            if (_peek2_eq(src, src_len, i, 93, 93) == 1) { kind = TK_PUNCTUATION; len = 2; }  # ]]
+        }
+        if (len == 0) {
+            if (_peek2_eq(src, src_len, i, 40, 40) == 1) { kind = TK_PUNCTUATION; len = 2; }  # ((
+        }
+        if (len == 0) {
+            if (_peek2_eq(src, src_len, i, 41, 41) == 1) { kind = TK_PUNCTUATION; len = 2; }  # ))
+        }
+        if (len == 0) {
+            if (_peek2_eq(src, src_len, i, 59, 59) == 1) { kind = TK_PUNCTUATION; len = 2; }  # ;;
+        }
+
+        # 10. Single-char operators
+        if (len == 0) {
+            if (b == 61) { kind = TK_OPERATOR; len = 1; }   # =
+        }
+        if (len == 0) {
+            if (b == 124) { kind = TK_OPERATOR; len = 1; }  # |
+        }
+        if (len == 0) {
+            if (b == 38) { kind = TK_OPERATOR; len = 1; }   # &
+        }
+        if (len == 0) {
+            if (b == 60) { kind = TK_OPERATOR; len = 1; }   # <
+        }
+        if (len == 0) {
+            if (b == 62) { kind = TK_OPERATOR; len = 1; }   # >
+        }
+        if (len == 0) {
+            if (b == 43) { kind = TK_OPERATOR; len = 1; }   # +
+        }
+        if (len == 0) {
+            if (b == 45) { kind = TK_OPERATOR; len = 1; }   # -
+        }
+        if (len == 0) {
+            if (b == 42) { kind = TK_OPERATOR; len = 1; }   # *
+        }
+        if (len == 0) {
+            if (b == 47) { kind = TK_OPERATOR; len = 1; }   # /
+        }
+        if (len == 0) {
+            if (b == 37) { kind = TK_OPERATOR; len = 1; }   # %
+        }
+        if (len == 0) {
+            if (b == 33) { kind = TK_OPERATOR; len = 1; }   # !
+        }
+        if (len == 0) {
+            if (b == 126) { kind = TK_OPERATOR; len = 1; }  # ~
+        }
+        if (len == 0) {
+            if (b == 63) { kind = TK_OPERATOR; len = 1; }   # ?
+        }
+        if (len == 0) {
+            if (b == 64) { kind = TK_OPERATOR; len = 1; }   # @
+        }
+        if (len == 0) {
+            if (b == 94) { kind = TK_OPERATOR; len = 1; }   # ^
+        }
+        if (len == 0) {
+            if (b == 92) { kind = TK_OPERATOR; len = 1; }   # \
+        }
+
+        # 11. Single-char punctuation
+        if (len == 0) {
+            if (b == 40) { kind = TK_PUNCTUATION; len = 1; }   # (
+        }
+        if (len == 0) {
+            if (b == 41) { kind = TK_PUNCTUATION; len = 1; }   # )
+        }
+        if (len == 0) {
+            if (b == 123) { kind = TK_PUNCTUATION; len = 1; }  # {
+        }
+        if (len == 0) {
+            if (b == 125) { kind = TK_PUNCTUATION; len = 1; }  # }
+        }
+        if (len == 0) {
+            if (b == 91) { kind = TK_PUNCTUATION; len = 1; }   # [
+        }
+        if (len == 0) {
+            if (b == 93) { kind = TK_PUNCTUATION; len = 1; }   # ]
+        }
+        if (len == 0) {
+            if (b == 59) { kind = TK_PUNCTUATION; len = 1; }   # ;
+        }
+        if (len == 0) {
+            if (b == 58) { kind = TK_PUNCTUATION; len = 1; }   # :
+        }
+        if (len == 0) {
+            if (b == 44) { kind = TK_PUNCTUATION; len = 1; }   # ,
+        }
+        if (len == 0) {
+            if (b == 46) { kind = TK_PUNCTUATION; len = 1; }   # .
+        }
+
+        # 12. Whitespace
+        if (len == 0) {
+            if (is_space(b) == 1) {
+                kind = TK_WHITESPACE;
+                len = _scan_whitespace(src, src_len, i);
+            }
+        }
+
+        # 13. Fallback — unrecognized byte. Emit error of length 1 so
+        # the coverage invariant still holds.
+        if (len == 0) {
+            kind = TK_ERROR;
+            len = 1;
+        }
+
+        tokenbuf_push(tb, kind, i, len);
+        i = i + len;
+    }
+    return tokenbuf_count(tb);
+}

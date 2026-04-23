@@ -1,16 +1,29 @@
 # vyakarana test suite
 # Stdlib auto-included via cyrius.cyml.
 #
-# M0 tests cover the locked-in pieces:
-#   - Ten token kinds defined and named
-#   - Kind validity predicate
-#   - Tokenize stub returns empty (not an error)
-#   - Grammar registry is empty
-#   - Version string shape
+# M0 (palette + record): token kinds exist and are sequential;
+# kind_name round-trips; kind_is_valid bounds hold.
+#
+# M1 (shell grammar): shell dispatch is wired; tokenize_shell
+# produces known tokens at known offsets for small inputs and
+# holds the coverage invariant.
 
 include "src/token.cyr"
 include "src/grammar.cyr"
 include "src/tokenize.cyr"
+
+# Coverage-invariant helper: sum of every token's len equals src_len.
+# Used across M1 assertions to catch gap/overlap bugs early.
+fn tb_coverage_sum(tb) {
+    var n = tokenbuf_count(tb);
+    var i = 0;
+    var sum: i64 = 0;
+    while (i < n) {
+        sum = sum + tokenbuf_len(tb, i);
+        i = i + 1;
+    }
+    return sum;
+}
 
 fn main() {
     alloc_init();
@@ -47,16 +60,117 @@ fn main() {
     assert_eq(kind_is_valid(TK_COUNT),    0, "TK_COUNT is invalid");
     assert_eq(kind_is_valid(99),          0, "99 is invalid");
 
-    test_group("M0 grammar registry is empty");
-    assert_eq(grammar_count(), 0, "no grammars loaded in v0.1.0");
-    assert_eq(has_grammar("shell"),  0, "shell not yet loaded");
+    test_group("M1 grammar registry");
+    assert_eq(has_grammar("shell"),  1, "shell loaded in M1");
     assert_eq(has_grammar("python"), 0, "python not yet loaded");
+    assert_eq(has_grammar(""),       0, "empty name not loaded");
 
-    test_group("M0 tokenize_source returns empty for any input");
-    # Intentionally not an error — M1 will replace the stub with real
-    # tokenization. For M0, "no grammars loaded" means "no tokens."
-    assert_eq(tokenize_source("echo hi", "shell"),  0, "shell stub empty");
+    test_group("tokenize_source returns empty (0) for unknown languages");
     assert_eq(tokenize_source("print('x')", "python"), 0, "python stub empty");
+    assert_eq(tokenize_source("x",           "rust"),  0, "rust stub empty");
+
+    test_group("M1 shell grammar — known-offset assertions");
+    # Input: `if true; then echo hi; fi`
+    # Expected tokens (in order):
+    #   [kw:if @0,2] [ws @2,1] [id:true @3,4] [punc:; @7,1] [ws @8,1]
+    #   [kw:then @9,4] [ws @13,1] [id:echo @14,4] [ws @18,1] [id:hi @19,2]
+    #   [punc:; @21,1] [ws @22,1] [kw:fi @23,2]
+    var tb1 = tokenize_source("if true; then echo hi; fi", "shell");
+    assert_neq(tb1, 0, "tokenbuf allocated");
+    assert_eq(tokenbuf_count(tb1), 13, "13 tokens for the sample line");
+
+    assert_eq(tokenbuf_kind(tb1, 0),  TK_KEYWORD,     "tok0 is keyword");
+    assert_eq(tokenbuf_start(tb1, 0), 0,              "tok0 starts at 0");
+    assert_eq(tokenbuf_len(tb1, 0),   2,              "tok0 len 2 (`if`)");
+
+    assert_eq(tokenbuf_kind(tb1, 1),  TK_WHITESPACE,  "tok1 whitespace");
+    assert_eq(tokenbuf_kind(tb1, 2),  TK_IDENT,       "tok2 ident (`true`)");
+    assert_eq(tokenbuf_len(tb1, 2),   4,              "tok2 len 4");
+    assert_eq(tokenbuf_kind(tb1, 3),  TK_PUNCTUATION, "tok3 `;`");
+    assert_eq(tokenbuf_kind(tb1, 5),  TK_KEYWORD,     "tok5 `then`");
+    assert_eq(tokenbuf_len(tb1, 5),   4,              "tok5 len 4");
+    assert_eq(tokenbuf_kind(tb1, 12), TK_KEYWORD,     "tok12 `fi`");
+    assert_eq(tokenbuf_len(tb1, 12),  2,              "tok12 len 2");
+
+    # Coverage invariant on the same input.
+    assert_eq(tb_coverage_sum(tb1), 25, "coverage sum == strlen");
+
+    test_group("M1 shell grammar — shebang and comments");
+    # `#!/bin/sh\n# comment\nx`
+    var tb2 = tokenize_source("#!/bin/sh\n# comment\nx", "shell");
+    assert_neq(tb2, 0, "tokenbuf allocated");
+    assert_eq(tokenbuf_kind(tb2, 0),  TK_PREPROCESSOR, "shebang is preprocessor");
+    assert_eq(tokenbuf_start(tb2, 0), 0,               "shebang starts at 0");
+    assert_eq(tokenbuf_len(tb2, 0),   9,               "shebang len 9 (stops at \\n)");
+    assert_eq(tokenbuf_kind(tb2, 1),  TK_WHITESPACE,   "newline after shebang");
+    assert_eq(tokenbuf_kind(tb2, 2),  TK_COMMENT,      "line 2 is comment");
+    assert_eq(tokenbuf_len(tb2, 2),   9,               "comment len 9 (`# comment`)");
+    assert_eq(tb_coverage_sum(tb2),   21,              "coverage holds");
+
+    test_group("M1 shell grammar — strings (single and double)");
+    var tb3 = tokenize_source("x=\"a b\" y='c d'", "shell");
+    assert_neq(tb3, 0, "tokenbuf allocated");
+    # x =  "a b"  space  y  =  'c d'
+    # 0 1  2..6  7      8  9  10..14
+    assert_eq(tokenbuf_kind(tb3, 0),  TK_IDENT,   "x ident");
+    assert_eq(tokenbuf_kind(tb3, 1),  TK_OPERATOR, "= operator");
+    assert_eq(tokenbuf_kind(tb3, 2),  TK_STRING,  "\"a b\" string");
+    assert_eq(tokenbuf_len(tb3, 2),   5,          "double-quoted string len 5");
+    assert_eq(tokenbuf_kind(tb3, 6),  TK_STRING,  "'c d' string");
+    assert_eq(tokenbuf_len(tb3, 6),   5,          "single-quoted string len 5");
+    assert_eq(tb_coverage_sum(tb3),   15,         "coverage holds");
+
+    test_group("M1 shell grammar — numbers (decimal, hex)");
+    var tb4 = tokenize_source("42 0xff 0b10 0o7", "shell");
+    assert_neq(tb4, 0, "tokenbuf allocated");
+    assert_eq(tokenbuf_kind(tb4, 0),  TK_NUMBER, "42 is number");
+    assert_eq(tokenbuf_len(tb4, 0),   2,         "42 len 2");
+    assert_eq(tokenbuf_kind(tb4, 2),  TK_NUMBER, "0xff is number");
+    assert_eq(tokenbuf_len(tb4, 2),   4,         "0xff len 4");
+    assert_eq(tokenbuf_kind(tb4, 4),  TK_NUMBER, "0b10 is number");
+    assert_eq(tokenbuf_len(tb4, 4),   4,         "0b10 len 4");
+    assert_eq(tokenbuf_kind(tb4, 6),  TK_NUMBER, "0o7 is number");
+    assert_eq(tokenbuf_len(tb4, 6),   3,         "0o7 len 3");
+    assert_eq(tb_coverage_sum(tb4),   16,        "coverage holds");
+
+    test_group("M1 shell grammar — operators and [[ ]]");
+    var tb5 = tokenize_source("[[ a != b ]] && c || d", "shell");
+    assert_neq(tb5, 0, "tokenbuf allocated");
+    assert_eq(tokenbuf_kind(tb5, 0),  TK_PUNCTUATION, "[[ punctuation");
+    assert_eq(tokenbuf_len(tb5, 0),   2,              "[[ len 2");
+    # Find the != token (index 4: [[, ws, a, ws, !=)
+    assert_eq(tokenbuf_kind(tb5, 4),  TK_OPERATOR,    "!= operator");
+    assert_eq(tokenbuf_len(tb5, 4),   2,              "!= len 2");
+    assert_eq(tb_coverage_sum(tb5),   22,             "coverage holds");
+
+    test_group("M1 shell grammar — no error tokens on these inputs");
+    # Every byte must land in a non-error kind for a passing grammar.
+    # This would catch a regression where the recognizer priority
+    # accidentally skips a common byte.
+    var tb6 = tokenize_source("if [[ $x -eq 42 ]]; then echo \"$x\"; fi", "shell");
+    assert_neq(tb6, 0, "tokenbuf allocated");
+    var n6 = tokenbuf_count(tb6);
+    var i6 = 0;
+    var errors6 = 0;
+    while (i6 < n6) {
+        if (tokenbuf_kind(tb6, i6) == TK_ERROR) { errors6 = errors6 + 1; }
+        i6 = i6 + 1;
+    }
+    assert_eq(errors6, 0, "zero error tokens on common construct");
+    assert_eq(tb_coverage_sum(tb6), 38, "coverage holds");
+
+    test_group("tokenbuf internals");
+    # Fresh tokenbuf is empty.
+    var tb7 = tokenbuf_new();
+    assert_eq(tokenbuf_count(tb7), 0, "new tokenbuf is empty");
+    tokenbuf_push(tb7, TK_IDENT, 0, 3);
+    tokenbuf_push(tb7, TK_WHITESPACE, 3, 1);
+    assert_eq(tokenbuf_count(tb7), 2, "count after 2 pushes");
+    assert_eq(tokenbuf_kind(tb7, 0),  TK_IDENT,      "slot 0 kind");
+    assert_eq(tokenbuf_start(tb7, 0), 0,             "slot 0 start");
+    assert_eq(tokenbuf_len(tb7, 0),   3,             "slot 0 len");
+    assert_eq(tokenbuf_kind(tb7, 1),  TK_WHITESPACE, "slot 1 kind");
+    assert_eq(tokenbuf_start(tb7, 1), 3,             "slot 1 start");
 
     test_group("version string shape");
     # Keep in sync with VYK_VERSION in src/main.cyr and with VERSION.
