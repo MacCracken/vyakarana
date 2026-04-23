@@ -49,6 +49,8 @@ fn bootstrap_grammars() {
     if (gts != 0) { registry_add(gts); }
     var gjs = grammar_load("grammars/javascript.cyml");
     if (gjs != 0) { registry_add(gjs); }
+    var gpy = grammar_load("grammars/python.cyml");
+    if (gpy != 0) { registry_add(gpy); }
     return 0;
 }
 

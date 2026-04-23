@@ -1,0 +1,137 @@
+# python — Python tokenizer grammar
+#
+# Rule scheme per ADR 0005.
+#
+# Corpus: tests/corpus/python.py (vidya-backed).
+#
+# Scope note on indent / dedent:
+#   Python's block structure is defined by indentation, and a
+#   semantic tokenizer would emit INDENT / DEDENT tokens at line
+#   starts. vyakarana's palette has no such kinds and the scanner
+#   has no line-start state — indentation tokenizes as plain
+#   `whitespace`. This is correct at the byte / coverage level;
+#   zero error tokens and coverage invariant both hold on the
+#   vidya sample. A Python parser consuming our tokens would need
+#   to post-process whitespace runs at line starts. A future ADR
+#   could add INDENT / DEDENT rule types if a consumer demands it.
+#
+# Known cosmetic gaps (not errors):
+#   - F-string prefix: `f"..."` tokenizes as ident(f) + string("..."),
+#     not a unified fstring token. Same pattern for r/b/rb/fr prefixes.
+#   - F-string interpolation `{expr}` stays inside the string span
+#     (not re-tokenized), consistent with ADR 0003.
+
+[grammar]
+name = "python"
+extensions = [".py"]
+
+[defaults]
+shebang = true
+whitespace = true
+
+ident_start = "A-Za-z_"
+ident_cont  = "A-Za-z0-9_"
+
+number_decimal = true
+number_0x      = true
+number_0b      = true
+number_0o      = true
+
+special_vars = false
+
+# Operators in longest-match order. Python-specific: `:=` (walrus),
+# `//` (floor division — MUST be in operators, not line comment,
+# because Python uses `#` for line comments), `**` (power and
+# kwargs), `@` (decorator), `->` (return annotation).
+operators = [
+    "//=", "**=",
+    "<<=", ">>=",
+    "<<", ">>",
+    "==", "!=", "<=", ">=",
+    "+=", "-=", "*=", "/=", "%=",
+    "&=", "|=", "^=",
+    ":=", "->", "//", "**",
+    "=", "+", "-", "*", "/", "%",
+    "~", "&", "|", "^",
+    "<", ">",
+    "@", "\\",
+]
+
+punctuation = [
+    "(", ")", "{", "}", "[", "]",
+    ";", ",", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+# Line comments. Python is `#` just like shell / cyrius / toml /
+# yaml. Unlike C / Rust / JS, `//` is NOT a comment — it's floor
+# division (see operators above).
+[[rules]]
+kind = "comment"
+match = "line"
+start = "#"
+
+
+# Triple-quoted strings MUST come before single-quoted pair rules,
+# so the 3-byte start marker wins the longest match.
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\"\"\""
+end = "\"\"\""
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "'''"
+end = "'''"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "'"
+end = "'"
+escape = "\\"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # Literals
+    "True", "False", "None",
+    # Boolean / logical
+    "and", "or", "not",
+    # Membership / identity
+    "in", "is",
+    # Control flow
+    "if", "elif", "else",
+    "while", "for", "break", "continue",
+    "pass", "return", "yield",
+    "try", "except", "finally", "raise",
+    "with", "as",
+    # Declarations
+    "def", "class", "lambda",
+    "global", "nonlocal",
+    # Imports
+    "import", "from",
+    # Async
+    "async", "await",
+    # Misc reserved
+    "del", "assert",
+    # Soft keywords (3.10+ pattern matching — not strictly reserved
+    # but conventionally used as keywords in match/case context)
+    "match", "case",
+]

@@ -70,12 +70,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   string types with TypeScript; keyword list is TS minus the type
   layer (`interface`, `type`, `enum`, `namespace`, visibility
   modifiers, `readonly`, `abstract`, `declare`, `implements`).
+- `grammars/python.cyml` + `tests/corpus/python.py` — Python
+  grammar (vidya-backed). 1790 tokens, 0 errors, coverage
+  8528/8528. Triple-quoted strings via `"""` / `'''` pair rules
+  ordered before single-quote pair rules; walrus `:=`, floor-div
+  `//`, decorator `@` as operators (NOT `//` as comment — Python
+  uses `#`). 22 distinct keywords detected in corpus including
+  `match` / `case` (PEP 634 pattern matching).
+- **Note on Python indentation:** the semantic INDENT / DEDENT
+  tokens a full Python parser would want are NOT emitted —
+  indentation tokenizes as plain `whitespace`. Coverage invariant
+  and zero-error bars both hold. A consumer needing structural
+  indent would post-process whitespace runs at line starts.
+  Promoting to an ADR if a consumer actually wants it.
+- F-string prefix cosmetic gap: `f"..."` tokenizes as `ident(f)` +
+  `string("...")` rather than a unified f-string token. Same
+  pattern for r/b/rb/fr prefixes. Coverage holds.
 - `detect_language` maps `.sh`/`.bash` → shell, `.toml` → toml,
   `.json` → json, `.cyr` → cyrius, `.cyml` → toml, `.rs` → rust,
   `.yaml`/`.yml` → yaml, `.md`/`.markdown` → markdown, `.c`/`.h`
-  → c, `.ts` → typescript, `.js`/`.mjs`/`.cjs` → javascript.
-- `--list-languages` emits `shell`, `toml`, `json`, `cyrius`,
-  `rust`, `yaml`, `markdown`, `c`, `typescript`, `javascript`.
+  → c, `.ts` → typescript, `.js`/`.mjs`/`.cjs` → javascript,
+  `.py` → python.
+- `--list-languages` emits **all 11 starter grammars**: `shell`,
+  `toml`, `json`, `cyrius`, `rust`, `yaml`, `markdown`, `c`,
+  `typescript`, `javascript`, `python`.
 - `scripts/smoke.sh` M3 section: generic corpus-round-trip loop
   (one line per `lang:corpus` pair) checking exit 0, zero error
   tokens, and coverage invariant.

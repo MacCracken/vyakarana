@@ -62,12 +62,12 @@ fn main() {
 
     test_group("M1 grammar registry");
     assert_eq(has_grammar("shell"),  1, "shell loaded in M1");
-    assert_eq(has_grammar("python"), 0, "python not yet loaded");
-    assert_eq(has_grammar(""),       0, "empty name not loaded");
+    assert_eq(has_grammar("zig"), 0, "zig not yet loaded");
+    assert_eq(has_grammar(""),    0, "empty name not loaded");
 
     test_group("tokenize_source returns empty (0) for unknown languages");
-    assert_eq(tokenize_source("print('x')", "python"), 0, "python not yet loaded");
-    assert_eq(tokenize_source("x",           "zig"),    0, "zig not yet loaded");
+    assert_eq(tokenize_source("x", "zig"),    0, "zig not yet loaded");
+    assert_eq(tokenize_source("x", "go"),     0, "go not yet loaded");
 
     test_group("M1 shell grammar — known-offset assertions");
     # Input: `if true; then echo hi; fi`
@@ -638,6 +638,50 @@ fn main() {
     var src_js2 = "interface F";
     tokenize_with_grammar(gjs, src_js2, strlen(src_js2), tb_js2);
     assert_eq(tokenbuf_kind(tb_js2, 0), TK_IDENT, "interface is NOT a JS keyword");
+
+    test_group("M3 python grammar — loads and tokenizes cleanly");
+    var gpy = grammar_load("grammars/python.cyml");
+    assert_neq(gpy, 0, "grammar_load python returned non-null");
+    assert_eq(streq(grammar_name(gpy), "python"), 1, "name is 'python'");
+
+    # Triple-quoted string as ONE token (pair rule ordering).
+    var tb_py1 = tokenbuf_new();
+    var src_py1 = "\"\"\"docstring here\"\"\"";
+    tokenize_with_grammar(gpy, src_py1, strlen(src_py1), tb_py1);
+    assert_eq(tokenbuf_count(tb_py1), 1,          "triple-quoted is one token");
+    assert_eq(tokenbuf_kind(tb_py1, 0), TK_STRING, "triple-quoted is string");
+    assert_eq(tokenbuf_len(tb_py1, 0), strlen(src_py1), "covers whole input");
+
+    # Walrus := as a 2-char operator.
+    var tb_py2 = tokenbuf_new();
+    var src_py2 = "(x := 1)";
+    tokenize_with_grammar(gpy, src_py2, strlen(src_py2), tb_py2);
+    var saw_walrus = 0;
+    var py2i = 0;
+    var py2n = tokenbuf_count(tb_py2);
+    while (py2i < py2n) {
+        if (tokenbuf_kind(tb_py2, py2i) == TK_OPERATOR) {
+            if (tokenbuf_len(tb_py2, py2i) == 2) {
+                var s = tokenbuf_start(tb_py2, py2i);
+                if (memeq(src_py2 + s, ":=", 2) == 1) { saw_walrus = 1; }
+            }
+        }
+        py2i = py2i + 1;
+    }
+    assert_eq(saw_walrus, 1, ":= walrus op");
+
+    # `//` is floor division, NOT a comment in Python.
+    var tb_py3 = tokenbuf_new();
+    var src_py3 = "a // b";
+    tokenize_with_grammar(gpy, src_py3, strlen(src_py3), tb_py3);
+    assert_eq(tokenbuf_kind(tb_py3, 2), TK_OPERATOR, "// floor-div op, not comment");
+    assert_eq(tokenbuf_len(tb_py3, 2),  2,           "// len 2");
+
+    # `#` still starts a line comment.
+    var tb_py4 = tokenbuf_new();
+    var src_py4 = "# py comment\nx";
+    tokenize_with_grammar(gpy, src_py4, strlen(src_py4), tb_py4);
+    assert_eq(tokenbuf_kind(tb_py4, 0), TK_COMMENT, "# still a comment");
 
     test_group("version string shape");
     # Keep in sync with VYK_VERSION in src/main.cyr and with VERSION.
