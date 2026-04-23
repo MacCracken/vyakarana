@@ -1,0 +1,84 @@
+# cyrius — Cyrius tokenizer grammar
+#
+# Rule scheme per ADR 0005. Cyrius is C-like syntactically: line
+# comments with `#`, double-quoted strings, C-family operators, and
+# a small reserved-word set. Corpus is the vidya reference sample.
+#
+# Scope: covers what vidya's `content/lexing_and_parsing/cyrius.cyr`
+# uses. Known future gaps (ADR candidates when they come up):
+#   - `#ifdef` / `#endif` preprocessor directives. The vidya sample
+#     doesn't have them; `lib/args.cyr` in the cyrius toolchain does.
+#     Today `#ifdef CYRIUS_TARGET_MACOS` tokenizes as one `comment`
+#     to EOL, which is lossy but keeps the coverage invariant.
+#   - Char / byte literals. Cyrius uses integer constants (`load8(p)
+#     == 35` rather than `== '#'`), so single quotes are comment-only
+#     in practice. No `'...'` pair rule — keeps the scanner from
+#     eating apostrophes that appear outside strings.
+#   - Type annotations (`x: i64`) tokenize as ident `:` ident with
+#     ident_cont covering `i64` — no special handling needed.
+
+[grammar]
+name = "cyrius"
+extensions = [".cyr", ".cyml"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+# Standard C-like identifier class.
+ident_start = "A-Za-z_"
+ident_cont  = "A-Za-z0-9_"
+
+number_decimal = true
+number_0x      = true
+number_0b      = true
+number_0o      = true
+
+# No shell-style $X variable expansion.
+special_vars = false
+
+# Operators in longest-match order.
+operators = [
+    "<<", ">>",
+    "&&", "||",
+    "==", "!=", "<=", ">=",
+    "+=", "-=", "*=", "/=", "%=",
+    "=", "+", "-", "*", "/", "%",
+    "!", "~", "&", "|", "^", "<", ">",
+]
+
+# Punctuation, longest-match.
+punctuation = [
+    "(", ")", "{", "}", "[", "]",
+    ";", ",", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+[[rules]]
+kind = "comment"
+match = "line"
+start = "#"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    "fn", "var",
+    "if", "else",
+    "while", "for", "break", "continue",
+    "return",
+    "include",
+    "enum", "struct",
+    "true", "false",
+]

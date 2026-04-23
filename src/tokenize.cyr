@@ -35,6 +35,8 @@ fn bootstrap_grammars() {
     if (gt != 0) { registry_add(gt); }
     var gj = grammar_load("grammars/json.cyml");
     if (gj != 0) { registry_add(gj); }
+    var gc = grammar_load("grammars/cyrius.cyml");
+    if (gc != 0) { registry_add(gc); }
     return 0;
 }
 

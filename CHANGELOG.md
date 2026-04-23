@@ -13,8 +13,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   [ADR 0006](docs/adrs/0006-standin-corpus-policy.md) for why:
   vidya doesn't ship a JSON reference sample yet). 376 tokens,
   coverage 3380/3380.
-- `detect_language` now maps `.toml` → `toml` and `.json` → `json`.
-- `--list-languages` emits `shell`, `toml`, and `json`.
+- `grammars/cyrius.cyml` + `tests/corpus/cyrius.cyr` — Cyrius
+  grammar (vidya-backed). Tokenizes the vidya reference sample
+  with zero `error` kinds (2508 tokens, coverage 9233/9233). 7
+  distinct keywords detected in corpus (`enum`, `fn`, `for`, `if`,
+  `include`, `return`, `var`, `while`).
+- `detect_language` maps `.sh`/`.bash` → shell, `.toml` → toml,
+  `.json` → json, `.cyr` → cyrius, `.cyml` → toml (the CYML format
+  is TOML-shaped; see `detect_language` comment).
+- `--list-languages` emits `shell`, `toml`, `json`, `cyrius`.
 - `scripts/smoke.sh` M3 section: generic corpus-round-trip loop
   (one line per `lang:corpus` pair) checking exit 0, zero error
   tokens, and coverage invariant.

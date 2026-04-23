@@ -340,6 +340,49 @@ fn main() {
     assert_eq(tokenbuf_count(tb_j4), 1, "bare word is 1 token");
     assert_eq(tokenbuf_kind(tb_j4, 0), TK_IDENT, "bare undefined is ident, not error");
 
+    test_group("M3 cyrius grammar — loads and tokenizes cleanly");
+    var gcyr = grammar_load("grammars/cyrius.cyml");
+    assert_neq(gcyr, 0, "grammar_load cyrius returned non-null");
+    assert_eq(streq(grammar_name(gcyr), "cyrius"), 1, "name is 'cyrius'");
+
+    # `fn` is a keyword; `foo` is an ident.
+    var tb_c1 = tokenbuf_new();
+    var src_c1 = "fn foo() { return 0; }";
+    tokenize_with_grammar(gcyr, src_c1, strlen(src_c1), tb_c1);
+    assert_eq(tokenbuf_kind(tb_c1, 0), TK_KEYWORD, "fn keyword");
+    assert_eq(tokenbuf_len(tb_c1, 0),  2,          "fn len 2");
+    assert_eq(tokenbuf_kind(tb_c1, 2), TK_IDENT,   "foo ident");
+    # return is keyword
+    var ri = 0;
+    var rn = tokenbuf_count(tb_c1);
+    var found_return = 0;
+    while (ri < rn) {
+        if (tokenbuf_kind(tb_c1, ri) == TK_KEYWORD) {
+            var s = tokenbuf_start(tb_c1, ri);
+            var l = tokenbuf_len(tb_c1, ri);
+            if (l == 6) {
+                if (memeq(src_c1 + s, "return", 6) == 1) { found_return = 1; }
+            }
+        }
+        ri = ri + 1;
+    }
+    assert_eq(found_return, 1, "return is a keyword");
+
+    # Hex literal.
+    var tb_c2 = tokenbuf_new();
+    var src_c2 = "0xFF";
+    tokenize_with_grammar(gcyr, src_c2, strlen(src_c2), tb_c2);
+    assert_eq(tokenbuf_count(tb_c2), 1,         "0xFF is one token");
+    assert_eq(tokenbuf_kind(tb_c2, 0), TK_NUMBER, "0xFF number");
+    assert_eq(tokenbuf_len(tb_c2, 0),  4,         "0xFF len 4");
+
+    # `#` starts a comment to EOL (no shebang in Cyrius).
+    var tb_c3 = tokenbuf_new();
+    var src_c3 = "# hello\nfn x";
+    tokenize_with_grammar(gcyr, src_c3, strlen(src_c3), tb_c3);
+    assert_eq(tokenbuf_kind(tb_c3, 0), TK_COMMENT, "# comment (not preprocessor)");
+    assert_eq(tokenbuf_len(tb_c3, 0),  7,          "# hello len 7");
+
     test_group("version string shape");
     # Keep in sync with VYK_VERSION in src/main.cyr and with VERSION.
     var v = "vyk 0.1.0";

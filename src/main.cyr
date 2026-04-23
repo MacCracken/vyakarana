@@ -112,10 +112,17 @@ fn detect_language(path) {
     if (n >= 3) {
         if (memeq(path + n - 3, ".sh", 3) == 1) { return "shell"; }
     }
+    if (n >= 4) {
+        if (memeq(path + n - 4, ".cyr", 4) == 1) { return "cyrius"; }
+    }
     if (n >= 5) {
         if (memeq(path + n - 5, ".bash", 5) == 1) { return "shell"; }
         if (memeq(path + n - 5, ".toml", 5) == 1) { return "toml"; }
         if (memeq(path + n - 5, ".json", 5) == 1) { return "json"; }
+        # `.cyml` is Cyrius's TOML-ish config/grammar format — header
+        # is TOML-shaped, optional `---`/markdown body follows. Route
+        # to the TOML grammar for a best-effort tokenization.
+        if (memeq(path + n - 5, ".cyml", 5) == 1) { return "toml"; }
     }
     return 0;
 }
