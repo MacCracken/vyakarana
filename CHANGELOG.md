@@ -27,10 +27,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   tokens instead of one `string`. Coverage and zero-error bars
   hold. Likely promoted to an ADR once C ships with the same
   char-literal pattern.
+- `grammars/yaml.cyml` + `tests/corpus/concept.yaml` — YAML grammar
+  (hand-rolled stand-in per ADR 0006). 354 tokens, 0 errors,
+  coverage 1863/1863. Keywords: `true`/`false`/`null`/`yes`/`no`/
+  `on`/`off`. Anchors `&name`, aliases `*name`, merge key `<<`.
+  Plain-scalar permissiveness: operators/punctuation list broadened
+  to include ASCII characters that appear unquoted in YAML scalars
+  (`;` `.` `(` `)` `/` `%` etc.).
+- `grammars/markdown.cyml` + `tests/corpus/concept.md` — Markdown
+  grammar (hand-rolled stand-in per ADR 0006). 472 tokens, 0
+  errors, coverage 1733/1733. Fenced code blocks (triple-backtick
+  pair) ordered before inline code (single backtick pair). ATX
+  headings `#`..`######` as longest-match operators; emphasis
+  `**`/`__`/`*`/`_`, strikethrough `~~`, blockquote `>`, list `-`
+  all tokenize as operators. HTML comments `<!--...-->` via
+  multi-byte pair rule → comment.
+- **Known non-ASCII gap:** the default scanner treats bytes ≥ 0x80
+  (UTF-8 multi-byte sequences) as `TK_ERROR` when they appear
+  outside strings/comments. The markdown stand-in corpus swaps
+  `—` for `--` to side-step. Next ADR candidate: `unicode_ident =
+  true` default making high bytes valid `ident_cont`.
 - `detect_language` maps `.sh`/`.bash` → shell, `.toml` → toml,
-  `.json` → json, `.cyr` → cyrius, `.cyml` → toml (the CYML format
-  is TOML-shaped; see `detect_language` comment), `.rs` → rust.
-- `--list-languages` emits `shell`, `toml`, `json`, `cyrius`, `rust`.
+  `.json` → json, `.cyr` → cyrius, `.cyml` → toml, `.rs` → rust,
+  `.yaml`/`.yml` → yaml, `.md`/`.markdown` → markdown.
+- `--list-languages` emits `shell`, `toml`, `json`, `cyrius`,
+  `rust`, `yaml`, `markdown`.
 - `scripts/smoke.sh` M3 section: generic corpus-round-trip loop
   (one line per `lang:corpus` pair) checking exit 0, zero error
   tokens, and coverage invariant.

@@ -1,0 +1,102 @@
+# markdown — Markdown tokenizer grammar
+#
+# Rule scheme per ADR 0005. Markdown is the first grammar that's
+# really about structural prose rather than a programming language.
+# The tokenization is pragmatic: structural markers are operators,
+# inline / fenced code are pair-rule strings, prose is ident runs.
+#
+# Corpus: tests/corpus/concept.md is a hand-rolled stand-in (ADR 0006).
+#
+# Pair-rule ordering matters: `` ``` `` (fenced code, 3 bytes) must
+# come before `` ` `` (inline code, 1 byte) or the scanner will match
+# the single-backtick first and bail on the next backtick.
+#
+# Known gaps for future ADRs (cosmetic; coverage holds):
+#   - Setext heading underlines (`===`, `---`) are tokenized as three
+#     separate `=` / `-` operators. A theme can't color them
+#     distinctly from a horizontal rule or plain emphasis.
+#   - Tables don't get a distinguished kind — pipes are operators,
+#     dashes are operators.
+#   - Prose tokenizes as ident runs, not a distinguished `prose`
+#     kind (our 10-kind palette doesn't have one).
+#   - Snake_case prose words (rare) fragment because `_` is an
+#     emphasis marker here, not an ident char. URL paths like
+#     `https://x.y/z` fragment into many tokens; `[text](url)` is
+#     the idiomatic Markdown link anyway.
+
+[grammar]
+name = "markdown"
+extensions = [".md", ".markdown"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+# Prose words only — `_` is an emphasis marker in Markdown, not an
+# identifier character. Snake_case fragments; this is the cost of
+# keeping `_italic_` distinguishable from a plain word.
+ident_start = "A-Za-z"
+ident_cont  = "A-Za-z0-9"
+
+number_decimal = true
+number_0x      = false
+number_0b      = false
+number_0o      = false
+
+special_vars = false
+
+# Operators in longest-match order. ATX-heading prefixes (1–6 `#`s),
+# setext-heading underlines (`===`/`---`), emphasis (`**`/`__`/
+# `*`/`_`), strikethrough (`~~`), horizontal rules, blockquote `>`,
+# list bullets (`-` / `+`), plus the long tail of punctuation that
+# turns up in prose without a dedicated role.
+operators = [
+    "######", "#####", "####", "###", "##", "#",
+    "===", "---", "***", "___",
+    "**", "__", "~~",
+    "=", "*", "_", "~", "-", "+", "/", "\\",
+    "<", ">", "|", ":", "@", "%", "^", "&", "?", "!",
+]
+
+# Structural punctuation for links, images, and inline groups.
+punctuation = [
+    "[", "]", "(", ")", "{", "}",
+    ",", ";", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+# Fenced code (`` ``` ... ``` ``) must match before inline code so
+# the 3-byte start wins the longest-match.
+[[rules]]
+kind = "string"
+match = "pair"
+start = "```"
+end = "```"
+
+
+# Inline code `` `...` ``.
+[[rules]]
+kind = "string"
+match = "pair"
+start = "`"
+end = "`"
+
+
+# HTML comments `<!-- ... -->` — rare but valid in Markdown.
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "<!--"
+end = "-->"
+
+
+# Markdown has no bare-word keywords (true/false/null mean nothing
+# here), but `[[rules]]` expects at least one words rule for a grammar
+# that wants keyword promotion. We leave the set empty — every ident
+# stays an ident.
+[[rules]]
+kind = "keyword"
+match = "words"
+words = []

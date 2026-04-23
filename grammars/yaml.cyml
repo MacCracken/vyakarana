@@ -1,0 +1,97 @@
+# yaml — YAML tokenizer grammar
+#
+# Rule scheme per ADR 0005. YAML is like TOML with a different
+# key-value separator (`:` instead of `=`) and a prefix-sigil list
+# style (`-`, `&`, `*`, `!`).
+#
+# Corpus: tests/corpus/concept.yaml is a hand-rolled stand-in
+# (see ADR 0006 — vidya doesn't yet ship a YAML reference sample).
+#
+# Scope: block and flow style for key/list/map, quoted and plain
+# scalars, anchors and aliases, basic tag markers.
+#
+# Out of scope (first pass — ADR-candidates when needed):
+#   - Literal `|` and folded `>` multi-line block scalars. The
+#     grammar tokenizes `|` / `>` as operators, then the indented
+#     content lines tokenize as ordinary plain scalars / idents.
+#     Semantically it's one big scalar; we fragment it — coverage
+#     invariant still holds, no errors.
+#   - Document separators `---` / `...`. Our scanner sees `---` as
+#     operator + operator + operator (three dashes). Fine for
+#     coverage; a theme can't distinguish doc-break from three
+#     minus signs.
+#   - Tags `!!str` / `!foo`. Emitted as operator(!) + operator(!) +
+#     ident, or operator(!) + ident.
+#   - Floats (`3.14`) split into number + . + number.
+
+[grammar]
+name = "yaml"
+extensions = [".yaml", ".yml"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+# YAML plain scalars look like bare words. Ident_cont includes `-`
+# so `my-key` is one token (common YAML convention).
+ident_start = "A-Za-z_"
+ident_cont  = "A-Za-z0-9_-"
+
+number_decimal = true
+number_0x      = true
+number_0b      = true
+number_0o      = true
+
+special_vars = false
+
+# YAML sigils:
+#   `&name` anchor, `*name` alias, `-` list-item, `?` explicit key,
+#   `!` tag marker, `|` literal block scalar, `>` folded block scalar,
+#   `<<` merge key.
+# Also the long tail of punctuation that plain scalars may contain —
+# YAML accepts most ASCII inside unquoted values, so tokenizing them
+# as operator/punctuation (rather than hitting TK_ERROR) keeps the
+# grammar permissive.
+operators = [
+    "<<",
+    "&", "*", "-", "+", "?", "!", "|", "<", ">",
+    "=", "/", "%", "@", "~", "^",
+]
+
+# YAML's structural punctuation. Flow style mirrors JSON; the rest
+# are characters common in unquoted plain-scalar text.
+punctuation = [
+    "[", "]", "{", "}", "(", ")",
+    ",", ":", ";", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+[[rules]]
+kind = "comment"
+match = "line"
+start = "#"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "'"
+end = "'"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    "true", "false", "null", "yes", "no", "on", "off",
+]

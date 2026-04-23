@@ -114,6 +114,16 @@ fn detect_language(path) {
     }
     if (n >= 3) {
         if (memeq(path + n - 3, ".rs", 3) == 1) { return "rust"; }
+        if (memeq(path + n - 3, ".md", 3) == 1) { return "markdown"; }
+    }
+    if (n >= 4) {
+        if (memeq(path + n - 4, ".yml", 4) == 1) { return "yaml"; }
+    }
+    if (n >= 9) {
+        if (memeq(path + n - 9, ".markdown", 9) == 1) { return "markdown"; }
+    }
+    if (n >= 5) {
+        if (memeq(path + n - 5, ".yaml", 5) == 1) { return "yaml"; }
     }
     if (n >= 4) {
         if (memeq(path + n - 4, ".cyr", 4) == 1) { return "cyrius"; }

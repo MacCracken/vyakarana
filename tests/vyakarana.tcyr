@@ -422,6 +422,118 @@ fn main() {
     assert_eq(tokenbuf_kind(tb_r4, 2), TK_IDENT,       "derive ident");
     assert_eq(tokenbuf_kind(tb_r4, 3), TK_PUNCTUATION, "] punct");
 
+    test_group("M3 yaml grammar — loads and tokenizes cleanly");
+    var gyaml = grammar_load("grammars/yaml.cyml");
+    assert_neq(gyaml, 0, "grammar_load yaml returned non-null");
+    assert_eq(streq(grammar_name(gyaml), "yaml"), 1, "name is 'yaml'");
+
+    # `key: value` — : is punctuation between idents.
+    var tb_y1 = tokenbuf_new();
+    var src_y1 = "foo: bar";
+    tokenize_with_grammar(gyaml, src_y1, strlen(src_y1), tb_y1);
+    assert_eq(tokenbuf_count(tb_y1), 4, "ident : ws ident = 4 tokens");
+    assert_eq(tokenbuf_kind(tb_y1, 0), TK_IDENT,       "foo ident");
+    assert_eq(tokenbuf_kind(tb_y1, 1), TK_PUNCTUATION, ": punct");
+    assert_eq(tokenbuf_kind(tb_y1, 3), TK_IDENT,       "bar ident");
+
+    # Anchor + alias: &x / *x.
+    var tb_y2 = tokenbuf_new();
+    var src_y2 = "a: &n 1\nb: *n";
+    tokenize_with_grammar(gyaml, src_y2, strlen(src_y2), tb_y2);
+    var saw_anchor = 0;
+    var saw_alias = 0;
+    var y2i = 0;
+    var y2n = tokenbuf_count(tb_y2);
+    while (y2i < y2n) {
+        if (tokenbuf_kind(tb_y2, y2i) == TK_OPERATOR) {
+            var l = tokenbuf_len(tb_y2, y2i);
+            var s = tokenbuf_start(tb_y2, y2i);
+            if ((l == 1) && (load8(src_y2 + s) == 38)) { saw_anchor = 1; }
+            if ((l == 1) && (load8(src_y2 + s) == 42)) { saw_alias  = 1; }
+        }
+        y2i = y2i + 1;
+    }
+    assert_eq(saw_anchor, 1, "& anchor recognized as operator");
+    assert_eq(saw_alias,  1, "* alias recognized as operator");
+
+    # Merge-key `<<` is a 2-char operator.
+    var tb_y3 = tokenbuf_new();
+    var src_y3 = "<<: *x";
+    tokenize_with_grammar(gyaml, src_y3, strlen(src_y3), tb_y3);
+    assert_eq(tokenbuf_kind(tb_y3, 0), TK_OPERATOR, "<< operator");
+    assert_eq(tokenbuf_len(tb_y3, 0),  2,           "<< len 2");
+
+    # Keywords: true/false/null/yes/no/on/off.
+    var tb_y4 = tokenbuf_new();
+    var src_y4 = "a: yes\nb: no\nc: null\nd: on\ne: off";
+    tokenize_with_grammar(gyaml, src_y4, strlen(src_y4), tb_y4);
+    var kw_count = 0;
+    var y4i = 0;
+    var y4n = tokenbuf_count(tb_y4);
+    while (y4i < y4n) {
+        if (tokenbuf_kind(tb_y4, y4i) == TK_KEYWORD) { kw_count = kw_count + 1; }
+        y4i = y4i + 1;
+    }
+    assert_eq(kw_count, 5, "5 yaml keywords: yes no null on off");
+
+    test_group("M3 markdown grammar — loads and tokenizes cleanly");
+    var gmd = grammar_load("grammars/markdown.cyml");
+    assert_neq(gmd, 0, "grammar_load markdown returned non-null");
+    assert_eq(streq(grammar_name(gmd), "markdown"), 1, "name is 'markdown'");
+
+    # ATX heading operators: longest-first match.
+    var tb_m1 = tokenbuf_new();
+    var src_m1 = "# Title";
+    tokenize_with_grammar(gmd, src_m1, strlen(src_m1), tb_m1);
+    assert_eq(tokenbuf_kind(tb_m1, 0), TK_OPERATOR, "# heading marker");
+    assert_eq(tokenbuf_len(tb_m1, 0),  1,           "# single char");
+
+    var tb_m2 = tokenbuf_new();
+    var src_m2 = "### Sub";
+    tokenize_with_grammar(gmd, src_m2, strlen(src_m2), tb_m2);
+    assert_eq(tokenbuf_kind(tb_m2, 0), TK_OPERATOR, "### heading 3");
+    assert_eq(tokenbuf_len(tb_m2, 0),  3,           "### len 3");
+
+    # Fenced code block (triple-backtick pair) captures the full body
+    # including the language tag.
+    var tb_m3 = tokenbuf_new();
+    var src_m3 = "```rust\nfn x() {}\n```";
+    tokenize_with_grammar(gmd, src_m3, strlen(src_m3), tb_m3);
+    assert_eq(tokenbuf_count(tb_m3), 1,            "fenced block is one token");
+    assert_eq(tokenbuf_kind(tb_m3, 0), TK_STRING,  "fenced block is string");
+    assert_eq(tokenbuf_len(tb_m3, 0),  strlen(src_m3), "fenced block covers input");
+
+    # Inline code backticks.
+    var tb_m4 = tokenbuf_new();
+    var src_m4 = "use `lex()` here";
+    tokenize_with_grammar(gmd, src_m4, strlen(src_m4), tb_m4);
+    var saw_inline = 0;
+    var m4i = 0;
+    var m4n = tokenbuf_count(tb_m4);
+    while (m4i < m4n) {
+        if (tokenbuf_kind(tb_m4, m4i) == TK_STRING) {
+            if (tokenbuf_len(tb_m4, m4i) == 7) { saw_inline = 1; }   # `lex()`
+        }
+        m4i = m4i + 1;
+    }
+    assert_eq(saw_inline, 1, "inline backtick-pair emits a string token");
+
+    # HTML comment `<!-- ... -->`.
+    var tb_m5 = tokenbuf_new();
+    var src_m5 = "<!-- hi -->";
+    tokenize_with_grammar(gmd, src_m5, strlen(src_m5), tb_m5);
+    assert_eq(tokenbuf_count(tb_m5), 1,             "HTML comment is one token");
+    assert_eq(tokenbuf_kind(tb_m5, 0), TK_COMMENT,  "HTML comment kind");
+
+    # Emphasis: *italic* and **bold**.
+    var tb_m6 = tokenbuf_new();
+    var src_m6 = "**bold**";
+    tokenize_with_grammar(gmd, src_m6, strlen(src_m6), tb_m6);
+    assert_eq(tokenbuf_kind(tb_m6, 0), TK_OPERATOR, "** operator");
+    assert_eq(tokenbuf_len(tb_m6, 0),  2,           "** len 2");
+    assert_eq(tokenbuf_kind(tb_m6, 1), TK_IDENT,    "bold ident");
+    assert_eq(tokenbuf_kind(tb_m6, 2), TK_OPERATOR, "closing **");
+
     test_group("version string shape");
     # Keep in sync with VYK_VERSION in src/main.cyr and with VERSION.
     var v = "vyk 0.1.0";

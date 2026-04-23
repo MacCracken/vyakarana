@@ -1,0 +1,81 @@
+# vyakarana stand-in — not from vidya. See docs/adrs/0006.
+# Re-sync when vidya adds a YAML reference sample.
+
+_standin: true
+
+id: lexing_and_parsing
+title: "Lexing and Parsing"
+topic: LexingAndParsing
+description: "Turning source text into structured representations — the front end of every compiler."
+
+tags:
+  - lexer
+  - parser
+  - tokenizer
+  - recursive-descent
+  - Pratt-parsing
+
+related_topics:
+  - intermediate_representations
+  - code_generation
+
+best_practices:
+  - title: "Separate lexing from parsing"
+    priority: 1
+    established: true
+    notes: Lexing converts characters to tokens; parsing converts tokens to trees.
+
+  - title: "Use recursive descent for hand-written parsers"
+    priority: 2
+    established: true
+    notes: "One function per non-terminal, one call per rule reference."
+
+  - title: "Make the lexer produce spans"
+    priority: 3
+    established: true
+    notes: 'Every token should carry its byte offset in the source.'
+
+gotchas:
+  - title: "Greedy tokenization breaks on multi-character operators"
+    severity: high
+    deprecated: false
+    example: "match c { '<' => Token::Lt }"
+
+  - title: "Left recursion crashes recursive descent parsers"
+    severity: high
+    deprecated: false
+    example: "fn parse_expr() { parse_expr(); }"
+
+performance_numbers:
+  ripgrep_mb_s: 5000
+  python_re_mb_s: 500
+  rustc_mb_s: 200
+  speedup_hand_vs_regex: 10
+  interner_alloc_reduction_pct: 30
+  arena_vs_malloc_speedup: 20
+  negative_comparison: -1
+
+booleans:
+  mixed_true: true
+  mixed_false: false
+  mixed_null: null
+  mixed_yes: yes
+  mixed_no: no
+  mixed_on: on
+  mixed_off: off
+
+flow_style: { compact: true, items: [1, 2, 3] }
+
+anchors_and_aliases:
+  base: &default_config
+    timeout: 30
+    retries: 3
+    verbose: false
+
+  prod:
+    <<: *default_config
+    verbose: true
+
+  staging:
+    <<: *default_config
+    timeout: 60
