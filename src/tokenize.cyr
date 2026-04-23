@@ -30,7 +30,7 @@ fn tokenize_source(src, lang) {
     # M1 dispatch (commented out until tokenize_shell is implemented):
     #
     #   include "src/grammars/shell.cyr";
-    #   if streq(lang, "shell") {
+    #   if (streq(lang, "shell")) {
     #       var tokens_out = vec_new();
     #       tokenize_shell(src, strlen(src), tokens_out);
     #       return tokens_out;

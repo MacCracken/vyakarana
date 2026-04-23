@@ -25,22 +25,22 @@ var TK_COUNT = 10;
 # Kind → name. Parallel to the TK_* constants.
 # M2+ grammars reference these names; M0 just exposes them via vyk.
 fn kind_name(kind) {
-    if kind == TK_IDENT        { return "ident"; }
-    if kind == TK_KEYWORD      { return "keyword"; }
-    if kind == TK_STRING       { return "string"; }
-    if kind == TK_NUMBER       { return "number"; }
-    if kind == TK_COMMENT      { return "comment"; }
-    if kind == TK_OPERATOR     { return "operator"; }
-    if kind == TK_PUNCTUATION  { return "punctuation"; }
-    if kind == TK_WHITESPACE   { return "whitespace"; }
-    if kind == TK_PREPROCESSOR { return "preprocessor"; }
-    if kind == TK_ERROR        { return "error"; }
+    if (kind == TK_IDENT)        { return "ident"; }
+    if (kind == TK_KEYWORD)      { return "keyword"; }
+    if (kind == TK_STRING)       { return "string"; }
+    if (kind == TK_NUMBER)       { return "number"; }
+    if (kind == TK_COMMENT)      { return "comment"; }
+    if (kind == TK_OPERATOR)     { return "operator"; }
+    if (kind == TK_PUNCTUATION)  { return "punctuation"; }
+    if (kind == TK_WHITESPACE)   { return "whitespace"; }
+    if (kind == TK_PREPROCESSOR) { return "preprocessor"; }
+    if (kind == TK_ERROR)        { return "error"; }
     return "<invalid>";
 }
 
 # Coverage check helper — M0 stub, real use in M1+.
 fn kind_is_valid(kind) {
-    if kind < 0 { return 0; }
-    if kind >= TK_COUNT { return 0; }
+    if (kind < 0) { return 0; }
+    if (kind >= TK_COUNT) { return 0; }
     return 1;
 }

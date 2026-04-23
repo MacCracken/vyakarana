@@ -65,11 +65,11 @@ fn tokenize_shell(src, src_len, tokens_out) {
     # Outline:
     #   var i = 0;
     #   var line_start = 0;
-    #   while i < src_len {
+    #   while (i < src_len) {
     #       var tok = recognize_one(src, src_len, i, line_start);
     #       # tok = (kind, start, len)
     #       vec_push(tokens_out, tok);
-    #       if is_newline(src[i + tok.len - 1]) { line_start = i + tok.len; }
+    #       if (is_newline(src[i + tok.len - 1])) { line_start = i + tok.len; }
     #       i = i + tok.len;
     #   }
     #   return vec_len(tokens_out);
