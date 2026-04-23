@@ -1,0 +1,2 @@
+# Grammars land here starting M2 as .cyml files. M1 hand-codes shell
+# in src/grammars/shell.cyr first to prove the runtime.

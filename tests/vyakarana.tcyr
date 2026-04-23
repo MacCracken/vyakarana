@@ -1,0 +1,71 @@
+# vyakarana test suite
+# Stdlib auto-included via cyrius.cyml.
+#
+# M0 tests cover the locked-in pieces:
+#   - Ten token kinds defined and named
+#   - Kind validity predicate
+#   - Tokenize stub returns empty (not an error)
+#   - Grammar registry is empty
+#   - Version string shape
+
+include "src/token.cyr"
+include "src/grammar.cyr"
+include "src/tokenize.cyr"
+
+fn main() {
+    alloc_init();
+
+    test_group("token kinds exist and are sequential");
+    assert_eq(TK_IDENT,        0, "TK_IDENT = 0");
+    assert_eq(TK_KEYWORD,      1, "TK_KEYWORD = 1");
+    assert_eq(TK_STRING,       2, "TK_STRING = 2");
+    assert_eq(TK_NUMBER,       3, "TK_NUMBER = 3");
+    assert_eq(TK_COMMENT,      4, "TK_COMMENT = 4");
+    assert_eq(TK_OPERATOR,     5, "TK_OPERATOR = 5");
+    assert_eq(TK_PUNCTUATION,  6, "TK_PUNCTUATION = 6");
+    assert_eq(TK_WHITESPACE,   7, "TK_WHITESPACE = 7");
+    assert_eq(TK_PREPROCESSOR, 8, "TK_PREPROCESSOR = 8");
+    assert_eq(TK_ERROR,        9, "TK_ERROR = 9");
+    assert_eq(TK_COUNT,       10, "TK_COUNT = 10");
+
+    test_group("kind_name round-trips each kind");
+    assert_eq(streq(kind_name(TK_IDENT),        "ident"),        1, "ident");
+    assert_eq(streq(kind_name(TK_KEYWORD),      "keyword"),      1, "keyword");
+    assert_eq(streq(kind_name(TK_STRING),       "string"),       1, "string");
+    assert_eq(streq(kind_name(TK_NUMBER),       "number"),       1, "number");
+    assert_eq(streq(kind_name(TK_COMMENT),      "comment"),      1, "comment");
+    assert_eq(streq(kind_name(TK_OPERATOR),     "operator"),     1, "operator");
+    assert_eq(streq(kind_name(TK_PUNCTUATION),  "punctuation"),  1, "punctuation");
+    assert_eq(streq(kind_name(TK_WHITESPACE),   "whitespace"),   1, "whitespace");
+    assert_eq(streq(kind_name(TK_PREPROCESSOR), "preprocessor"), 1, "preprocessor");
+    assert_eq(streq(kind_name(TK_ERROR),        "error"),        1, "error");
+
+    test_group("kind_is_valid bounds");
+    assert_eq(kind_is_valid(0 - 1),       0, "negative is invalid");
+    assert_eq(kind_is_valid(0),           1, "0 is valid");
+    assert_eq(kind_is_valid(TK_COUNT - 1),1, "TK_COUNT-1 is valid");
+    assert_eq(kind_is_valid(TK_COUNT),    0, "TK_COUNT is invalid");
+    assert_eq(kind_is_valid(99),          0, "99 is invalid");
+
+    test_group("M0 grammar registry is empty");
+    assert_eq(grammar_count(), 0, "no grammars loaded in v0.1.0");
+    assert_eq(has_grammar("shell"),  0, "shell not yet loaded");
+    assert_eq(has_grammar("python"), 0, "python not yet loaded");
+
+    test_group("M0 tokenize_source returns empty for any input");
+    # Intentionally not an error — M1 will replace the stub with real
+    # tokenization. For M0, "no grammars loaded" means "no tokens."
+    assert_eq(tokenize_source("echo hi", "shell"),  0, "shell stub empty");
+    assert_eq(tokenize_source("print('x')", "python"), 0, "python stub empty");
+
+    test_group("version string shape");
+    # Keep in sync with VYK_VERSION in src/main.cyr and with VERSION.
+    var v = "vyk 0.1.0";
+    assert(strlen(v) > 4, "version string is longer than 4 chars");
+    assert_eq(memeq(v, "vyk ", 4), 1, "version string starts with 'vyk '");
+
+    return assert_summary();
+}
+
+var exit_code = main();
+syscall(60, exit_code);

@@ -1,0 +1,36 @@
+[package]
+name = "vyakarana"
+version = "${file:VERSION}"
+description = "Source-code grammar and tokenizer library for AGNOS / Cyrius"
+license = "GPL-3.0-only"
+repository = "https://github.com/MacCracken/vyakarana"
+language = "cyrius"
+cyrius = "5.6.0"
+
+[build]
+entry = "src/main.cyr"
+output = "vyk"
+
+# Stdlib footprint chosen for the ROADMAP M0–M3 arc:
+#   syscalls/alloc/fmt/io — required baseline
+#   str/string/vec        — source buffers, token lists, grammar tables
+#   args                  — `vyk` demo CLI
+#   fs                    — reading files to tokenize
+#   hashmap               — keyword tables, extension→grammar map
+#   assert                — tests/vyakarana.tcyr
+# CYML parser deps land in M2 when grammar-from-CYML loads. Until then
+# vyakarana is first-party — no [deps.<name>] blocks yet.
+[deps]
+stdlib = [
+    "syscalls",
+    "alloc",
+    "fmt",
+    "io",
+    "fs",
+    "str",
+    "string",
+    "vec",
+    "args",
+    "hashmap",
+    "assert",
+]

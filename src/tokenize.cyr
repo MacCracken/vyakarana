@@ -1,0 +1,48 @@
+# vyakarana — Tokenize runtime
+#
+# M0: stub. Returns an empty token stream for every input.
+# M1: hand-coded shell tokenizer lands here and `tokenize_source`
+#     starts producing real tokens.
+# M5: streaming tokenizer (iterator-shaped API); M0-M4 return a vec.
+#
+# The API shape (`tokenize_source(src, lang) -> Vec<Token>`) is the
+# consumer-facing handle owl M3b will import. Do not rename without
+# a CHANGELOG entry.
+
+include "src/token.cyr"
+include "src/grammar.cyr"
+
+# Top-level entry. `src` is the source bytes; `lang` is a language name
+# (e.g. "shell", "python"). Returns 0 (empty) in M0.
+#
+# When M1 lands, return value is a pointer to a Vec<Token>; callers
+# iterate with the usual vec helpers. The Token layout is fixed in
+# src/token.cyr (kind:u8, start:u32, len:u32).
+#
+# TODO(M1): wire the shell dispatch below. The grammars/shell.cyr
+# skeleton already defines `tokenize_shell` — just uncomment the
+# include + the `if` branch and flesh out the recognizer.
+fn tokenize_source(src, lang) {
+    # M0 stub: grammar registry is empty, so no tokens produced.
+    # This intentionally does NOT emit a TK_ERROR for the whole source
+    # — an empty token list is the correct "no grammar loaded" answer.
+    #
+    # M1 dispatch (commented out until tokenize_shell is implemented):
+    #
+    #   include "src/grammars/shell.cyr";
+    #   if streq(lang, "shell") {
+    #       var tokens_out = vec_new();
+    #       tokenize_shell(src, strlen(src), tokens_out);
+    #       return tokens_out;
+    #   }
+    #
+    # M2+: replace the if-ladder with a grammar-registry lookup.
+    return 0;
+}
+
+# Quick predicate: is a grammar with this name loaded?
+# M0: always 0 (no grammars). M2+ consults the registry.
+fn has_grammar(lang) {
+    # TODO(M1): return 1 for "shell" once the dispatch above is wired.
+    return 0;
+}

@@ -1,0 +1,92 @@
+# vyakarana — shell grammar (M1 landing pad)
+#
+# ============================================================
+# STATUS: SKELETON — NOT IMPLEMENTED
+# This file is a landing pad for the M1 agent. Read HANDOFF.md
+# at the repo root before editing.
+# ============================================================
+#
+# Goal for M1: tokenize shell scripts end-to-end with zero `error`
+# tokens on the vidya shell sample.
+#
+# Why shell first?
+#   - Simpler grammar than Python/Rust (no indentation semantics,
+#     no complex type syntax)
+#   - Covers every token kind in the palette (has comments, strings,
+#     numbers, keywords, operators, punctuation, and the `#!`
+#     preprocessor case)
+#   - vidya ships a ready-to-tokenize sample at
+#     content/lexing_and_parsing/shell.sh
+#
+# Recognizer priority (process each char in order; first match wins):
+#   1. `#!` on line 0 column 0 → preprocessor (shebang)
+#   2. `#` → comment to end of line
+#   3. `"..."` / `'...'` → string (respect \ escapes inside "..." only)
+#   4. Identifiers then keyword lookup
+#   5. Numbers (decimal, 0x..., 0b..., 0o...)
+#   6. Multi-char operators (&&, ||, ==, !=, >>, <<, <<-, <>)
+#   7. Single-char operators (=, |, &, >, <)
+#   8. Multi-char punctuation ([[, ]], ;;)
+#   9. Single-char punctuation ((, ), {, }, [, ], ;, :)
+#  10. Whitespace (space, tab, newline) — emit as whitespace token
+#  11. Anything else → error token
+
+include "src/token.cyr"
+
+# Shell keyword list. Exact-match against identifiers; word-boundary
+# aware (don't match `iffy` as `if` + `fy`).
+#
+# TODO(M1): when you add keyword lookup, use a hashmap from the stdlib
+# (already in cyrius.cyml's deps list) or a sorted linear scan — both
+# are fine for a ~20-word list.
+#
+# var SHELL_KEYWORDS = [
+#     "if", "then", "else", "elif", "fi",
+#     "for", "while", "until", "do", "done",
+#     "case", "esac", "in",
+#     "function", "return",
+#     "break", "continue",
+#     "select", "time",
+# ];
+
+# ── Entry point ─────────────────────────────────────────────────────
+#
+# `src` — source bytes (pointer into the caller's buffer)
+# `src_len` — length in bytes
+# `tokens_out` — Vec<Token> to push into
+#
+# Returns the number of tokens pushed, or a negative error code.
+#
+# TODO(M1): implement. For now, pushes zero tokens and returns 0 so
+# the call graph compiles.
+fn tokenize_shell(src, src_len, tokens_out) {
+    # === M1 agent: start here ===
+    #
+    # Outline:
+    #   var i = 0;
+    #   var line_start = 0;
+    #   while i < src_len {
+    #       var tok = recognize_one(src, src_len, i, line_start);
+    #       # tok = (kind, start, len)
+    #       vec_push(tokens_out, tok);
+    #       if is_newline(src[i + tok.len - 1]) { line_start = i + tok.len; }
+    #       i = i + tok.len;
+    #   }
+    #   return vec_len(tokens_out);
+    #
+    # Remember the coverage invariant: every input byte is covered by
+    # exactly one token. If a recognizer can't identify a byte, emit
+    # a `TK_ERROR` token of length 1 and advance — don't skip bytes.
+    # ============================
+    return 0;
+}
+
+# Small helper: is this byte a shell keyword-character? (letters,
+# digits after the first char, underscore)
+# TODO(M1): implement once you decide the identifier-matching shape.
+# fn is_ident_start(b) { ... }
+# fn is_ident_cont(b)  { ... }
+
+# TODO(M1): add per-recognizer helpers. Keep them named and short —
+# the design-spec §6 streaming requirement means M5 will want to
+# call into these one line at a time.

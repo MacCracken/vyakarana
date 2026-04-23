@@ -1,0 +1,108 @@
+# vyakarana — `vyk` demo entry point
+#
+# Stdlib auto-included via cyrius.cyml.
+#
+# v0.1.0 scope:
+#   vyk --version
+#   vyk --help / -h
+#   vyk --list-kinds        prints the ten token kinds
+#   vyk --list-languages    prints loaded grammars (empty in M0)
+#
+# File tokenization (`vyk <file>`) lands in M1 once the shell grammar
+# exists. Until then, any path argument exits with code 4 (no grammar
+# loaded).
+
+include "src/token.cyr"
+include "src/grammar.cyr"
+include "src/tokenize.cyr"
+
+# Keep VYK_VERSION in sync with the VERSION file.
+# A M7 CI check will enforce equality; for now, manual.
+var VYK_VERSION = "vyk 0.1.0";
+
+# Exit codes per design spec §9
+var EXIT_OK           = 0;
+var EXIT_GRAMMAR_FAIL = 1;
+var EXIT_USAGE        = 2;
+var EXIT_IO           = 3;
+var EXIT_NO_GRAMMAR   = 4;
+
+fn print_version() {
+    println(VYK_VERSION);
+}
+
+fn print_help() {
+    println("vyk — vyakarana demo CLI");
+    println("");
+    println("Usage: vyk [OPTIONS] [FILE]");
+    println("");
+    println("Options:");
+    println("  -h, --help            Print this help and exit");
+    println("  -V, --version         Print version and exit");
+    println("      --list-kinds      Print the ten token kinds");
+    println("      --list-languages  Print loaded grammars (empty in v0.1.0)");
+    println("");
+    println("Status: v0.1.0 scaffold. Real tokenization lands in M1.");
+}
+
+fn print_list_kinds() {
+    var i = 0;
+    while i < TK_COUNT {
+        println(kind_name(i));
+        i = i + 1;
+    }
+}
+
+fn print_list_languages() {
+    # M0: registry is empty. M2+ enumerates loaded grammars.
+    # Silent empty output is intentional — mirrors the "no grammars
+    # loaded" contract, and keeps stdout scriptable.
+    return 0;
+}
+
+fn usage_error(flag) {
+    eprint("vyk: unknown option: ");
+    eprint(flag);
+    eprint("\n");
+    eprint("vyk: try --help for a list of options\n");
+}
+
+fn main(argc, argv) {
+    alloc_init();
+
+    if argc < 2 {
+        print_help();
+        return EXIT_OK;
+    }
+
+    var i = 1;
+    while i < argc {
+        var a = argv[i];
+        if streq(a, "-h") || streq(a, "--help") {
+            print_help();
+            return EXIT_OK;
+        }
+        if streq(a, "-V") || streq(a, "--version") {
+            print_version();
+            return EXIT_OK;
+        }
+        if streq(a, "--list-kinds") {
+            print_list_kinds();
+            return EXIT_OK;
+        }
+        if streq(a, "--list-languages") {
+            print_list_languages();
+            return EXIT_OK;
+        }
+        # Anything else is unsupported in M0.
+        # File paths land in M1 once a grammar exists.
+        usage_error(a);
+        return EXIT_USAGE;
+    }
+
+    print_help();
+    return EXIT_OK;
+}
+
+var exit_code = main(argc(), argv());
+syscall(60, exit_code);

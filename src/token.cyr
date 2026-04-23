@@ -1,0 +1,46 @@
+# vyakarana — token kind palette + Token record
+#
+# The ten-kind palette is a stable contract. Grammar authors and theme
+# palettes both depend on the set; do not add a kind without a design
+# review and a CHANGELOG entry.
+#
+# Token layout (kind: u8, start: u32, len: u32 — 12 bytes) is
+# load-bearing for downstream consumers (owl M3b). Pre-1.0 changes
+# must be CHANGELOG-flagged.
+
+# ── Token kinds ─────────────────────────────────────────────────────
+var TK_IDENT        = 0;
+var TK_KEYWORD      = 1;
+var TK_STRING       = 2;
+var TK_NUMBER       = 3;
+var TK_COMMENT      = 4;
+var TK_OPERATOR     = 5;
+var TK_PUNCTUATION  = 6;
+var TK_WHITESPACE   = 7;
+var TK_PREPROCESSOR = 8;
+var TK_ERROR        = 9;
+
+var TK_COUNT = 10;
+
+# Kind → name. Parallel to the TK_* constants.
+# M2+ grammars reference these names; M0 just exposes them via vyk.
+fn kind_name(kind) {
+    if kind == TK_IDENT        { return "ident"; }
+    if kind == TK_KEYWORD      { return "keyword"; }
+    if kind == TK_STRING       { return "string"; }
+    if kind == TK_NUMBER       { return "number"; }
+    if kind == TK_COMMENT      { return "comment"; }
+    if kind == TK_OPERATOR     { return "operator"; }
+    if kind == TK_PUNCTUATION  { return "punctuation"; }
+    if kind == TK_WHITESPACE   { return "whitespace"; }
+    if kind == TK_PREPROCESSOR { return "preprocessor"; }
+    if kind == TK_ERROR        { return "error"; }
+    return "<invalid>";
+}
+
+# Coverage check helper — M0 stub, real use in M1+.
+fn kind_is_valid(kind) {
+    if kind < 0 { return 0; }
+    if kind >= TK_COUNT { return 0; }
+    return 1;
+}

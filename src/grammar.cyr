@@ -1,0 +1,28 @@
+# vyakarana — Grammar record stub
+#
+# M0 defines the placeholder type so consumers can reference a grammar
+# handle even though no grammar is loaded yet. M1 hand-codes the shell
+# grammar directly; M2 replaces the hand-coded grammar with a CYML
+# loader.
+#
+# No grammars are registered in v0.1.0. `list_languages()` returns an
+# empty list. Consumers should treat "language not found" as a normal
+# no-op path until M1.
+
+# Opaque grammar handle — fields will land in M1 when we know what we
+# need. For now, the name is the only observable.
+fn grammar_name(g) {
+    # Stub: grammars aren't loaded yet. Present for consumer typing.
+    return "";
+}
+
+# Returns 0 (none loaded) in M0. M2 loader will populate a registry.
+fn grammar_count() {
+    return 0;
+}
+
+# Empty in M0; M2 returns grammar names from the registry.
+fn list_languages_into(out_vec) {
+    # Nothing to push.
+    return 0;
+}
