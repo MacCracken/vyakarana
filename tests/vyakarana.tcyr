@@ -685,7 +685,7 @@ fn main() {
 
     test_group("version string shape");
     # Keep in sync with VYK_VERSION in src/main.cyr and with VERSION.
-    var v = "vyk 1.0.1";
+    var v = "vyk 1.0.2";
     assert(strlen(v) > 4, "version string is longer than 4 chars");
     assert_eq(memeq(v, "vyk ", 4), 1, "version string starts with 'vyk '");
 

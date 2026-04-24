@@ -111,7 +111,7 @@ grammar.)
 ## Status
 
 v0.1.0 — scaffold. Types locked; tokenizer stubbed; no grammars bundled
-yet. See [ROADMAP.md](./ROADMAP.md) for the milestone plan.
+yet. See [docs/development/roadmap.md](./docs/development/roadmap.md) for the milestone plan.
 
 ## License
 

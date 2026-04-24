@@ -11,6 +11,31 @@ cyrius = "5.6.0"
 entry = "src/main.cyr"
 output = "vyk"
 
+# `[lib]` drives `cyrius distlib` — concatenates the listed modules
+# into `dist/vyakarana.cyr` for downstream consumers (owl, cyim,
+# agnoshi, vidya) to pull via `[deps.vyakarana] modules =
+# ["dist/vyakarana.cyr"]`. Do NOT move these into `[build]` — that
+# would prepend them before `src/main.cyr`, which re-includes them
+# and bloats the binary.
+#
+# Order matters (Cyrius is single-pass): each module may only
+# reference symbols defined earlier in the list.
+#   token          — palette + tokenbuf (foundational, zero deps)
+#   grammar        — Grammar record + CYML parser + registry (uses TK_*)
+#   default_scanner— data-driven tokenizer (uses grammar + token)
+#   shell          — hand-coded M1 oracle, retained for the
+#                    regression-diff path (`vyk --handcoded`).
+#                    Consumer DCE builds strip it automatically.
+#   tokenize       — public dispatch (uses all of the above).
+[lib]
+modules = [
+    "src/token.cyr",
+    "src/grammar.cyr",
+    "src/grammars/default_scanner.cyr",
+    "src/grammars/shell.cyr",
+    "src/tokenize.cyr",
+]
+
 # Stdlib footprint chosen for the ROADMAP M0–M3 arc:
 #   syscalls/alloc/fmt/io — required baseline
 #   str/string/vec        — source buffers, token lists, grammar tables

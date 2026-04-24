@@ -53,3 +53,23 @@ jobs:
 
       - name: Smoke test
         run: sh scripts/smoke.sh build/vyk
+
+      # Owl and other downstream consumers pull
+      # `[deps.vyakarana] modules = ["dist/vyakarana.cyr"]` at a
+      # tag — so the committed bundle must match what `cyrius
+      # distlib` produces from the current `[lib]` block. If a dev
+      # edited a src/*.cyr without rerunning distlib, fail here.
+      - name: distlib drift check
+        run: |
+          if [ ! -f dist/vyakarana.cyr ]; then
+            echo "::error::dist/vyakarana.cyr is missing — run 'cyrius distlib'" >&2
+            exit 1
+          fi
+          cp dist/vyakarana.cyr dist/vyakarana.cyr.committed
+          cyrius distlib
+          if ! diff -q dist/vyakarana.cyr.committed dist/vyakarana.cyr > /dev/null; then
+            echo "::error::dist/vyakarana.cyr is out of date — run 'cyrius distlib' and commit the result" >&2
+            diff dist/vyakarana.cyr.committed dist/vyakarana.cyr | head -30 >&2
+            exit 1
+          fi
+          rm dist/vyakarana.cyr.committed

@@ -4,7 +4,7 @@
 > for where we are and what's next. Architecture decisions are ADRs
 > under [docs/adrs/](./docs/adrs/); design context is in
 > [vyakarana-design-spec.md](./vyakarana-design-spec.md); milestone
-> plan is [ROADMAP.md](./ROADMAP.md).
+> plan is [docs/development/roadmap.md](./docs/development/roadmap.md).
 
 This file is **process, procedure, and prefs only**. Repo state
 (what shipped / what's next), invariants, consumers, and

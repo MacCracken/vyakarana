@@ -4,7 +4,7 @@
 > (all 11 bundled grammars shipped) into the first hardening pass
 > + security audit + 1.0.0 cut. Design context lives in
 > [vyakarana-design-spec.md](./vyakarana-design-spec.md); milestone
-> detail lives in [ROADMAP.md](./ROADMAP.md); architecture decisions
+> detail lives in [docs/development/roadmap.md](./docs/development/roadmap.md); architecture decisions
 > live as ADRs under [docs/adrs/](./docs/adrs/).
 
 ---
@@ -206,7 +206,7 @@ Per the user's 1.0.0 plan (see §Where we are):
    git tag aligned.
 4. **User cuts 1.0.0.**
 
-Post-1.0 roadmap (ROADMAP.md has the detail):
+Post-1.0 roadmap ([docs/development/roadmap.md](./docs/development/roadmap.md) has the detail):
 
 - **M4** — Theme-palette contract with owl. Shared palette header
   is the likely shape.

@@ -6,6 +6,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [1.0.2] — 2026-04-23
+
+### Added
+
+- **`[lib]` block in `cyrius.cyml`** driving `cyrius distlib` →
+  `dist/vyakarana.cyr`. Five modules concatenated in
+  single-pass-safe dependency order: `token → grammar →
+  default_scanner → shell (oracle) → tokenize`. Matches the
+  pattern used by `bsp` and `yukti`.
+- **`dist/vyakarana.cyr`** — single-file bundled distribution
+  (~1800 lines, 60KB) committed to the repo. Consumers pull via
+  `[deps.vyakarana] git = "..." tag = "1.0.2" modules =
+  ["dist/vyakarana.cyr"]`. This unblocks owl's `[deps.vyakarana]`
+  adoption.
+- `cyrius distlib` invocation in `.github/workflows/ci.yml` with a
+  drift check (fails if regenerated bundle differs from committed).
+- `release.yml` packaging step now includes `dist/` in the release
+  tarball.
+
 ## [1.0.1] — 2026-04-23
 
 ### Security

@@ -5,7 +5,7 @@
 - **Deciders:** M3 agent (proposed) / user (accepted)
 - **Relates to:** [ADR 0001](0001-corpus-sync-policy.md),
   [vyakarana-design-spec.md](../../vyakarana-design-spec.md) §7,
-  [ROADMAP.md](../../ROADMAP.md) M3
+  [roadmap](../development/roadmap.md) M3
 
 ## Context
 

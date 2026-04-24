@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-04-23
 - **Deciders:** M1 agent (proposed) / user (accepted)
-- **Relates to:** [ROADMAP.md](../../ROADMAP.md) M1, M3
+- **Relates to:** [roadmap](../development/roadmap.md) M1, M3
 
 ## Context
 

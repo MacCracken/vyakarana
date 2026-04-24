@@ -99,16 +99,22 @@ jobs:
 
       - name: Package release artifact
         run: |
-          DIST="vyakarana-${VERSION}-${{ matrix.target }}"
-          mkdir -p "dist/$DIST"
-          cp build/vyk "dist/$DIST/"
-          cp -r grammars "dist/$DIST/"
-          cp README.md LICENSE CHANGELOG.md VERSION "dist/$DIST/"
-          tar czf "dist/${DIST}.tar.gz" -C dist "$DIST"
+          PKG="vyakarana-${VERSION}-${{ matrix.target }}"
+          mkdir -p "pkg/$PKG"
+          cp build/vyk "pkg/$PKG/"
+          cp -r grammars "pkg/$PKG/"
+          # Ship the bundled single-file library alongside the
+          # binary so downloaders can consume vyakarana as a dep
+          # without git-cloning.
+          mkdir -p "pkg/$PKG/dist"
+          cp dist/vyakarana.cyr "pkg/$PKG/dist/"
+          cp README.md LICENSE CHANGELOG.md VERSION "pkg/$PKG/"
+          mkdir -p out
+          tar czf "out/${PKG}.tar.gz" -C pkg "$PKG"
 
       - name: Generate SHA256
         run: |
-          cd dist
+          cd out
           sha256sum *.tar.gz > SHA256SUMS.${{ matrix.target }}
 
       - name: Upload artifacts
@@ -116,8 +122,8 @@ jobs:
         with:
           name: release-${{ matrix.target }}
           path: |
-            dist/*.tar.gz
-            dist/SHA256SUMS.*
+            out/*.tar.gz
+            out/SHA256SUMS.*
 
   # ────────────────────────────────────────────────────────────────
   # Source tarball — language-agnostic, always linux.
@@ -133,11 +139,11 @@ jobs:
 
       - name: Create source tarball
         run: |
-          mkdir -p dist
+          mkdir -p out
           git archive --format=tar.gz \
             --prefix="vyakarana-${VERSION}/" \
-            -o "dist/vyakarana-${VERSION}-src.tar.gz" HEAD
-          cd dist
+            -o "out/vyakarana-${VERSION}-src.tar.gz" HEAD
+          cd out
           sha256sum "vyakarana-${VERSION}-src.tar.gz" > SHA256SUMS.src
 
       - name: Upload source artifact
@@ -145,8 +151,8 @@ jobs:
         with:
           name: release-source
           path: |
-            dist/*.tar.gz
-            dist/SHA256SUMS.src
+            out/*.tar.gz
+            out/SHA256SUMS.src
 
   # ────────────────────────────────────────────────────────────────
   # Release — collect all artifacts + checksums, publish GH release.
@@ -167,10 +173,10 @@ jobs:
 
       - name: Consolidate artifacts
         run: |
-          mkdir -p dist
+          mkdir -p out
           find dist-raw -type f \( -name '*.tar.gz' -o -name 'SHA256SUMS.*' \) \
-            -exec cp {} dist/ \;
-          cd dist
+            -exec cp {} out/ \;
+          cd out
           cat SHA256SUMS.* | sort -u > SHA256SUMS
           rm -f SHA256SUMS.*
           ls -la
@@ -179,7 +185,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/*.tar.gz
-            dist/SHA256SUMS
+            out/*.tar.gz
+            out/SHA256SUMS
           generate_release_notes: true
           fail_on_unmatched_files: true

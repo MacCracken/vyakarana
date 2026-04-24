@@ -4,7 +4,7 @@
 - **Date:** 2026-04-23
 - **Deciders:** M2 agent (proposed) / user (accepted)
 - **Relates to:** [vyakarana-design-spec.md](../../vyakarana-design-spec.md)
-  §5 (Grammar Format), [ROADMAP.md](../../ROADMAP.md) M2, M3
+  §5 (Grammar Format), [roadmap](../development/roadmap.md) M2, M3
 
 ## Context
 
