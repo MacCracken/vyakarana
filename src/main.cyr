@@ -16,7 +16,7 @@ include "src/tokenize.cyr"
 
 # Keep VYK_VERSION in sync with the VERSION file.
 # A M7 CI check will enforce equality; for now, manual.
-var VYK_VERSION = "vyk 1.0.0";
+var VYK_VERSION = "vyk 1.0.1";
 
 # Exit codes per design spec §9
 var EXIT_OK           = 0;
@@ -78,10 +78,32 @@ fn print_list_languages() {
     return 0;
 }
 
+# Sanitize an externally-supplied cstr for echo on stderr: replace
+# bytes < 0x20 (including the 0x1B ESC that anchors every ANSI
+# escape sequence) and 0x7F DEL with `?`. UTF-8 bytes (>= 0x80)
+# pass through so non-ASCII paths still echo legibly.
+# See docs/audit/2026-04-23-audit.md FINDING-006.
+fn _sanitize_for_stderr(s) {
+    var n = strlen(s);
+    var out = alloc(n + 1);
+    var i = 0;
+    while (i < n) {
+        var b = load8(s + i);
+        var c = b;
+        if (b < 32)   { c = 63; }   # ? replaces C0 controls (incl. ESC)
+        if (b == 127) { c = 63; }   # ? replaces DEL
+        store8(out + i, c);
+        i = i + 1;
+    }
+    store8(out + n, 0);
+    return out;
+}
+
 fn usage_error(flag) {
     var msg1 = "vyk: unknown option: ";
     eprint(msg1, strlen(msg1));
-    eprint(flag, strlen(flag));
+    var safe = _sanitize_for_stderr(flag);
+    eprint(safe, strlen(safe));
     eprint("\n", 1);
     var msg2 = "vyk: try --help for a list of options\n";
     eprint(msg2, strlen(msg2));
@@ -91,7 +113,8 @@ fn usage_error(flag) {
 fn io_error(path) {
     var m1 = "vyk: cannot read ";
     eprint(m1, strlen(m1));
-    eprint(path, strlen(path));
+    var safe = _sanitize_for_stderr(path);
+    eprint(safe, strlen(safe));
     eprint("\n", 1);
     return 0;
 }
@@ -99,7 +122,8 @@ fn io_error(path) {
 fn no_grammar_error(path) {
     var m1 = "vyk: no grammar matched for ";
     eprint(m1, strlen(m1));
-    eprint(path, strlen(path));
+    var safe = _sanitize_for_stderr(path);
+    eprint(safe, strlen(safe));
     var m2 = " (try --language=shell)\n";
     eprint(m2, strlen(m2));
     return 0;

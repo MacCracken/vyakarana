@@ -6,6 +6,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [1.0.1] — 2026-04-23
+
+### Security
+
+- **FINDING-006** (LOW) — `_sanitize_for_stderr` helper added in
+  `src/main.cyr` replaces bytes < 0x20 (ASCII C0 controls including
+  the 0x1B ESC that anchors every ANSI escape sequence) and 0x7F DEL
+  with `?` before echoing user-supplied paths / flags on stderr.
+  Wired through `io_error`, `no_grammar_error`, and `usage_error`.
+  UTF-8 bytes (≥ 0x80) pass through so non-ASCII paths still echo
+  legibly. Smoke script gains an ESC-in-path probe that fails if
+  any raw ESC byte reaches stderr. See
+  [docs/audit/2026-04-23-audit.md](docs/audit/2026-04-23-audit.md)
+  for the original finding.
+
 ## [1.0.0] — 2026-04-23
 
 First stable release. All eleven starter grammars ship; default
