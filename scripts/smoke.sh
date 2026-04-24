@@ -66,13 +66,15 @@ grep -q "^vyk: unknown option: --frobnicate" "$TMPDIR/err" \
 # Stderr sanitizer (FINDING-006 fix, shipped 1.0.1): control bytes
 # in echoed user args must not reach the terminal. A path carrying
 # ANSI-escape bytes should round-trip to stderr with the ESC replaced
-# by `?`.
-CTL=$(printf 'ansi\x1b[2Jpath')
+# by `?`. POSIX octal `\033` is portable across dash / bash / zsh;
+# `\xNN` and `$'...'` are not.
+ESC=$(printf '\033')
+CTL=$(printf 'ansi\033[2Jpath')
 set +e
 "$BIN" "$CTL" > /dev/null 2>"$TMPDIR/err"
 rc=$?
 set -e
-if grep -q $'\x1b' "$TMPDIR/err"; then
+if grep -q "$ESC" "$TMPDIR/err"; then
     fail "stderr contains ESC byte — sanitizer not applied: $(cat -A "$TMPDIR/err")"
 fi
 grep -q "ansi?\[2Jpath" "$TMPDIR/err" \
