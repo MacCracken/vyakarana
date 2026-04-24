@@ -16,7 +16,7 @@ include "src/tokenize.cyr"
 
 # Keep VYK_VERSION in sync with the VERSION file.
 # A M7 CI check will enforce equality; for now, manual.
-var VYK_VERSION = "vyk 0.1.0";
+var VYK_VERSION = "vyk 1.0.0";
 
 # Exit codes per design spec §9
 var EXIT_OK           = 0;

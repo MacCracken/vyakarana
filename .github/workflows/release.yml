@@ -1,0 +1,185 @@
+name: Release
+
+# Triggers on semver tags only (e.g. 1.0.0, 1.2.3, 2.0.0-rc1).
+# Non-numeric tags are ignored.
+on:
+  push:
+    tags:
+      - '[0-9]*'
+
+jobs:
+  # ────────────────────────────────────────────────────────────────
+  # Gate — full CI must pass before anything builds for release.
+  # Reuses ci.yml via workflow_call.
+  # ────────────────────────────────────────────────────────────────
+  ci:
+    name: CI gate
+    uses: ./.github/workflows/ci.yml
+
+  # ────────────────────────────────────────────────────────────────
+  # Verify — VERSION file, cyrius.cyml, and the git tag all agree.
+  # cyrius.cyml reads `version = "${file:VERSION}"`, so this is
+  # really VERSION == tag; the cyml probe exists as a safety net in
+  # case the cyml indirection changes.
+  # ────────────────────────────────────────────────────────────────
+  version-verify:
+    name: Version verify
+    needs: ci
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract VERSION / tag / cyml version
+        id: extract
+        run: |
+          TAG="${GITHUB_REF##*/}"
+          VERSION=$(cat VERSION | tr -d '[:space:]')
+          echo "VERSION file:  $VERSION"
+          echo "git tag:       $TAG"
+
+          # cyrius.cyml uses `${file:VERSION}` indirection — confirm
+          # the cyml line still points at VERSION and isn't a
+          # hardcoded drift.
+          if ! grep -qE '^version *= *"\$\{file:VERSION\}"' cyrius.cyml; then
+            echo "::error::cyrius.cyml version no longer resolves via \${file:VERSION}" >&2
+            exit 1
+          fi
+
+          if [ "$VERSION" != "$TAG" ]; then
+            echo "::error::VERSION ($VERSION) != git tag ($TAG)" >&2
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  # ────────────────────────────────────────────────────────────────
+  # Build — DCE'd release binary per target platform.
+  # Matrix scoped to platforms the Cyrius toolchain ships installers
+  # for today. Expand as the toolchain gains arches.
+  # ────────────────────────────────────────────────────────────────
+  build:
+    name: Build (${{ matrix.target }})
+    needs: version-verify
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-linux
+            runs-on: ubuntu-latest
+            installer: cyrius-${VERSION}-x86_64-linux.tar.gz
+    env:
+      CYRIUS_DCE: '1'             # dead-code-eliminated build
+      VERSION: ${{ needs.version-verify.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Cyrius toolchain
+        run: |
+          CYRIUS_VERSION=$(grep 'cyrius *= *"' cyrius.cyml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          echo "Installing Cyrius $CYRIUS_VERSION"
+          curl -sLO "https://github.com/MacCracken/cyrius/releases/download/$CYRIUS_VERSION/cyrius-$CYRIUS_VERSION-${{ matrix.target }}.tar.gz"
+          tar xzf "cyrius-$CYRIUS_VERSION-${{ matrix.target }}.tar.gz"
+          CYRIUS_DIR="cyrius-$CYRIUS_VERSION-${{ matrix.target }}"
+          mkdir -p "$HOME/.cyrius/bin" "$HOME/.cyrius/lib"
+          cp "$CYRIUS_DIR/bin/"* "$HOME/.cyrius/bin/" 2>/dev/null || true
+          cp -r "$CYRIUS_DIR/lib/"* "$HOME/.cyrius/lib/" 2>/dev/null || true
+          chmod +x "$HOME/.cyrius/bin/"* 2>/dev/null || true
+          echo "$HOME/.cyrius/bin" >> $GITHUB_PATH
+
+      - name: Resolve dependencies
+        run: cyrius deps
+
+      - name: Build DCE'd binary
+        run: |
+          mkdir -p build
+          cyrius build src/main.cyr build/vyk
+
+      - name: Package release artifact
+        run: |
+          DIST="vyakarana-${VERSION}-${{ matrix.target }}"
+          mkdir -p "dist/$DIST"
+          cp build/vyk "dist/$DIST/"
+          cp -r grammars "dist/$DIST/"
+          cp README.md LICENSE CHANGELOG.md VERSION "dist/$DIST/"
+          tar czf "dist/${DIST}.tar.gz" -C dist "$DIST"
+
+      - name: Generate SHA256
+        run: |
+          cd dist
+          sha256sum *.tar.gz > SHA256SUMS.${{ matrix.target }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: |
+            dist/*.tar.gz
+            dist/SHA256SUMS.*
+
+  # ────────────────────────────────────────────────────────────────
+  # Source tarball — language-agnostic, always linux.
+  # ────────────────────────────────────────────────────────────────
+  source:
+    name: Source tarball
+    needs: version-verify
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version-verify.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create source tarball
+        run: |
+          mkdir -p dist
+          git archive --format=tar.gz \
+            --prefix="vyakarana-${VERSION}/" \
+            -o "dist/vyakarana-${VERSION}-src.tar.gz" HEAD
+          cd dist
+          sha256sum "vyakarana-${VERSION}-src.tar.gz" > SHA256SUMS.src
+
+      - name: Upload source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-source
+          path: |
+            dist/*.tar.gz
+            dist/SHA256SUMS.src
+
+  # ────────────────────────────────────────────────────────────────
+  # Release — collect all artifacts + checksums, publish GH release.
+  # ────────────────────────────────────────────────────────────────
+  release:
+    name: GitHub release
+    needs: [build, source]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write           # required to create the release
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-raw
+
+      - name: Consolidate artifacts
+        run: |
+          mkdir -p dist
+          find dist-raw -type f \( -name '*.tar.gz' -o -name 'SHA256SUMS.*' \) \
+            -exec cp {} dist/ \;
+          cd dist
+          cat SHA256SUMS.* | sort -u > SHA256SUMS
+          rm -f SHA256SUMS.*
+          ls -la
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/SHA256SUMS
+          generate_release_notes: true
+          fail_on_unmatched_files: true

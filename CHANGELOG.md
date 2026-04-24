@@ -4,6 +4,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+_No unreleased changes._
+
+## [1.0.0] — 2026-04-23
+
+First stable release. All eleven starter grammars ship; default
+scanner is data-driven (grammars are CYML files); public API is
+`tokenize_source(src, lang)` → `tokenbuf`. Pre-1.0 work compressed
+into this header — see each sub-section for the M-by-M arc.
+
 ### Added (M3 — all 11 starter grammars shipped)
 - `grammars/toml.cyml` + `tests/corpus/concept.toml` — TOML grammar
   as data. Tokenizes the vidya reference sample with zero `error`

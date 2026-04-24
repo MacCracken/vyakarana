@@ -173,24 +173,138 @@ at least three languages.
 
 ---
 
-## Post-v1 ideas (deferred)
+## Post-1.0 release batches
 
-Not committed, just parked here:
+The 1.x.x minor-version lineup — each release is a coherent,
+user-visible batch. Ordered so scanner extensions land before the
+languages that need them.
 
-- **Incremental retokenization** — only retokenize edited lines (for
-  cyim and other live editors)
-- **Regex rule type** — if a compelling grammar hits the wall
-  without it
+### 1.0.1 — Audit follow-ups (patch)
+
+Triggered by findings in `docs/audit/2026-04-23-audit.md`. Small,
+non-behavior-changing fixes.
+
+- **FINDING-006** — `_sanitize_for_stderr` helper over
+  `io_error` / `no_grammar_error` / `usage_error` in `src/main.cyr`
+  to strip control bytes from echoed user args.
+- Any emergent bugs observed post-1.0 that don't warrant a minor.
+
+### 1.1.0 — Scanner extensions
+
+Three scanner capabilities flagged during M3 as cosmetic gaps.
+Each ships with its own ADR. Land before the language waves that
+need them.
+
+- **`char_literal = true` default** (ADR-0007 candidate) — 2–3
+  char lookahead to tokenize `'x'` / `'\n'` as a single `string`
+  instead of an op/body/op triple. Needed by C, Rust, C++, Java,
+  Kotlin, Swift, Haskell, OCaml.
+- **`unicode_ident = true` default** (ADR-0008 candidate) — treat
+  bytes ≥ 0x80 as `ident_cont` to pass UTF-8 prose cleanly. Lets
+  Markdown stand-in reclaim its `—` em-dashes and unblocks
+  Unicode identifier handling for Python / Rust / Swift.
+- **`block` rule type** (ADR-0009 candidate) — `/* ... */` pair
+  rule spanning multiple lines. Needed by C, Rust, C++, Java, C#,
+  Go, Zig, CSS, SQL, and many more.
+
+### 1.2.0 — Vidya-backed languages (ready-to-ship tier)
+
+Five vidya samples already sit in `content/lexing_and_parsing/`
+waiting for grammars. Each is a ~30-min `.cyml` + snapshot + wire
+session per the M3 recipe (HANDOFF §Where the code lives).
+
+- `go` — C-like + goroutines, no surprises
+- `zig` — C-like + comptime, similar shape to Rust
+- `openqasm` — quantum circuit syntax; small grammar
+- `asm_x86_64` — opcode + register + `%`/`$` sigil shape
+- `asm_aarch64` — same shape as x86 with ARM opcodes
+
+### 1.3.0 — JVM + C-family expansion
+
+High-traffic languages not in the starter set (per Octoverse 2025 /
+Stack Overflow 2025). All benefit from the 1.1.0 scanner extensions.
+
+- `java`
+- `kotlin`
+- `cpp` (templates, `::`, `<>` generics, namespace syntax — may
+  surface additional scanner needs)
+- `csharp`
+
+### 1.4.0 — Scripting + mobile
+
+- `php`
+- `ruby`
+- `lua` (small grammar; good "canary" for the scanner)
+- `swift`
+
+### 1.5.0 — Functional tier
+
+Distinct syntaxes; may surface new rule-type needs (e.g. `|>`,
+pattern guards, algebraic-data-type shapes).
+
+- `elixir`
+- `ocaml`
+- `haskell`
+
+### 1.6.0 — Data / query / IDL
+
+- `sql` (dialect-neutral baseline; PostgreSQL / SQLite add-ons
+  as separate grammars if ever needed)
+- `graphql`
+- `protobuf`
+- `capnp` (optional; track post-1.6)
+
+### 1.7.0 — Markup + styling
+
+- `html` (tag + attribute shape; sub-grammar for `<script>` /
+  `<style>` contents might warrant an ADR)
+- `xml`
+- `css`
+- `scss` / `less` (extensions of css grammar; may share a single
+  `.cyml` with optional keywords)
+
+### 1.8.0 — Dev ops + infrastructure formats
+
+- `dockerfile`
+- `makefile` (tab-sensitive; indentation-adjacent — check whether
+  the scanner extension from 1.1.0 covers it)
+- `ini` / `.conf`
+- `nginx` (conditional — depends on user demand; track post-1.8)
+
+### 1.9.0 — AGNOS-native formats
+
+- `cyml` — proper grammar recognizing `---` delimiter + markdown
+  body (vyakarana's own grammar files, yukti config, vidya content)
+- `llvm-ir` (compiler-output inspection)
+
+### Post-1.x backlog (parked, not batched yet)
+
+- **Incremental retokenization** — only retokenize edited lines;
+  enables cyim and other live editors
+- **Regex rule type** — reopen ADR 0005 decision only if a
+  compelling grammar hits the wall
 - **Content-based language detection** — for files without
-  extensions or shebangs
-- **Bundled grammars beyond the starter ten** — Go, Zig, Lua, Elixir,
-  OCaml, Haskell, Swift, Kotlin, SQL
-- **Grammar composition** — e.g. Markdown fenced code blocks routed
-  to the fenced language's grammar
-- **Language server protocol bridge** — if an external LSP exists
-  for a language, map its semantic tokens onto the vyakarana palette
+  extensions or shebangs (heuristic-driven)
+- **Grammar composition** — Markdown fenced code blocks routing
+  into the fenced language's grammar
+- **Language server protocol bridge** — map external LSP semantic
+  tokens onto the vyakarana palette
 - **Theme export** — emit theme files in external formats (iTerm,
   VS Code) generated from vyakarana + owl palettes
+
+### Major 2.x.x tiers (carried from pre-1.0 ROADMAP)
+
+The pre-1.0 M4–M7 milestones become 2.x:
+
+- **2.0.0** — Theme-palette contract with owl (M4). May be breaking
+  if the palette surface tightens.
+- **2.1.0** — Streaming tokenizer / iterator API (M5). Memory goes
+  O(tokens-in-flight); unlocks `owl huge.log`.
+- **2.2.0** — vidya reverse consumption (M6). vidya starts
+  rendering its `content/lexing_and_parsing/` samples through
+  vyakarana.
+- **2.3.0** — Polish + RC (M7). Fuzz, stress, binary-size target,
+  man page, release candidate.
 
 ---
 
