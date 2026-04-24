@@ -26,7 +26,7 @@
 
 include "src/token.cyr"
 
-# ── Byte-category predicates ────────────────────────────────────────
+# ── Byte-category predicates ────────────────
 
 fn is_space(b) {
     if (b == 32) { return 1; }  # space
@@ -92,7 +92,7 @@ fn is_shell_special_var(b) {
     return 0;
 }
 
-# ── Keyword lookup ──────────────────────────────────────────────────
+# ── Keyword lookup ──────────────────────────
 # Length-keyed if-ladder. The keyword set follows design-spec §3 and
 # HANDOFF §Landing-pad-files — core reserved words only; builtins
 # like `local`/`declare` are left as `ident` so theme authors can
@@ -259,7 +259,7 @@ fn _peek3_eq(src, src_len, i, c0, c1, c2) {
     return 1;
 }
 
-# ── Entry point ─────────────────────────────────────────────────────
+# ── Entry point ─────────────────────────────
 #
 # `src`      — source bytes (pointer; caller owns the buffer)
 # `src_len`  — byte length

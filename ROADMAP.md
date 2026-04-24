@@ -81,9 +81,9 @@ file with zero Cyrius code.
 
 ---
 
-## Milestone 3 — Starter set (ten grammars)
+## Milestone 3 — Starter set (eleven grammars)
 
-**Goal:** the ten bundled grammars ship.
+**Goal:** the eleven bundled grammars ship.
 
 - shell (carried from M2)
 - python
@@ -102,8 +102,8 @@ file with zero Cyrius code.
 - Coverage + zero-error-token invariants hold
 - Hand-audited ~30 tokens per grammar look right
 
-**Done when:** `vyk --list-languages` prints all ten and each
-tokenizes its vidya sample cleanly.
+**Done when:** `vyk --list-languages` prints all eleven and each
+tokenizes its vidya sample (or an ADR-0006 stand-in) cleanly.
 
 ---
 

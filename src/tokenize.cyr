@@ -1,15 +1,14 @@
 # vyakarana — Tokenize runtime
 #
-# M2 (current):
 #   - `tokenize_source(src, lang)` looks up `lang` in the grammar
 #     registry and dispatches to the data-driven default scanner.
 #   - On first call, grammars are loaded from `grammars/<lang>.cyml`
-#     (relative to cwd for now — see ADR 0005 / M3 for a real
-#     resolution strategy).
+#     (relative to cwd for now — a proper resolution strategy for
+#     installed binaries is tagged for post-1.0).
 #   - `tokenize_source_handcoded(src, "shell")` is the hand-coded
 #     M1 path, retained as a regression oracle for smoke.sh's
-#     byte-identical diff check. It will go away once M2 lands
-#     green and we're confident in the data-driven path.
+#     byte-identical diff check. Candidate for removal in the
+#     hardening / 1.0.0 pass.
 #
 # owl M3b imports `tokenize_source`. Don't rename without a
 # CHANGELOG entry.

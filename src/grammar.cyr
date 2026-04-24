@@ -14,7 +14,7 @@ include "src/token.cyr"
 
 var GRAMMAR_FILE_CAP = 32768;
 
-# ── Grammar record ──────────────────────────────────────────────────
+# ── Grammar record ──────────────────────────
 # Layout (offsets in bytes):
 #    0  name                cstr ptr
 #    8  extensions          Vec<cstr>
@@ -73,7 +73,7 @@ fn grammar_line_rules(g)     { return load64(g + 112); }
 fn grammar_pair_rules(g)     { return load64(g + 120); }
 fn grammar_words_rules(g)    { return load64(g + 128); }
 
-# ── Rule sub-records ────────────────────────────────────────────────
+# ── Rule sub-records ────────────────────────
 
 var LINE_RULE_SIZE = 16;
 fn line_rule_new(kind, start) {
@@ -109,7 +109,7 @@ fn words_rule_new(kind, words_vec) {
 fn words_rule_kind(r)  { return load64(r); }
 fn words_rule_words(r) { return load64(r + 8); }
 
-# ── Char-class lookup tables ────────────────────────────────────────
+# ── Char-class lookup tables ────────────────
 # A 256-byte table indexed by byte; value is 0 or 1. Built from a
 # char-class spec like "A-Za-z_" or "0-9". The spec syntax is a small
 # deliberate subset: `X-Y` is a range; any other single char is that
@@ -160,7 +160,7 @@ fn _g_cstr_copy(src, n) {
     return s;
 }
 
-# ── CYML parser ─────────────────────────────────────────────────────
+# ── CYML parser ─────────────────────────────
 # Grammar files are a deliberately small TOML dialect:
 #   - `[section]` header
 #   - `[[rules]]` entry marker
@@ -227,9 +227,9 @@ fn _gp_parse_string(buf, len, pos, out_ptr) {
     var dlen = 0;
     while (p < len) {
         var b = load8(buf + p);
-        if (b == 34) { p = p; break; }
+        if (b == 34) { break; }
         if (b == 92) {   # `\`
-            if (p + 1 >= len) { p = len; break; }
+            if (p + 1 >= len) { break; }
             p = p + 2;
             dlen = dlen + 1;
         } else {
@@ -616,7 +616,7 @@ fn _gp_skip_to_eol_past_array(buf, len, pos) {
     return pos;
 }
 
-# ── Public load API ─────────────────────────────────────────────────
+# ── Public load API ─────────────────────────
 
 # Read and parse a grammar file. Returns a grammar handle or 0 on
 # I/O error.
@@ -628,7 +628,7 @@ fn grammar_load(path) {
     return _gp_parse(buf, n);
 }
 
-# ── Registry ────────────────────────────────────────────────────────
+# ── Registry ────────────────────────────────
 # A flat vec of grammar handles. `registry_init` is idempotent so
 # tokenize_source can call it lazily.
 

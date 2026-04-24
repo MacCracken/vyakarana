@@ -73,7 +73,7 @@ fn _ds_is_special_var_char(b) {
     return 0;
 }
 
-# ── Per-rule try-match functions ────────────────────────────────────
+# ── Per-rule try-match functions ────────────
 # Each returns a length > 0 if it matched at src[i], else 0.
 
 fn _ds_try_shebang(g, src, src_len, i) {
@@ -178,10 +178,11 @@ fn _ds_scan_ident(g, src, src_len, i) {
     return src_len - i;
 }
 
-# Returns 1 if the byte span [start, start+len) matches a word in any
-# words rule — and writes the matched rule's kind to *out_kind.
-# Otherwise returns 0.
-fn _ds_lookup_keyword(g, src, start, len, out_kind) {
+# If the byte span [start, start+len) matches a word in any words
+# rule, returns that rule's kind (an i64). Returns -1 when no match.
+# No out-param, no per-call allocation — this runs once per ident
+# in the hot path and ADR 0002 forbids per-token allocation.
+fn _ds_lookup_keyword(g, src, start, len) {
     var rules = grammar_words_rules(g);
     var n = vec_len(rules);
     var r_i = 0;
@@ -195,15 +196,14 @@ fn _ds_lookup_keyword(g, src, start, len, out_kind) {
             var wlen = strlen(w);
             if (wlen == len) {
                 if (memeq(src + start, w, wlen) == 1) {
-                    store64(out_kind, words_rule_kind(r));
-                    return 1;
+                    return words_rule_kind(r);
                 }
             }
             w_i = w_i + 1;
         }
         r_i = r_i + 1;
     }
-    return 0;
+    return 0 - 1;
 }
 
 # Number with optional 0x/0b/0o prefix. Returns length; 0 if not a
@@ -257,7 +257,7 @@ fn _ds_scan_whitespace(src, src_len, i) {
     return src_len - i;
 }
 
-# ── Entry point ─────────────────────────────────────────────────────
+# ── Entry point ─────────────────────────────
 
 fn tokenize_with_grammar(g, src, src_len, tb) {
     var i = 0;
@@ -316,9 +316,9 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
             var start_tbl = grammar_ident_start(g);
             if ((start_tbl != 0) && (char_class_match(start_tbl, b) == 1)) {
                 len = _ds_scan_ident(g, src, src_len, i);
-                var kw_slot = alloc(8); store64(kw_slot, 0);
-                if (_ds_lookup_keyword(g, src, i, len, kw_slot) == 1) {
-                    kind = load64(kw_slot);
+                var kw_kind = _ds_lookup_keyword(g, src, i, len);
+                if (kw_kind >= 0) {
+                    kind = kw_kind;
                 } else {
                     kind = TK_IDENT;
                 }

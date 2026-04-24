@@ -4,7 +4,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Added (M3, in progress)
+### Added (M3 — all 11 starter grammars shipped)
 - `grammars/toml.cyml` + `tests/corpus/concept.toml` — TOML grammar
   as data. Tokenizes the vidya reference sample with zero `error`
   kinds (471 tokens, coverage 10341/10341).

@@ -2,11 +2,11 @@
 #
 # Stdlib auto-included via cyrius.cyml.
 #
-# Scope (v0.1.x through M1):
+# Scope:
 #   vyk --version
 #   vyk --help / -h
 #   vyk --list-kinds        prints the ten token kinds
-#   vyk --list-languages    prints loaded grammars (now: shell)
+#   vyk --list-languages    prints loaded grammars (11 starter set)
 #   vyk <file>              tokenize a file, NDJSON on stdout
 #   vyk --language=<lang>   override detection (M1: only `shell`)
 
