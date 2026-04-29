@@ -5,7 +5,7 @@
 > + security audit + 1.0.0 cut. Design context lives in
 > [vyakarana-design-spec.md](./vyakarana-design-spec.md); milestone
 > detail lives in [docs/development/roadmap.md](./docs/development/roadmap.md); architecture decisions
-> live as ADRs under [docs/adrs/](./docs/adrs/).
+> live as ADRs under [docs/adr/](./docs/adr/).
 
 ---
 
@@ -22,7 +22,7 @@
   unblocked through M2/M3 (the public `tokenize_source` signature
   and `tokenbuf` accessors haven't changed).
 - **Release path:** per the user's 1.0.0 plan (saved in memory and
-  `docs/adrs/` continues to accept new entries), the next phase is
+  `docs/adr/` continues to accept new entries), the next phase is
   a single consolidation:
   1. **Hardening step** (per CLAUDE.md §Hardening step)
   2. **Security audit** — byte-level input-handling review; file
@@ -54,7 +54,7 @@ before trusting this line.
    fine; renames/removals are breaking.
 
 If you think you need to break any of these, **open an ADR in
-`docs/adrs/` explaining the forcing function, and don't break the
+`docs/adr/` explaining the forcing function, and don't break the
 contract until the user ACKs.**
 
 ---
@@ -88,15 +88,15 @@ whatever `[defaults]` / `[[rules]]` fields its grammar needs.
 
 ### Decisions recorded during M1 / M2 / M3
 
-All architectural choices are ADRs under [docs/adrs/](./docs/adrs/);
+All architectural choices are ADRs under [docs/adr/](./docs/adr/);
 read them before overriding any:
 
-- [ADR 0001 — Corpus sync: checked-in snapshot](./docs/adrs/0001-corpus-sync-policy.md).
-- [ADR 0002 — Token storage: contiguous 12-byte `tokenbuf`](./docs/adrs/0002-token-storage-layout.md).
-- [ADR 0003 — Shell string expansions are flat in M1](./docs/adrs/0003-string-expansion-not-retokenized.md).
-- [ADR 0004 — Shell built-ins emit as `ident`, not `keyword`](./docs/adrs/0004-shell-builtins-as-ident.md).
-- [ADR 0005 — M2 rule-type scope: narrow rules + configured scanner](./docs/adrs/0005-m2-rule-type-scope.md).
-- [ADR 0006 — Stand-in corpus when vidya doesn't cover a language](./docs/adrs/0006-standin-corpus-policy.md).
+- [ADR 0001 — Corpus sync: checked-in snapshot](./docs/adr/0001-corpus-sync-policy.md).
+- [ADR 0002 — Token storage: contiguous 12-byte `tokenbuf`](./docs/adr/0002-token-storage-layout.md).
+- [ADR 0003 — Shell string expansions are flat in M1](./docs/adr/0003-string-expansion-not-retokenized.md).
+- [ADR 0004 — Shell built-ins emit as `ident`, not `keyword`](./docs/adr/0004-shell-builtins-as-ident.md).
+- [ADR 0005 — M2 rule-type scope: narrow rules + configured scanner](./docs/adr/0005-m2-rule-type-scope.md).
+- [ADR 0006 — Stand-in corpus when vidya doesn't cover a language](./docs/adr/0006-standin-corpus-policy.md).
 
 ### Hardening / audit (2026-04-23)
 
@@ -134,13 +134,13 @@ or post-1.0:
 ### Invariants that carry into hardening + 1.0.0
 
 - **No regex rules.** Explicitly out of the rule set (design-spec
-  §5, [ADR 0005](./docs/adrs/0005-m2-rule-type-scope.md)). If a
+  §5, [ADR 0005](./docs/adr/0005-m2-rule-type-scope.md)). If a
   language needs lookahead, propose a new rule type in a new ADR —
   don't reach for regex.
 - **Zero-copy invariant.** Tokens reference into the caller's buffer
   as `(kind, start, len)`. `tokenbuf` is the only allocation and
   grows by doubling, not per-token (see
-  [ADR 0002](./docs/adrs/0002-token-storage-layout.md)).
+  [ADR 0002](./docs/adr/0002-token-storage-layout.md)).
 - **Data-driven by default.** New grammars are new `.cyml` files.
   If a grammar needs behavior the default scanner doesn't support,
   extend the scanner (and record via an ADR); don't add per-language
@@ -165,7 +165,7 @@ or post-1.0:
 - `src/grammars/default_scanner.cyr` — `tokenize_with_grammar(g,
   src, src_len, tb)`. The data-driven scanner that every grammar
   runs through. Scanner priority is documented inline and in
-  [ADR 0005](./docs/adrs/0005-m2-rule-type-scope.md).
+  [ADR 0005](./docs/adr/0005-m2-rule-type-scope.md).
 - `src/grammars/shell.cyr` — hand-coded M1 tokenizer, retained as
   a regression oracle. Wired into `vyk --handcoded` and the smoke
   diff check. Candidate for removal during hardening if kept green
@@ -175,7 +175,7 @@ or post-1.0:
   the default scanner. `bootstrap_grammars()` is the explicit-load
   hook for callers that bypass `tokenize_source`.
 - `src/token.cyr` — palette, `Token` layout, `tokenbuf` (see
-  [ADR 0002](./docs/adrs/0002-token-storage-layout.md)). Accessors
+  [ADR 0002](./docs/adr/0002-token-storage-layout.md)). Accessors
   `tokenbuf_count/kind/start/len` are the consumer contract.
 - `src/main.cyr` — `vyk` CLI. `emit_ndjson`, `tokenize_file`, and
   the hidden `--handcoded` flag used by the regression diff.
@@ -245,7 +245,7 @@ Full process lives in [CLAUDE.md](./CLAUDE.md). In short:
   non-trivial Cyrius.
 - Test after every change. One change at a time.
 - If you hit three failed attempts at the same problem, stop,
-  write a note (or an ADR under `docs/adrs/` if the decision is
+  write a note (or an ADR under `docs/adr/` if the decision is
   load-bearing), and defer.
 
 ---

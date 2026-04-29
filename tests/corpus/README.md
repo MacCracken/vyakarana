@@ -17,7 +17,7 @@ A grammar "passes" when:
 ## Sync policy
 
 **Checked-in snapshot** (HANDOFF option 1), decided 2026-04-23.
-See [ADR 0001](../../docs/adrs/0001-corpus-sync-policy.md) for the
+See [ADR 0001](../../docs/adr/0001-corpus-sync-policy.md) for the
 reasoning and when to revisit.
 
 Re-sync manually when vidya updates a sample:

@@ -47,7 +47,7 @@ a single-line comment (or its closest idiomatic equivalent) marking
 it as a vyakarana stand-in:
 
 ```
-// vyakarana stand-in — not from vidya. See docs/adrs/0006.
+// vyakarana stand-in — not from vidya. See docs/adr/0006.
 ```
 
 When vidya later adds a reference sample for the language, re-sync

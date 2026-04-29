@@ -2,7 +2,7 @@
 
 > **Picking this repo up?** Read [HANDOFF.md](./HANDOFF.md) first
 > for where we are and what's next. Architecture decisions are ADRs
-> under [docs/adrs/](./docs/adrs/); design context is in
+> under [docs/adr/](./docs/adr/); design context is in
 > [vyakarana-design-spec.md](./vyakarana-design-spec.md); milestone
 > plan is [docs/development/roadmap.md](./docs/development/roadmap.md).
 
@@ -167,7 +167,7 @@ Cyrius code. When dialect is unclear, read `cyrius/programs/*.cyr`
   upstream of all of them.
 - Do not add a token kind, change the `Token` layout, or rename
   the public `tokenize_source` signature without an ADR under
-  `docs/adrs/` and a CHANGELOG entry.
+  `docs/adr/` and a CHANGELOG entry.
 - Do not hardcode toolchain versions in CI YAML — `cyrius.cyml`'s
   `cyrius = "X.Y.Z"` is the single source of truth.
 - Do not take three failed attempts at the same problem — see
@@ -180,8 +180,8 @@ Cyrius code. When dialect is unclear, read `cyrius/programs/*.cyr`
 ## Writing decisions
 
 - If a choice will confuse a future agent ("why did they do it
-  that way?"), open an ADR: `docs/adrs/NNNN-short-kebab-title.md`.
-  Format: see [docs/adrs/README.md](./docs/adrs/README.md).
+  that way?"), open an ADR: `docs/adr/NNNN-short-kebab-title.md`.
+  Format: see [docs/adr/README.md](./docs/adr/README.md).
 - Small implementation notes (recognizer ordering, scope notes)
   go in the relevant source file's header comment, not an ADR.
 - CHANGELOG captures the *what*; ADRs capture the *why*; HANDOFF

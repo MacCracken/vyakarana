@@ -53,7 +53,7 @@ into this header — see each sub-section for the M-by-M arc.
   kinds (471 tokens, coverage 10341/10341).
 - `grammars/json.cyml` + `tests/corpus/concept.json` — JSON grammar.
   Tokenizes a hand-rolled stand-in corpus (see
-  [ADR 0006](docs/adrs/0006-standin-corpus-policy.md) for why:
+  [ADR 0006](docs/adr/0006-standin-corpus-policy.md) for why:
   vidya doesn't ship a JSON reference sample yet). 376 tokens,
   coverage 3380/3380.
 - `grammars/cyrius.cyml` + `tests/corpus/cyrius.cyr` — Cyrius
@@ -143,7 +143,7 @@ into this header — see each sub-section for the M-by-M arc.
 - 40 new tcyr assertions (17 toml + 17 json + 6 supporting)
   covering grammar load, dashed-ident behavior, signed numbers,
   keywords, and JSON structural tokens (307 total).
-- [ADR 0006](docs/adrs/0006-standin-corpus-policy.md) —
+- [ADR 0006](docs/adr/0006-standin-corpus-policy.md) —
   stand-in corpus policy for languages vidya doesn't yet cover.
 
 ### Added (M2)
@@ -155,7 +155,7 @@ into this header — see each sub-section for the M-by-M arc.
   tokenizes any grammar's source with configured shebang / line /
   pair / words / ident / number / operator / punctuation /
   whitespace / special-var stages. Scanner dispatch follows
-  [ADR 0005](docs/adrs/0005-m2-rule-type-scope.md).
+  [ADR 0005](docs/adr/0005-m2-rule-type-scope.md).
 - `grammars/shell.cyml` — the shell grammar as data. Produces
   byte-identical NDJSON to the hand-coded `tokenize_shell` on
   `tests/corpus/shell.sh` (regression check enforced by smoke.sh).
@@ -179,7 +179,7 @@ into this header — see each sub-section for the M-by-M arc.
   `println("shell")` in M1).
 - `has_grammar(lang)` consults the registry.
 - Hand-coded `tokenize_shell` retained on disk as a regression oracle
-  (per [ADR 0005](docs/adrs/0005-m2-rule-type-scope.md)); will be
+  (per [ADR 0005](docs/adr/0005-m2-rule-type-scope.md)); will be
   removed in a follow-up once M3 has additional grammars.
 
 ### Added (M1)
@@ -191,7 +191,7 @@ into this header — see each sub-section for the M-by-M arc.
   preserves the coverage invariant.
 - `tokenbuf` — contiguous 12-byte Token record buffer in
   `src/token.cyr`. Satisfies design-spec §6 "no allocations per
-  token." See [ADR 0002](docs/adrs/0002-token-storage-layout.md)
+  token." See [ADR 0002](docs/adr/0002-token-storage-layout.md)
   for the storage choice.
 - `vyk <file>` tokenizes a file and prints NDJSON tokens on stdout
   (`{"kind":"keyword","start":0,"len":2}`). Exit code 0 on success,
