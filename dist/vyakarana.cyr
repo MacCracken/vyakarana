@@ -2428,7 +2428,7 @@ fn has_grammar(lang) {
 # heavier (Yara-style fingerprinting, full lexical voting) is out.
 
 
-# ── Path dispatch ───────────────────────────────────────────────────
+# ── Path dispatch ───────────────────────────
 # Extension and basename matching. Pure cstr suffix tests; no I/O.
 
 fn detect_language(path) {
@@ -2534,7 +2534,7 @@ fn detect_language(path) {
     return 0;
 }
 
-# ── Content sniffing ────────────────────────────────────────────────
+# ── Content sniffing ────────────────────────
 # Pure byte-pattern detection. Caller supplies `src` + `src_len`;
 # we never look outside the buffer. Length-bounded prefix checks
 # mean the worst case is a fixed scan over the first ~4KB.

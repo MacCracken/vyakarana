@@ -25,12 +25,20 @@ sh scripts/embed-grammars.sh
 cyrius deps && cyrius build src/main.cyr build/vyk
 cyrius test tests/vyakarana.tcyr
 sh scripts/smoke.sh build/vyk
+sh scripts/lint-fmt.sh                 # lint + fmt --check, all src/*
 ```
 
-Run all four on session entry. Don't take
+Run all five on session entry. Don't take
 `docs/development/state.md` / `README.md` claims of "green" at
 face value until you've seen the commands pass. Use `cyrius build`,
 never raw `cc3`/`cc5`.
+
+**Lint + fmt are mandatory pre-release.** CI runs them; failing
+either blocks the tag. The wrapper at `scripts/lint-fmt.sh`
+iterates every `src/*.cyr` and `src/grammars/*.cyr` (skipping
+`src/grammar_blobs.cyr` — generated, long string-literal lines
+are intentional). One stop for both checks; non-zero exit on any
+warning or formatting drift.
 
 `scripts/embed-grammars.sh` regenerates `src/grammar_blobs.cyr`
 (gitignored — every fresh checkout needs this step before the
@@ -119,17 +127,22 @@ Run a closeout pass before the user cuts `0.Y.0` or `1.0.0`:
 1. Full test suite — all assertions pass, zero failures.
 2. Full smoke script — every language corpus round-trips with
    zero error kinds and the coverage invariant holds.
-3. Dead-code audit — check for unused functions with the
+3. **Lint + fmt — `sh scripts/lint-fmt.sh` exits 0.** Both
+   `cyrius lint` (zero warnings) and `cyrius fmt --check` (no
+   drift) across every hand-edited `src/*.cyr` and
+   `src/grammars/*.cyr`. CI gates the same; failing either
+   blocks the tag.
+4. Dead-code audit — check for unused functions with the
    compiler's "dead:" output; remove anything stale.
-4. Stale comment sweep — grep for old version refs, outdated
+5. Stale comment sweep — grep for old version refs, outdated
    `TODO(M?)` markers, ADR pointers to files that moved.
-5. Doc sync — CHANGELOG `[Unreleased]` collapses into the new
+6. Doc sync — CHANGELOG `[Unreleased]` collapses into the new
    version header; `docs/development/state.md`'s "Current status"
    matches reality; ROADMAP updated if the milestone boundary
    shifted.
-6. Clean build — `rm -rf build && cyrius deps && cyrius build`
+7. Clean build — `rm -rf build && cyrius deps && cyrius build`
    passes from scratch.
-7. Downstream check — `owl` (and any other consumer that has
+8. Downstream check — `owl` (and any other consumer that has
    picked up `[deps.vyakarana]`) still builds against the new tag.
 
 ## Cyrius dialect gotchas
