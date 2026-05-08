@@ -1,0 +1,80 @@
+# vyakarana — bundled themes for `vyk --theme=<name>`
+#
+# A theme maps each of the 10 token kinds to an ANSI-escape
+# string. The contract — which kinds exist, what their names
+# are, and what they signify — lives in
+# [docs/architecture/004-theme-palette-contract.md](../docs/architecture/004-theme-palette-contract.md).
+# This module just picks colours.
+#
+# Three bundled themes:
+#   - `default` — moderate-saturation palette tuned for
+#     light-background terminals. The reference palette;
+#     downstream consumers writing their own themes can use
+#     this as the canonical mapping.
+#   - `dark` — variant tuned for dark-background terminals
+#     (uses bright variants on operators / punctuation).
+#   - `none` — strips colour entirely. Useful in pipes /
+#     non-tty contexts.
+#
+# Adding a theme means adding a clause to `theme_color()` and
+# a name to `theme_resolve()`. There is no theme-file format
+# yet — when one materializes (likely in 1.11.0 for owl
+# coordination), it uses the same kind-name keys.
+#
+# Theme handle: just an i64 tag for now. 0 = none, 1 = default,
+# 2 = dark. Direct integer because Cyrius enums consume
+# `gvar_toks` slots (see CLAUDE.md gotcha) and we don't need
+# more than three.
+
+include "src/token.cyr"
+
+var THEME_NONE    = 0;
+var THEME_DEFAULT = 1;
+var THEME_DARK    = 2;
+
+# ANSI reset (`\x1b[0m`). Emitted after every colour-bearing
+# token so colour doesn't leak into the next token's bytes.
+fn theme_reset() { return "\x1b[0m"; }
+
+# Lookup: theme name (cstr) → theme tag, or -1 for unknown.
+fn theme_resolve(name) {
+    if (streq(name, "default") == 1) { return THEME_DEFAULT; }
+    if (streq(name, "dark")    == 1) { return THEME_DARK; }
+    if (streq(name, "none")    == 1) { return THEME_NONE; }
+    return 0 - 1;
+}
+
+# `default` theme — light-background reference palette.
+fn theme_default_color(kind) {
+    if (kind == TK_KEYWORD)      { return "\x1b[35m"; }   # magenta
+    if (kind == TK_STRING)       { return "\x1b[32m"; }   # green
+    if (kind == TK_NUMBER)       { return "\x1b[36m"; }   # cyan
+    if (kind == TK_COMMENT)      { return "\x1b[90m"; }   # bright black (grey)
+    if (kind == TK_PREPROCESSOR) { return "\x1b[33m"; }   # yellow
+    if (kind == TK_ERROR)        { return "\x1b[31m"; }   # red
+    return "";
+}
+
+# `dark` theme — bright variants for ident-class /
+# punctuation, since bare default looks washed out on dark
+# backgrounds.
+fn theme_dark_color(kind) {
+    if (kind == TK_KEYWORD)      { return "\x1b[95m"; }   # bright magenta
+    if (kind == TK_STRING)       { return "\x1b[92m"; }   # bright green
+    if (kind == TK_NUMBER)       { return "\x1b[96m"; }   # bright cyan
+    if (kind == TK_COMMENT)      { return "\x1b[37m"; }   # white-ish
+    if (kind == TK_PREPROCESSOR) { return "\x1b[93m"; }   # bright yellow
+    if (kind == TK_ERROR)        { return "\x1b[91m"; }   # bright red
+    if (kind == TK_OPERATOR)     { return "\x1b[97m"; }   # bright white
+    if (kind == TK_PUNCTUATION)  { return "\x1b[97m"; }   # bright white
+    return "";
+}
+
+# Dispatch on theme tag. Returns the ANSI prefix for `kind`
+# under `theme`. Empty string when no colour applies (the
+# renderer skips emitting reset for these).
+fn theme_color(theme, kind) {
+    if (theme == THEME_DEFAULT) { return theme_default_color(kind); }
+    if (theme == THEME_DARK)    { return theme_dark_color(kind); }
+    return "";
+}

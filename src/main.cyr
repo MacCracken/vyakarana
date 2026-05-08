@@ -13,6 +13,7 @@
 include "src/token.cyr"
 include "src/grammar.cyr"
 include "src/tokenize.cyr"
+include "src/theme.cyr"
 include "src/version_str.cyr"
 
 # Exit codes per design spec §9
@@ -42,8 +43,11 @@ fn print_help() {
     println("      --list-kinds       Print the ten token kinds");
     println("      --list-languages   Print loaded grammars");
     println("      --language=<lang>  Override language detection");
+    println("      --theme=<name>     Render ANSI-coloured source instead");
+    println("                         of NDJSON. Themes: default, dark, none.");
+    println("                         See docs/architecture/004-theme-palette-contract.md.");
     println("");
-    println("If FILE is given, tokens are printed as NDJSON on stdout:");
+    println("If FILE is given without --theme, tokens are printed as NDJSON:");
     println("  {\"kind\":\"keyword\",\"start\":0,\"len\":2}");
     return 0;
 }
@@ -244,6 +248,37 @@ fn detect_language(path) {
     return 0;
 }
 
+# Emit ANSI-themed source bytes per the chosen theme (see
+# src/theme.cyr). Walks the tokenbuf in order; for each token,
+# writes the theme's ANSI prefix (if non-empty), then the source
+# bytes from `[start, start+len)`, then the reset escape.
+# Returns 1 if any TK_ERROR token was emitted, else 0 — same
+# convention as emit_ndjson so the exit-code path is shared.
+fn emit_themed(tb, src, theme) {
+    var count = tokenbuf_count(tb);
+    var i = 0;
+    var any_error = 0;
+    var reset = theme_reset();
+    var rlen = strlen(reset);
+    while (i < count) {
+        var k = tokenbuf_kind(tb, i);
+        var s = tokenbuf_start(tb, i);
+        var l = tokenbuf_len(tb, i);
+        if (k == TK_ERROR) { any_error = 1; }
+        var color = theme_color(theme, k);
+        var clen = strlen(color);
+        if (clen > 0) {
+            print(color, clen);
+        }
+        print(src + s, l);
+        if (clen > 0) {
+            print(reset, rlen);
+        }
+        i = i + 1;
+    }
+    return any_error;
+}
+
 # Emit one NDJSON line per token. Returns 1 if any TK_ERROR token
 # was emitted, else 0.
 fn emit_ndjson(tb) {
@@ -272,10 +307,15 @@ fn emit_ndjson(tb) {
     return any_error;
 }
 
-# Read file, tokenize with the given language, emit NDJSON. Returns
-# an exit code. `handcoded = 1` routes through the M1 oracle path
-# (see src/tokenize.cyr) for the M2 regression diff.
-fn tokenize_file(path, lang, handcoded) {
+# Read file, tokenize with the given language, emit either
+# NDJSON (default) or ANSI-themed source bytes (when `theme >=
+# 0`). Returns an exit code. `handcoded = 1` routes through the
+# M1 oracle path (see src/tokenize.cyr) for the M2 regression
+# diff.
+#
+# `theme` is the theme tag from `theme_resolve()`, or -1 if
+# `--theme=` was not passed (NDJSON output).
+fn tokenize_file(path, lang, handcoded, theme) {
     var buf = alloc(VYK_SRC_CAP);
     var n = file_read_all(path, buf, VYK_SRC_CAP - 1);
     if (n < 0) {
@@ -294,7 +334,12 @@ fn tokenize_file(path, lang, handcoded) {
         no_grammar_error(path);
         return EXIT_NO_GRAMMAR;
     }
-    var had_error = emit_ndjson(tb);
+    var had_error = 0;
+    if (theme >= 0) {
+        had_error = emit_themed(tb, buf, theme);
+    } else {
+        had_error = emit_ndjson(tb);
+    }
     if (had_error == 1) { return EXIT_GRAMMAR_FAIL; }
     return EXIT_OK;
 }
@@ -303,6 +348,16 @@ fn tokenize_file(path, lang, handcoded) {
 # a --language=... form.
 fn parse_language_arg(a) {
     var prefix = "--language=";
+    var plen = strlen(prefix);
+    if (strlen(a) <= plen) { return 0; }
+    if (memeq(a, prefix, plen) == 0) { return 0; }
+    return a + plen;
+}
+
+# Parse --theme=<val>; returns pointer to value or 0 if arg isn't
+# a --theme=... form.
+fn parse_theme_arg(a) {
+    var prefix = "--theme=";
     var plen = strlen(prefix);
     if (strlen(a) <= plen) { return 0; }
     if (memeq(a, prefix, plen) == 0) { return 0; }
@@ -326,6 +381,9 @@ fn main() {
     var lang_override = 0;
     var path = 0;
     var handcoded = 0;
+    # theme = -1 means "no --theme passed; emit NDJSON". 0 / 1 / 2
+    # are valid theme tags from theme_resolve().
+    var theme = 0 - 1;
 
     var i = 1;
     while (i < ac) {
@@ -345,6 +403,17 @@ fn main() {
         var langv = parse_language_arg(a);
         if (langv != 0) {
             lang_override = langv;
+            i = i + 1;
+            continue;
+        }
+
+        var themev = parse_theme_arg(a);
+        if (themev != 0) {
+            theme = theme_resolve(themev);
+            if (theme < 0) {
+                usage_error(a);
+                return EXIT_USAGE;
+            }
             i = i + 1;
             continue;
         }
@@ -381,7 +450,7 @@ fn main() {
         return EXIT_NO_GRAMMAR;
     }
 
-    return tokenize_file(path, lang, handcoded);
+    return tokenize_file(path, lang, handcoded, theme);
 }
 
 var exit_code = main();

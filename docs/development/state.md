@@ -4,18 +4,18 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–1.9.0 are
+> **Read this file before doing anything.** 1.0.0–1.10.0 are
 > shipped. As of 2026-05-08 the toolchain pin is `cyrius = "5.9.36"`.
-> 1.8.0 added Dockerfile/Makefile/INI; **1.9.0 adds CYML and
-> LLVM-IR (AGNOS-native batch)** with **self-hosting payoff** —
-> vyakarana can now tokenize its own grammar files. CYML is
-> the **first non-stand-in post-M3 corpus** (vidya snapshot of
-> `content/cyrius/dependencies.cyml`). **38 grammars bundled
-> now, 622/622 tests passing.** With 1.9.0 the language line
-> closes — next up is the pre-2.0 prep waves (theme-palette
-> contract + vidya consumption, external integrations, fuzz
-> harness, RC polish) leading to the 2.0.0 streaming-tokenizer
-> break. See §Next up.
+> 1.9.0 closed the language line; **1.10.0 opens the pre-2.0
+> prep sequence** with three deliverables:
+> `vyk --theme=<name>` ANSI rendering, architecture note 004
+> (the theme-palette contract), and a consumer integration
+> guide. **38 grammars bundled (unchanged), 636/636 tests
+> passing.** Different shape from the language batches —
+> doc + CLI work rather than per-grammar grind. Next:
+> 1.11.0 — external integrations (LSP bridge, theme export,
+> content-based detection, grammar composition) — see §Next
+> up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -35,8 +35,27 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `1.9.0` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `1.10.0` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`. Full 1.x tag history in the CHANGELOG.
+- **What 1.10.0 added (first pre-2.0 prep wave):**
+  - **`vyk --theme=<name>` flag** — three bundled themes
+    (`default`, `dark`, `none`). New `src/theme.cyr` module
+    holds the kind → ANSI mapping; `tokenize_file` dispatches
+    to either `emit_ndjson` (default) or `emit_themed`.
+  - **Architecture note 004** — theme-palette contract.
+    Codifies the kind-name strings as the stable interface
+    consumers index by. Documents why we don't add more kinds
+    when sub-distinctions are wanted (renderer-side via
+    secondary-palette text introspection per ADR 0004 / 0007).
+  - **Consumer integration guide** at
+    `docs/guides/consumer-integration.md`. First doc explicitly
+    aimed at downstream consumers (owl, cyim, agnoshi, vidya,
+    future readers).
+- **Test count:** 636/636 (was 622 at 1.9.0; 14 new theme
+  probes).
+- **Smoke script:** 3 new theme probes covering
+  `--theme=default` / `--theme=none` / `--theme=nope`.
+- **No new grammars** — 38 bundled, unchanged from 1.9.0.
 - **What 1.9.0 added:** two AGNOS-native grammars —
   **CYML and LLVM-IR**. Token counts: cyml 659, llvm_ir 1194 —
   zero errors on canonical samples. **No new scanner
@@ -180,41 +199,61 @@ additions land).
 
 ---
 
-## Next up — 1.10.0 (Pre-2.0 prep, wave 1)
+## Next up — 1.11.0 (External integrations)
 
-Per the [roadmap](./roadmap.md), the language line is done and
-we move into the pre-2.0 prep sequence (1.10 – 1.13). **The
-1.10.0 cut bundles two pieces of external-coordination work
-that benefit from the full 38-grammar set being in place**:
+Per the [roadmap](./roadmap.md), 1.11.0 is the second pre-2.0
+prep wave. The theme-palette contract from 1.10.0 sets up the
+inputs; 1.11.0 wires those inputs to external systems. Four
+deliverables, each independently triggerable:
 
-- **Theme-palette contract** (M4 non-breaking parts).
-  Document the kind → palette slot mapping in
-  `vyakarana-design-spec.md` and the architecture overview;
-  owl's theme files reference the ten kinds by name (not by
-  ad-hoc identifier); add `vyk --theme <name>` to the
-  diagnostic CLI for grammar-author preview without running
-  owl.
-- **vidya reverse consumption** (M6). vidya adds
-  `[deps.vyakarana]`; reference pages render code through
-  vyakarana + a renderer. Reciprocal-relationship payoff that
-  started with [ADR 0001](../adr/0001-corpus-sync-policy.md).
+- **LSP bridge** — translate external `textDocument/semanticTokens`
+  output (from rust-analyzer, gopls, pyright, etc.) onto the
+  vyakarana 10-kind palette. Lets editors like cyim or VS Code
+  surface vyakarana-quality colouring even when an LSP server
+  is doing the underlying work. New module + ADR. Most likely
+  to be the largest item.
+- **Theme export** — emit theme files in external formats
+  (iTerm, VS Code, Helix `theme.toml`) generated from
+  vyakarana's bundled themes + an owl palette. CLI subcommand
+  or separate tool — TBD during the cut.
+- **Content-based language detection** — fallback in
+  `detect_language` for files without extensions (or with
+  ambiguous extensions like `.s` shared between asm_x86_64
+  and asm_aarch64). Heuristic-driven: shebang sniff, BOM
+  detect, signature peek, register-name pattern match.
+  Resolves the asm dispatch ambiguity from 1.2.x.
+- **Grammar composition** — route the body of a HTML
+  `<style>` block to the CSS grammar, a HTML `<script>` block
+  to JavaScript, a markdown `` ```rust `` fenced block to
+  Rust. New rule shape that re-tokenizes a span under a
+  different grammar. Closes the 1.7.0 HTML "embedded blocks
+  tokenize as plain HTML" gap.
 
-After 1.10.0:
-- **1.11.0** — External integrations: LSP bridge, theme
-  export, content-based language detection, grammar
-  composition for fenced markdown code blocks (the `<style>`
-  / `<script>` body routing that 1.7.0's HTML grammar
-  documented as deferred).
+Each of these is roughly the size of a 1.10.0 cut on its own,
+so 1.11.0 may end up being a multi-cut window (1.11.0 / 1.11.1
+/ etc.) rather than one big release.
+
+After 1.11.0:
 - **1.12.0** — Fuzz + stress harness (M7 prep). Audit doc.
 - **1.13.0** — RC polish: binary size, startup benchmarks,
   error messages, man page, AGNOS / Cyrius packaging.
 - **2.0.0** — Streaming tokenizer (M5 carryover). The one
-  scheduled break in the public API. Migration guide
-  alongside.
+  scheduled break in the public API.
 
 The 2.x line stays reserved for breaking changes; after
 2.0.0, the post-2.0 backlog (incremental retokenization,
 regex rule type) reactivates if a real consumer forces it.
+
+### vidya reverse consumption (M6) — coordination, not a vyakarana cut
+
+The roadmap originally bundled vidya reverse consumption with
+1.10.0's theme-palette work. **Re-scoped:** vidya integration
+is the user's call to land in vidya's repo (adding
+`[deps.vyakarana]`, swapping its renderer over to vyakarana's
+output). From vyakarana's side it's already enabled — the
+distlib bundle is well-formed, the consumer guide exists, the
+public API is stable. No action needed here unless vidya
+surfaces a missing piece.
 
 Each new grammar is a `grammars/<name>.cyml` plus a
 `tests/corpus/<name>.<ext>` (vidya snapshot per

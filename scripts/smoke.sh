@@ -63,6 +63,35 @@ set -e
 grep -q "^vyk: unknown option: --frobnicate" "$TMPDIR/err" \
     || fail "unknown-option stderr format wrong: $(cat "$TMPDIR/err")"
 
+# --theme=<name> renders ANSI-coloured source instead of NDJSON.
+# Probe: `--theme=default` on a real grammar file emits non-empty
+# stdout containing at least one ESC; `--theme=none` emits the
+# original source bytes (no colour escapes); unknown name errors
+# with exit 2. See docs/architecture/004-theme-palette-contract.md.
+set +e
+"$BIN" --theme=default --language=shell tests/corpus/shell.sh > "$TMPDIR/themed" 2> "$TMPDIR/err"
+rc=$?
+set -e
+[ "$rc" = "0" ] || fail "--theme=default exit: got $rc, expected 0; stderr: $(cat "$TMPDIR/err")"
+[ -s "$TMPDIR/themed" ] || fail "--theme=default produced empty output"
+grep -q "$(printf '\033')" "$TMPDIR/themed" \
+    || fail "--theme=default missing ESC bytes — colour not emitted"
+
+set +e
+"$BIN" --theme=none --language=shell tests/corpus/shell.sh > "$TMPDIR/plain" 2> "$TMPDIR/err"
+rc=$?
+set -e
+[ "$rc" = "0" ] || fail "--theme=none exit: got $rc, expected 0; stderr: $(cat "$TMPDIR/err")"
+if grep -q "$(printf '\033')" "$TMPDIR/plain"; then
+    fail "--theme=none must not emit ESC bytes"
+fi
+
+set +e
+"$BIN" --theme=nope --language=shell tests/corpus/shell.sh > /dev/null 2>"$TMPDIR/err"
+rc=$?
+set -e
+[ "$rc" = "2" ] || fail "--theme=nope exit: got $rc, expected 2"
+
 # Stderr sanitizer (FINDING-006 fix, shipped 1.0.1): control bytes
 # in echoed user args must not reach the terminal. A path carrying
 # ANSI-escape bytes should round-trip to stderr with the ESC replaced

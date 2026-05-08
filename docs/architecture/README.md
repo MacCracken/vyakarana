@@ -28,3 +28,4 @@ an ADR; not a how-to — that's a guide).
 | 001 | [Coverage invariant](001-coverage-invariant.md)                        | scanner correctness contract     |
 | 002 | [Scanner pipeline priority order](002-scanner-pipeline-priority.md)    | every grammar's token output     |
 | 003 | [Pair-rule ordering: longer prefixes first](003-pair-rule-ordering.md) | every grammar with multiple-quote shapes |
+| 004 | [Theme-palette contract](004-theme-palette-contract.md)                | every consumer rendering vyakarana tokens |

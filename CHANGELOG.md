@@ -6,6 +6,79 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [1.10.0] — 2026-05-08
+
+First **pre-2.0 prep wave**. Different shape from the
+language batches (1.3 – 1.9): no new grammars, but a
+substantial new CLI feature, an architecture-level contract
+documented for downstream consumers, and a guide for building
+on top of vyakarana. The 1.10 – 1.13 prep waves bring the
+1.x line to the doorstep of 2.0.0 (the streaming-tokenizer
+break).
+
+### Added
+
+- **`vyk --theme=<name>` flag.** Renders ANSI-coloured source
+  bytes instead of NDJSON. Three bundled themes:
+  - `default` — moderate-saturation palette tuned for
+    light-background terminals. Reference palette for
+    consumers writing their own themes.
+  - `dark` — bright variants tuned for dark-background
+    terminals.
+  - `none` — strips colour entirely. Useful for piping or
+    non-tty contexts.
+  Implementation lives in new `src/theme.cyr`; rendering
+  walks the tokenbuf, emits the theme's ANSI prefix per kind,
+  the source bytes for that span, and a reset escape.
+  `theme_resolve("name")` → integer tag; unknown names exit
+  with `EXIT_USAGE`. The theme module is **not** in `[lib]
+  modules` — it's CLI-only; downstream consumers build their
+  own renderers per the guide below.
+- **Architecture note 004 — theme-palette contract.** New
+  document at
+  [`docs/architecture/004-theme-palette-contract.md`](docs/architecture/004-theme-palette-contract.md).
+  Codifies the kind → palette slot mapping (the 10 token
+  kinds, indexed by `kind_name(k)` strings) as a stable
+  contract across the 1.x line. **Renaming a `kind_name` is
+  breaking** (silent fallback in consumer themes). Adding an
+  eleventh kind is breaking. The 10-slot floor stays — finer
+  distinctions are renderer-side, applied via secondary
+  palettes that introspect token text (the pattern from
+  [ADR 0004](docs/adr/0004-shell-builtins-as-ident.md) and
+  [ADR 0007](docs/adr/0007-rust-dollar-in-ident-start.md)).
+- **Consumer integration guide.** New document at
+  [`docs/guides/consumer-integration.md`](docs/guides/consumer-integration.md).
+  Audience: implementers of renderers / editors / themes /
+  content pipelines that sit on top of vyakarana. Covers
+  `[deps.vyakarana]` setup, the public API surface
+  (`tokenize_source` / tokenbuf accessors / kind constants),
+  how to render via the kind-name lookup, the zero-copy
+  invariant, lazy registry loading, error handling against
+  the coverage invariant, the corpus-sync boundary, and
+  performance expectations through 2.0.0.
+
+### Wiring
+
+- `src/main.cyr` — added `--theme=<name>` parsing alongside
+  `--language=<lang>`, and the rendering dispatch in
+  `tokenize_file`. `--help` updated to document the new flag.
+- `src/theme.cyr` — new file. Three theme functions
+  (`theme_default_color`, `theme_dark_color`, `theme_color`),
+  the resolver (`theme_resolve`), and a constant for the
+  reset escape. ASCII-only ANSI colour codes; no UTF-8 in
+  the theme module itself.
+- `tests/vyakarana.tcyr` — 14 new probe assertions covering
+  theme name resolution (5 cases including unknown / empty),
+  per-kind colour lookup for `default` / `dark` / `none`,
+  cross-theme differentiation, and the reset escape. 622 →
+  636 passing.
+- `scripts/smoke.sh` — three new probes covering
+  `--theme=default` (non-empty output containing ESC bytes),
+  `--theme=none` (no ESC bytes), and `--theme=nope`
+  (`EXIT_USAGE`).
+- `docs/architecture/README.md` — index extended with note
+  004.
+
 ## [1.9.0] — 2026-05-08
 
 AGNOS-native language batch. Two new grammars in one cut: CYML
