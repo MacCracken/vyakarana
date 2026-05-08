@@ -69,6 +69,14 @@ fn bootstrap_grammars() {
     if (gasm86 != 0) { registry_add(gasm86); }
     var gasmarm = grammar_load("grammars/asm_aarch64.cyml");
     if (gasmarm != 0) { registry_add(gasmarm); }
+    var gjava = grammar_load("grammars/java.cyml");
+    if (gjava != 0) { registry_add(gjava); }
+    var gkt = grammar_load("grammars/kotlin.cyml");
+    if (gkt != 0) { registry_add(gkt); }
+    var gcpp = grammar_load("grammars/cpp.cyml");
+    if (gcpp != 0) { registry_add(gcpp); }
+    var gcs = grammar_load("grammars/csharp.cyml");
+    if (gcs != 0) { registry_add(gcs); }
     return 0;
 }
 

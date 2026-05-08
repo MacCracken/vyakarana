@@ -955,6 +955,163 @@ fn main() {
     }
     assert_eq(saw_charlit_arm, 1, "'5' is 3-byte TK_STRING (after #)");
 
+    test_group("1.3.0 java grammar — loads and tokenizes cleanly");
+    var gjava = grammar_load("grammars/java.cyml");
+    assert_neq(gjava, 0, "grammar_load java returned non-null");
+    assert_eq(streq(grammar_name(gjava), "java"), 1, "name is 'java'");
+
+    # `class` is a keyword.
+    var tb_jv1 = tokenbuf_new();
+    var src_jv1 = "public class Foo";
+    tokenize_with_grammar(gjava, src_jv1, strlen(src_jv1), tb_jv1);
+    assert_eq(tokenbuf_kind(tb_jv1, 0), TK_KEYWORD, "public keyword");
+    assert_eq(tokenbuf_kind(tb_jv1, 2), TK_KEYWORD, "class keyword");
+
+    # `@Override` tokenizes as one ident (`@` in ident_start).
+    var tb_jv2 = tokenbuf_new();
+    var src_jv2 = "@Override";
+    tokenize_with_grammar(gjava, src_jv2, strlen(src_jv2), tb_jv2);
+    assert_eq(tokenbuf_count(tb_jv2), 1,          "@Override one token");
+    assert_eq(tokenbuf_kind(tb_jv2, 0), TK_IDENT, "@Override ident");
+    assert_eq(tokenbuf_len(tb_jv2, 0),  9,        "@Override len 9");
+
+    # `->` lambda arrow.
+    var tb_jv3 = tokenbuf_new();
+    var src_jv3 = "x -> x + 1";
+    tokenize_with_grammar(gjava, src_jv3, strlen(src_jv3), tb_jv3);
+    var saw_jv_arrow = 0;
+    var jv3i = 0;
+    while (jv3i < tokenbuf_count(tb_jv3)) {
+        if (tokenbuf_kind(tb_jv3, jv3i) == TK_OPERATOR) {
+            if (tokenbuf_len(tb_jv3, jv3i) == 2) {
+                var sjv = tokenbuf_start(tb_jv3, jv3i);
+                if (memeq(src_jv3 + sjv, "->", 2) == 1) { saw_jv_arrow = 1; }
+            }
+        }
+        jv3i = jv3i + 1;
+    }
+    assert_eq(saw_jv_arrow, 1, "-> as 2-byte op");
+
+    test_group("1.3.0 kotlin grammar — loads and tokenizes cleanly");
+    var gkt = grammar_load("grammars/kotlin.cyml");
+    assert_neq(gkt, 0, "grammar_load kotlin returned non-null");
+    assert_eq(streq(grammar_name(gkt), "kotlin"), 1, "name is 'kotlin'");
+
+    # `data class` — both keywords.
+    var tb_kt1 = tokenbuf_new();
+    var src_kt1 = "data class Foo";
+    tokenize_with_grammar(gkt, src_kt1, strlen(src_kt1), tb_kt1);
+    assert_eq(tokenbuf_kind(tb_kt1, 0), TK_KEYWORD, "data keyword");
+    assert_eq(tokenbuf_kind(tb_kt1, 2), TK_KEYWORD, "class keyword");
+
+    # Elvis operator `?:` is one 2-byte op.
+    var tb_kt2 = tokenbuf_new();
+    var src_kt2 = "x ?: 0";
+    tokenize_with_grammar(gkt, src_kt2, strlen(src_kt2), tb_kt2);
+    var saw_elvis = 0;
+    var kt2i = 0;
+    while (kt2i < tokenbuf_count(tb_kt2)) {
+        if (tokenbuf_kind(tb_kt2, kt2i) == TK_OPERATOR) {
+            if (tokenbuf_len(tb_kt2, kt2i) == 2) {
+                var skt = tokenbuf_start(tb_kt2, kt2i);
+                if (memeq(src_kt2 + skt, "?:", 2) == 1) { saw_elvis = 1; }
+            }
+        }
+        kt2i = kt2i + 1;
+    }
+    assert_eq(saw_elvis, 1, "?: Elvis op");
+
+    test_group("1.3.0 cpp grammar — loads and tokenizes cleanly");
+    var gcpp = grammar_load("grammars/cpp.cyml");
+    assert_neq(gcpp, 0, "grammar_load cpp returned non-null");
+    assert_eq(streq(grammar_name(gcpp), "cpp"), 1, "name is 'cpp'");
+
+    # `namespace` is a keyword.
+    var tb_cpp1 = tokenbuf_new();
+    var src_cpp1 = "namespace foo {}";
+    tokenize_with_grammar(gcpp, src_cpp1, strlen(src_cpp1), tb_cpp1);
+    assert_eq(tokenbuf_kind(tb_cpp1, 0), TK_KEYWORD, "namespace keyword");
+
+    # `::` scope-resolution as one 2-byte op.
+    var tb_cpp2 = tokenbuf_new();
+    var src_cpp2 = "std::vector";
+    tokenize_with_grammar(gcpp, src_cpp2, strlen(src_cpp2), tb_cpp2);
+    var saw_scope = 0;
+    var cpp2i = 0;
+    while (cpp2i < tokenbuf_count(tb_cpp2)) {
+        if (tokenbuf_kind(tb_cpp2, cpp2i) == TK_OPERATOR) {
+            if (tokenbuf_len(tb_cpp2, cpp2i) == 2) {
+                var scpp = tokenbuf_start(tb_cpp2, cpp2i);
+                if (memeq(src_cpp2 + scpp, "::", 2) == 1) { saw_scope = 1; }
+            }
+        }
+        cpp2i = cpp2i + 1;
+    }
+    assert_eq(saw_scope, 1, ":: scope-resolution op");
+
+    # `<=>` three-way compare (C++20) as one 3-byte op.
+    var tb_cpp3 = tokenbuf_new();
+    var src_cpp3 = "a <=> b";
+    tokenize_with_grammar(gcpp, src_cpp3, strlen(src_cpp3), tb_cpp3);
+    var saw_spaceship = 0;
+    var cpp3i = 0;
+    while (cpp3i < tokenbuf_count(tb_cpp3)) {
+        if (tokenbuf_kind(tb_cpp3, cpp3i) == TK_OPERATOR) {
+            if (tokenbuf_len(tb_cpp3, cpp3i) == 3) {
+                var scpp3 = tokenbuf_start(tb_cpp3, cpp3i);
+                if (memeq(src_cpp3 + scpp3, "<=>", 3) == 1) { saw_spaceship = 1; }
+            }
+        }
+        cpp3i = cpp3i + 1;
+    }
+    assert_eq(saw_spaceship, 1, "<=> three-way compare op");
+
+    test_group("1.3.0 csharp grammar — loads and tokenizes cleanly");
+    var gcs = grammar_load("grammars/csharp.cyml");
+    assert_neq(gcs, 0, "grammar_load csharp returned non-null");
+    assert_eq(streq(grammar_name(gcs), "csharp"), 1, "name is 'csharp'");
+
+    # `record` is a keyword.
+    var tb_cs1 = tokenbuf_new();
+    var src_cs1 = "public record Foo";
+    tokenize_with_grammar(gcs, src_cs1, strlen(src_cs1), tb_cs1);
+    assert_eq(tokenbuf_kind(tb_cs1, 0), TK_KEYWORD, "public keyword");
+    assert_eq(tokenbuf_kind(tb_cs1, 2), TK_KEYWORD, "record keyword");
+
+    # `=>` arrow as 2-byte op.
+    var tb_cs2 = tokenbuf_new();
+    var src_cs2 = "x => x";
+    tokenize_with_grammar(gcs, src_cs2, strlen(src_cs2), tb_cs2);
+    var saw_csarrow = 0;
+    var cs2i = 0;
+    while (cs2i < tokenbuf_count(tb_cs2)) {
+        if (tokenbuf_kind(tb_cs2, cs2i) == TK_OPERATOR) {
+            if (tokenbuf_len(tb_cs2, cs2i) == 2) {
+                var scs = tokenbuf_start(tb_cs2, cs2i);
+                if (memeq(src_cs2 + scs, "=>", 2) == 1) { saw_csarrow = 1; }
+            }
+        }
+        cs2i = cs2i + 1;
+    }
+    assert_eq(saw_csarrow, 1, "=> arrow op");
+
+    # `??=` null-coalesce-assign as one 3-byte op.
+    var tb_cs3 = tokenbuf_new();
+    var src_cs3 = "x ??= 0";
+    tokenize_with_grammar(gcs, src_cs3, strlen(src_cs3), tb_cs3);
+    var saw_nca = 0;
+    var cs3i = 0;
+    while (cs3i < tokenbuf_count(tb_cs3)) {
+        if (tokenbuf_kind(tb_cs3, cs3i) == TK_OPERATOR) {
+            if (tokenbuf_len(tb_cs3, cs3i) == 3) {
+                var scs3 = tokenbuf_start(tb_cs3, cs3i);
+                if (memeq(src_cs3 + scs3, "??=", 3) == 1) { saw_nca = 1; }
+            }
+        }
+        cs3i = cs3i + 1;
+    }
+    assert_eq(saw_nca, 1, "??= null-coalesce-assign op");
+
     test_group("version string shape");
     # VYK_VERSION lives in src/version_str.cyr (auto-generated by
     # scripts/version-bump.sh). Asserting shape, not value, so the

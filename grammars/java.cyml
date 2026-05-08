@@ -1,0 +1,137 @@
+# java — Java tokenizer grammar
+#
+# Rule scheme per ADR 0005. C-family at the token level — close in
+# shape to typescript.cyml + cpp.cyml.
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# vidya doesn't ship a Java reference sample yet. The local
+# `tests/corpus/concept.java` mirrors the lexer+parser theme used
+# by every vidya `lexing_and_parsing/` sample, exercising
+# annotations (`@Override`), generics (`List<String>`), `sealed
+# interface` / `record` / `switch` expressions, char literals
+# (`'+'`, `'\0'`, `'\n'`), block comments, and the Java keyword
+# set. Replace the stand-in with a vidya snapshot when one ships.
+#
+# Annotations: `@` is in `ident_start` so `@Override`,
+# `@Deprecated`, `@SuppressWarnings`, etc. tokenize as a single
+# ident — same pragmatic move as Zig's `@`-builtins (1.2.0) and
+# Rust's `$`-macros ([ADR 0007](../docs/adr/0007-rust-dollar-in-ident-start.md)).
+#
+# Identifier dollar: `$` is also in `ident_start` since Java
+# permits `$` in identifiers (compiler-generated names use it for
+# inner classes, lambdas, etc.).
+#
+# Known gaps (not triggered by the stand-in):
+#   - Text blocks (`"""…"""`, since Java 13). Not in the
+#     stand-in. If a future corpus uses them, add a pair rule
+#     ordered before the regular `"…"` rule (same shape as
+#     [ADR 0008](../docs/adr/0008-toml-triple-quoted-strings.md)
+#     for TOML).
+#   - Numeric literal suffixes (`42L`, `3.14f`) and underscores
+#     (`1_000_000`). Tokenize as number + ident or fragment at the
+#     `_` — cosmetic; coverage holds.
+#   - Float literals (`3.14`). The number scanner stops at `.`;
+#     `3.14` becomes `number(3) + .(operator) + number(14)`.
+#     Cosmetic; coverage holds.
+
+[grammar]
+name = "java"
+extensions = [".java"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+# `@` for annotations, `$` for compiler-generated / lambda names.
+ident_start = "A-Za-z_$@"
+ident_cont  = "A-Za-z0-9_$"
+
+number_decimal = true
+number_0x      = true
+number_0b      = true
+number_0o      = false
+
+special_vars = false
+unicode_ident = true
+char_literal  = true
+
+# Operators in longest-match order. Java-specific: `->` (lambdas),
+# `::` (method reference), `>>>` (unsigned right shift), `>>>=`,
+# plus the standard C-family set including compound assignment.
+operators = [
+    ">>>=",
+    "<<=", ">>=",
+    ">>>",
+    "<<", ">>",
+    "&&", "||",
+    "==", "!=", "<=", ">=",
+    "->", "::",
+    "+=", "-=", "*=", "/=", "%=",
+    "&=", "|=", "^=",
+    "++", "--",
+    "=", "+", "-", "*", "/", "%",
+    "!", "~", "&", "|", "^",
+    "<", ">",
+    "?",
+]
+
+# Punctuation. `:` (label / ternary / switch arms) and `;`
+# (statement terminator) join the standard C-family set.
+punctuation = [
+    "(", ")", "{", "}", "[", "]",
+    ";", ",", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+[[rules]]
+kind = "comment"
+match = "line"
+start = "//"
+
+
+# Block comments `/* … */`. Non-nestable in Java per JLS §3.7;
+# same simple greedy match as ADR 0009's C grammar.
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "/*"
+end = "*/"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # Module / package / imports
+    "package", "import",
+    # Type declarations
+    "class", "interface", "enum", "record", "sealed",
+    "permits", "extends", "implements", "non-sealed",
+    # Modifiers
+    "public", "protected", "private", "static", "final",
+    "abstract", "synchronized", "native", "strictfp",
+    "transient", "volatile", "default",
+    # Control flow
+    "if", "else", "while", "do", "for", "switch", "case",
+    "break", "continue", "return", "yield",
+    "try", "catch", "finally", "throw", "throws",
+    # Object-oriented
+    "new", "this", "super", "instanceof",
+    # Primitive types + void
+    "void", "boolean", "byte", "short", "int", "long",
+    "float", "double", "char",
+    # Reserved literals
+    "true", "false", "null",
+    # Misc reserved
+    "var", "assert", "goto", "const",
+]

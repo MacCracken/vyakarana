@@ -156,11 +156,10 @@ grammar's `.cyml` is materially altered.
 | zig         | vidya `zig.zig` (~6500B)            | 2279 | Added in 1.2.0. `@`-builtins via `ident_start`; `=>`, `**`, `++`, saturating/wrapping ops. |
 | asm_x86_64  | vidya `asm_x86_64.s` (8167B)        | 1655 | Added in 1.2.2. Intel syntax; `.`-prefixed directives via `ident_start`; opcodes/registers as ident per ADR 0004. AT&T syntax (`%rax`, `$1`) deferred. |
 | asm_aarch64 | vidya `asm_aarch64.s` (8037B)       | 1367 | Added in 1.2.3. ARM GAS; `//` line comments; `#` immediate prefix as operator; `.` in BOTH ident_start and ident_cont so `b.eq`/`b.ne`/`b.lt` are one ident. Shares `.s`/`.S` with asm_x86_64 — pass `--language=asm_aarch64` explicitly (default routes to x86_64). |
-
-Remaining 1.2.x candidate: `openqasm` — see
-`../development/state.md` "Next up." (Original 1.2.x plan also
-listed openqasm; deferred to 1.3.x or later if no consumer
-forces it.)
+| java        | stand-in `concept.java` (~5KB)      | 1705 | Added in 1.3.0. ADR 0006 stand-in (vidya doesn't ship Java yet). `@` in `ident_start` so `@Override` is one ident. Standard C-family operators plus `->` (lambda), `::` (method ref), `>>>` (unsigned right shift). |
+| kotlin      | stand-in `concept.kt` (~4KB)        | 1320 | Added in 1.3.0. ADR 0006 stand-in. `@` and `$` in `ident_start`. Operators include `?:` (Elvis), `?.` (safe-call), `!!` (not-null assert), `..` (range), `===` / `!==` (referential). |
+| cpp         | stand-in `concept.cpp` (~5KB)       | 1686 | Added in 1.3.0. ADR 0006 stand-in. `::` scope-resolution, `<=>` three-way compare, `->*` / `.*` member-pointer, `...` parameter packs. Templates / generics handled by existing `<` `>` operator pair (consumer-side disambiguation). |
+| csharp      | stand-in `concept.cs` (~5KB)        | 1399 | Added in 1.3.0. ADR 0006 stand-in. `??=` / `??` / `?.` null-safety operators, `=>` (lambda / expression body / switch arms), `..` ranges. `@` and `$` as 1-byte operators (verbatim / interpolated string prefixes). |
 
 ---
 

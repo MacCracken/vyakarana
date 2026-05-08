@@ -148,10 +148,18 @@ fn detect_language(path) {
         if (memeq(path + n - 3, ".js", 3) == 1) { return "javascript"; }
         if (memeq(path + n - 3, ".py", 3) == 1) { return "python"; }
         if (memeq(path + n - 3, ".go", 3) == 1) { return "go"; }
+        if (memeq(path + n - 3, ".kt", 3) == 1) { return "kotlin"; }
+        if (memeq(path + n - 3, ".cs", 3) == 1) { return "csharp"; }
+        if (memeq(path + n - 3, ".cc", 3) == 1) { return "cpp"; }
     }
     if (n >= 4) {
         if (memeq(path + n - 4, ".mjs", 4) == 1) { return "javascript"; }
         if (memeq(path + n - 4, ".cjs", 4) == 1) { return "javascript"; }
+        if (memeq(path + n - 4, ".cpp", 4) == 1) { return "cpp"; }
+        if (memeq(path + n - 4, ".cxx", 4) == 1) { return "cpp"; }
+        if (memeq(path + n - 4, ".hpp", 4) == 1) { return "cpp"; }
+        if (memeq(path + n - 4, ".hxx", 4) == 1) { return "cpp"; }
+        if (memeq(path + n - 4, ".kts", 4) == 1) { return "kotlin"; }
     }
     if (n >= 4) {
         if (memeq(path + n - 4, ".yml", 4) == 1) { return "yaml"; }
@@ -170,6 +178,7 @@ fn detect_language(path) {
         if (memeq(path + n - 5, ".bash", 5) == 1) { return "shell"; }
         if (memeq(path + n - 5, ".toml", 5) == 1) { return "toml"; }
         if (memeq(path + n - 5, ".json", 5) == 1) { return "json"; }
+        if (memeq(path + n - 5, ".java", 5) == 1) { return "java"; }
         # `.cyml` is Cyrius's TOML-ish config/grammar format — header
         # is TOML-shaped, optional `---`/markdown body follows. Route
         # to the TOML grammar for a best-effort tokenization.

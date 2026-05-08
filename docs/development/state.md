@@ -4,17 +4,17 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–1.2.4 are
+> **Read this file before doing anything.** 1.0.0–1.3.0 are
 > shipped. As of 2026-05-08 the toolchain pin is `cyrius = "5.9.36"`.
-> 1.2.x history: 1.2.0 added Go and Zig; 1.2.1 shipped
-> `[defaults] char_literal` (ADR 0010); 1.2.2 shipped
-> `asm_x86_64` (Intel syntax); 1.2.3 shipped `asm_aarch64`
-> (with ARM-specific tuning); **1.2.4 closes out the line** —
-> dead-code cleanup, stale-comment sweep, fresh security audit
-> ([docs/audit/2026-05-08-1.2.x-closeout-audit.md](../audit/2026-05-08-1.2.x-closeout-audit.md):
-> 0 CRITICAL/HIGH/MEDIUM, 0 new LOWs). All three gates green
-> at 1.2.4. Next: 1.3.0 — JVM + C-family languages — see §Next
-> up.
+> The 1.2.x line closed at 1.2.4 (closeout audit clean).
+> **1.3.0 ships the JVM + C-family batch — Java, Kotlin, C++,
+> C# — all with ADR 0006 stand-in corpora since vidya doesn't
+> yet have reference samples for these languages.** Notably, no
+> new scanner extensions were needed: cpp (the most likely to
+> surface ADR work) was handled by the existing operator and
+> identifier machinery. 19 grammars bundled now, 463/463 tests
+> passing. Next: 1.4.0 — scripting + mobile (php/ruby/lua/swift)
+> — see §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -34,51 +34,46 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `1.2.4` in `VERSION`, `src/version_str.cyr`, and
-  `dist/vyakarana.cyr`. Tagged predecessors:
-  `1.0.0` / `1.0.1` (ANSI-escape sanitizer) /
-  `1.0.2` (distlib bundle) / `1.0.3` (cyrius 5.9.36 pin) /
-  `1.1.0` (Rust `$`-macros, TOML triple-quoted, `unicode_ident`
-  + C block comments) / `1.2.0` (Go + Zig) /
-  `1.2.1` (`char_literal` flag — ADR 0010) /
-  `1.2.2` (`asm_x86_64`) / `1.2.3` (`asm_aarch64` + roadmap
-  restructure).
-- **What 1.2.4 added (closeout, no behavioural change):**
-  - **Dead-code removal.** Four vyakarana-owned functions the
-    compiler had been flagging as dead — `registry_get`,
-    `registry_count`, `grammar_count`, `_g_cstr_copy` — removed.
-    None had callers; none were documented public API.
-    `kind_is_valid` retained (exported via `[lib] modules`,
-    exercised by 5 test assertions; comment updated to explain
-    why the binary build flags it dead).
-  - **Stale comment sweep.** Six source-comment references to
-    pre-shipped milestones rewritten to point at current reality
-    (architecture/overview, roadmap pointers, etc.).
-  - **Security audit refresh.** First full audit pass since the
-    2026-04-23 baseline. Filed at
-    [`../audit/2026-05-08-1.2.x-closeout-audit.md`](../audit/2026-05-08-1.2.x-closeout-audit.md).
-    Reviews every scanner change since 2026-04-23
-    (`unicode_ident`, `char_literal`, the four new grammar
-    files, the 1.2.4 cleanup). 0 CRITICAL / 0 HIGH / 0 MEDIUM /
-    0 new LOW. The 2026-04-23 baseline findings carry forward
-    unchanged.
+- **Version:** `1.3.0` in `VERSION`, `src/version_str.cyr`, and
+  `dist/vyakarana.cyr`. Full 1.x tag history through 1.2.4 in
+  the CHANGELOG.
+- **What 1.3.0 added:** four JVM + C-family grammars in one cut
+  — **Java, Kotlin, C++, C#**. All four ship with hand-rolled
+  stand-in corpora per
+  [ADR 0006](../adr/0006-standin-corpus-policy.md) since vidya
+  doesn't yet ship reference samples for these languages.
+  Token counts: java 1705, kotlin 1320, cpp 1686, csharp 1399
+  — all zero errors on canonical samples. **No new scanner
+  extensions were needed**: cpp handled templates / `::` /
+  generics / namespaces with existing operator + identifier
+  machinery. The 1.1.0 / 1.2.1 work (`unicode_ident`,
+  `char_literal`, block-comment pair rule) covered everything.
+- **Test count:** 463/463 (was 439 at 1.2.4 — added 24
+  assertions: 3 probes per grammar × 4 grammars = 12, plus
+  some auxiliary checks).
+- **Grammars:** 19 bundled (shell, toml, json, cyrius, rust,
+  yaml, markdown, c, typescript, javascript, python, go, zig,
+  asm_x86_64, asm_aarch64, **java, kotlin, cpp, csharp**).
 - **Toolchain pin:** `cyrius = "5.9.36"` in `cyrius.cyml`
   (unchanged since 1.0.3).
-- **Test count:** 439/439 (unchanged across 1.2.4 — closeout
-  doesn't add tests).
-- **Grammars:** 15 bundled (shell, toml, json, cyrius, rust,
-  yaml, markdown, c, typescript, javascript, python, go, zig,
-  asm_x86_64, asm_aarch64).
-- **Build state: GREEN on cyrius 5.9.36, full clean rebuild.**
-  `rm -rf build lib && cyrius deps && cyrius build` clean;
-  `cyrius test tests/vyakarana.tcyr` 439/439;
+- **Build state: GREEN on cyrius 5.9.36.** `cyrius build`
+  clean; `cyrius test tests/vyakarana.tcyr` 463/463;
   `sh scripts/smoke.sh build/vyk` reports M0+M1+M2+M3 passing
-  at v1.2.4. `dist/vyakarana.cyr` regenerated.
-- **Consumer pressure:** unchanged. owl pins `1.2.0`; can bump
-  to 1.2.4 to pick up four new grammars + char_literal + the
-  audit. Public `tokenize_source` / `tokenbuf` API is
-  unchanged across 1.0.0 → 1.2.4. Grammar record stayed at
-  152 bytes since 1.2.1.
+  at v1.3.0. `dist/vyakarana.cyr` regenerated.
+- **Consumer pressure:** unchanged. Public `tokenize_source` /
+  `tokenbuf` API is unchanged across 1.0.0 → 1.3.0. Grammar
+  record stayed at 152 bytes since 1.2.1. owl can bump its pin
+  to 1.3.0 to pick up the four new grammars.
+
+### Stand-in corpora — replace when vidya ships
+
+Per [ADR 0006](../adr/0006-standin-corpus-policy.md), the four
+1.3.0 grammars use hand-rolled `tests/corpus/concept.<ext>`
+samples. They're intentionally short (~150 lines each) and follow
+the lexer+parser theme that vidya's `lexing_and_parsing/`
+samples use. When vidya adds reference samples for any of these
+four languages, swap the stand-in for the vidya snapshot and
+update the corpus README.
 - **Toolchain pin:** `cyrius = "5.9.36"` in `cyrius.cyml`
   (unchanged since 1.0.3).
 - **Build state: GREEN on cyrius 5.9.36.** `cyrius build` clean;
@@ -129,23 +124,33 @@ additions land).
 
 ---
 
-## Next up — 1.3.0 (JVM + C-family)
+## Next up — 1.4.0 (Scripting + mobile)
 
-The 1.2.x line is closed. Per the
-[restructured roadmap](./roadmap.md), the next minor cut is
-**1.3.0 — JVM + C-family languages**: `java`, `kotlin`, `cpp`,
-`csharp`. All four benefit from the 1.1.0 scanner-extension
-trio (unicode_ident + block comments + `$` in ident_start) and
-1.2.1's char_literal flag. `cpp` is the most likely to surface
-new scanner needs (templates, `::`, `<>` generics, namespace
-syntax) — track what shapes appear in vidya's `cpp.cpp`
-samples first; if a real shape forces an additive default, it
-rolls into 1.3.0 with its own ADR.
+Per the [roadmap](./roadmap.md), the next batch is
+**1.4.0 — scripting + mobile**: `php`, `ruby`,
+`lua`, `swift`. Same recipe as 1.3.0 — vidya likely doesn't
+have reference samples for these either, so plan on ADR 0006
+stand-ins.
 
-After 1.3.0, the language line continues 1.4.0–1.9.0 per the
-roadmap, then the pre-2.0 prep waves (1.10–1.13). 2.0.0 is
-the streaming-tokenizer break and the only release scheduled
-in the 2.x line under the current versioning rule.
+Surfaces to watch:
+- **Ruby** has `=begin`/`=end` block comments (different shape
+  from `/* */`), `<<~HEREDOC` heredocs (variable-length), and
+  string interpolation `#{expr}`. May surface scanner ADR work.
+- **Lua** has `--[[` long-comment markers and `[[…]]` long
+  strings — both with optional `=` padding for nested forms
+  (`[==[…]==]`). Variable-length-delimiter pair rules don't
+  exist in the scanner today. Possible ADR.
+- **Swift** has multi-line `"""…"""` strings (same shape as
+  TOML's [ADR 0008](../adr/0008-toml-triple-quoted-strings.md))
+  and string interpolation `\(expr)`.
+- **PHP** is mostly C-family at the token level; should be
+  the most mechanical of the four.
+
+After 1.4.0, the roadmap continues with 1.5.0 (functional —
+elixir, ocaml, haskell), 1.6.0 (data/query/IDL), 1.7.0 (markup),
+1.8.0 (devops), 1.9.0 (AGNOS-native), then the pre-2.0 prep
+waves (1.10–1.13). 2.0.0 is the streaming-tokenizer break and
+the only release scheduled in the 2.x line.
 
 Each new grammar is a `grammars/<name>.cyml` plus a
 `tests/corpus/<name>.<ext>` (vidya snapshot per
@@ -209,4 +214,6 @@ AGNOS first-party-documentation standard); 2026-05-08 (1.2.0 cut
 flag); 2026-05-08 (1.2.2 cut + `asm_x86_64`); 2026-05-08
 (1.2.3 cut + `asm_aarch64` + roadmap restructure); 2026-05-08
 (1.2.4 closeout — dead-code cleanup + stale-comment sweep +
-1.2.x audit). Next refresh: when 1.3.0 (JVM + C-family) ships.*
+1.2.x audit); 2026-05-08 (1.3.0 cut + JVM + C-family —
+java/kotlin/cpp/csharp via ADR 0006 stand-ins). Next refresh:
+when 1.4.0 (scripting + mobile) ships.*

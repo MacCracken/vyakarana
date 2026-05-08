@@ -6,6 +6,77 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [1.3.0] — 2026-05-08
+
+JVM + C-family language batch. Four new grammars in one cut.
+All four ship with stand-in corpora per
+[ADR 0006](docs/adr/0006-standin-corpus-policy.md) — vidya
+doesn't yet have reference samples for these languages, so each
+gets a hand-rolled `concept.<ext>` mirroring the lexer+parser
+theme used by every vidya `lexing_and_parsing/` sample.
+**No new scanner extensions were needed** — the 1.1.0 / 1.2.1
+machinery (`unicode_ident`, `char_literal`, block-comment pair
+rule) covered all four languages without an ADR.
+
+### Added
+
+- **Java grammar.** New `grammars/java.cyml` +
+  `tests/corpus/concept.java` (1705 tokens, zero errors). `@`
+  in `ident_start` so `@Override`, `@Deprecated`,
+  `@SuppressWarnings` tokenize as a single ident — same call as
+  Zig's `@`-builtins (1.2.0) and Rust's `$`-macros
+  ([ADR 0007](docs/adr/0007-rust-dollar-in-ident-start.md)).
+  `$` also in `ident_start` for compiler-generated names.
+  Operators include `->` (lambdas), `::` (method ref), `>>>`
+  (unsigned right shift). Keyword set covers Java 21: `record`,
+  `sealed`, `permits`, `non-sealed`, `yield`, `var`, plus the
+  classic reserved words.
+- **Kotlin grammar.** New `grammars/kotlin.cyml` +
+  `tests/corpus/concept.kt` (1320 tokens, zero errors). `@` and
+  `$` in `ident_start`. Operators include `?:` (Elvis), `?.`
+  (safe-call), `!!` (not-null assert), `..` (range), `===` /
+  `!==` (referential equality), `->` (lambda / when arms),
+  `::` (callable reference). Keyword set covers data/sealed
+  classes, `suspend`, `inline`/`noinline`/`crossinline`,
+  contextual `in`/`out`/`as`/`by`/`where`.
+- **C++ grammar.** New `grammars/cpp.cyml` +
+  `tests/corpus/concept.cpp` (1686 tokens, zero errors). The
+  language most likely to surface scanner ADR work in this cut
+  — in practice the existing operator and identifier machinery
+  handled templates / `::` / generics / namespaces without new
+  defaults. `<` and `>` already tokenize as comparison
+  operators (consumers handle the template-vs-shift
+  disambiguation), `::` is a 2-char operator, and `auto` /
+  `template` / `typename` are plain keywords. Operators include
+  `<=>` (three-way compare, C++20), `->*` and `.*` (member
+  pointer), `...` (parameter packs). Keyword set covers
+  C++20-era surface (concepts, modules, coroutines).
+- **C# grammar.** New `grammars/csharp.cyml` +
+  `tests/corpus/concept.cs` (1399 tokens, zero errors).
+  Operators include `??=` / `??` (null-coalesce assign /
+  value), `?.` (null-conditional), `=>` (lambda /
+  expression-body / switch arms), `..` (range). `@` and `$`
+  added to the operator list (verbatim / interpolated string
+  prefixes — the regular `"..."` rule absorbs the body).
+  Keyword set covers C# 12-era surface including `record`,
+  `init`-pattern words (`when`, `with`), and LINQ contextual
+  keywords.
+
+### Wiring
+
+- `src/tokenize.cyr` — all four added to `bootstrap_grammars()`.
+- `src/main.cyr` — extension dispatch: `.java`, `.kt`/`.kts`,
+  `.cpp`/`.cc`/`.cxx`/`.hpp`/`.hxx`, `.cs`/`.csx`.
+- `scripts/smoke.sh` — all four added to `--list-languages`
+  check (now 19 grammars) and the corpus round-trip loop.
+- `tests/vyakarana.tcyr` — three probe assertions per grammar
+  (load + name + grammar-specific operator/keyword check).
+  439 → 463 passing. One naming collision with the existing
+  TypeScript probe (`saw_arrow`) renamed to `saw_jv_arrow` for
+  the Java probe — Cyrius vars are function-scoped per
+  CLAUDE.md and same-name redeclaration at function-top-level
+  errors as a duplicate.
+
 ## [1.2.4] — 2026-05-08
 
 Closeout / P(-1) hardening pass for the 1.2.x line. No

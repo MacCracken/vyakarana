@@ -1,0 +1,148 @@
+# cpp — C++ tokenizer grammar
+#
+# Rule scheme per ADR 0005. Close in shape to c.cyml plus C++-only
+# tokens (`::`, `->`, `<>` template brackets via standard
+# operators, `nullptr`, namespaces, lambdas, ranges). A C++ grammar
+# was the most likely 1.3.0 entry to surface scanner ADR work
+# (templates, generics, namespace `::`); in practice the existing
+# operator and identifier machinery handles all of it without new
+# scanner defaults — `<` and `>` already tokenize as operators
+# (greedy comparison shape; consumers parse the template-vs-shift
+# disambiguation), `::` is a 2-char operator, and `auto` /
+# `template` / `typename` are plain keywords.
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# vidya doesn't ship a C++ reference sample yet. The local
+# `tests/corpus/concept.cpp` mirrors the lexer+parser theme used
+# elsewhere, exercising namespace declarations, `enum class`,
+# `std::unique_ptr`, lambdas, range-for, char literals (`'+'`,
+# `'\0'`), block comments, raw string is NOT exercised.
+#
+# Known gaps (not triggered by the stand-in):
+#   - Raw string literals `R"delim(…)delim"`. Not in the
+#     stand-in. C++11+; would need a custom rule shape since the
+#     delimiter is variable-length.
+#   - User-defined literal suffixes (`42_km`, `"x"sv`). The
+#     suffix tokenizes as ident after the number/string —
+#     cosmetic; coverage holds.
+#   - Numeric digit separators (`1'000'000` in C++14+). The
+#     apostrophe digit-separator looks like char-literal context;
+#     could be confused with `char_literal`. Not in the stand-in;
+#     if it appears in a real corpus, add a `digit_sep` flag.
+#   - Preprocessor directives (`#include`, `#define`, `#ifdef`):
+#     same shape as C. Tokenize as `#` op + ident; coverage holds.
+#   - Trigraphs / digraphs (`<:`, `:>`, `??=`): obsolete; no
+#     real-world C++ uses them.
+
+[grammar]
+name = "cpp"
+extensions = [".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+ident_start = "A-Za-z_"
+ident_cont  = "A-Za-z0-9_"
+
+number_decimal = true
+number_0x      = true
+number_0b      = true
+number_0o      = false
+
+special_vars = false
+unicode_ident = true
+char_literal  = true
+
+# Operators in longest-match order. C++-specific: `::` (scope
+# resolution), `->*` and `.*` (member-pointer access), `<=>`
+# (three-way compare, C++20), `...` (parameter pack), `->`
+# (trailing return / lambda body), plus the standard C-family
+# set including compound assignment.
+operators = [
+    "<<=", ">>=", "<=>",
+    "->*",
+    "<<", ">>",
+    "&&", "||",
+    "==", "!=", "<=", ">=",
+    "::", "->", ".*", "...",
+    "+=", "-=", "*=", "/=", "%=",
+    "&=", "|=", "^=",
+    "++", "--",
+    "=", "+", "-", "*", "/", "%",
+    "!", "~", "&", "|", "^",
+    "<", ">",
+    "?",
+    "#",
+]
+
+punctuation = [
+    "(", ")", "{", "}", "[", "]",
+    ";", ",", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+[[rules]]
+kind = "comment"
+match = "line"
+start = "//"
+
+
+# Block comments `/* … */`. C++ inherits C's non-nestable shape.
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "/*"
+end = "*/"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # Storage / linkage
+    "auto", "register", "static", "extern", "thread_local",
+    "mutable", "constexpr", "consteval", "constinit",
+    "inline", "explicit", "friend", "virtual",
+    # CV-qualifiers
+    "const", "volatile", "restrict",
+    # Type-declaration heads
+    "class", "struct", "union", "enum", "namespace",
+    "typename", "template", "using", "typedef",
+    "concept", "requires",
+    # Control flow
+    "if", "else", "while", "do", "for", "switch", "case",
+    "default", "break", "continue", "return", "goto",
+    # Exception handling
+    "try", "catch", "throw", "noexcept",
+    # Object / casts
+    "new", "delete", "this", "operator",
+    "static_cast", "dynamic_cast", "const_cast", "reinterpret_cast",
+    "sizeof", "alignof", "alignas", "decltype",
+    "typeid",
+    # Primitive types + void
+    "void", "bool", "char", "wchar_t", "char8_t", "char16_t",
+    "char32_t", "short", "int", "long", "signed", "unsigned",
+    "float", "double",
+    # Reserved literals
+    "true", "false", "nullptr",
+    # Co_-suite (C++20 coroutines)
+    "co_await", "co_yield", "co_return",
+    # Module syntax (C++20)
+    "module", "import", "export",
+    # Misc reserved
+    "and", "or", "not", "xor",
+    "bitand", "bitor", "compl", "not_eq",
+    "and_eq", "or_eq", "xor_eq",
+    "static_assert",
+]
