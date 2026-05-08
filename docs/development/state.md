@@ -4,14 +4,14 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–1.12.0 are
+> **Read this file before doing anything.** 1.0.0–1.12.1 are
 > shipped. As of 2026-05-08 the toolchain pin is `cyrius = "5.9.36"`.
-> 1.11.x closed the external-integrations wave; **1.12.0 ships
-> the fuzz + stress harness + post-1.11 security audit** (M7
-> prep groundwork). 38 grammars bundled (unchanged), 717/717
-> tests passing, 3/3 fuzz harnesses passing. CI now runs
-> `cyrius fuzz` on every PR. Next is 1.12.1 (Helix + iTerm
-> theme export — deferred from 1.11.1) — see §Next up.
+> 1.11.x closed the external-integrations wave; **1.12.1 ships
+> Helix + iTerm theme export formats** — pulls the followups
+> deferred from 1.11.1. 1.12.0 already locked in the fuzz +
+> stress harness + post-1.11 audit. 38 grammars bundled
+> (unchanged), 717/717 tests passing, 3/3 fuzz harnesses
+> passing. Next is 1.13.0 (RC polish) — see §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -31,8 +31,18 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `1.12.0` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `1.12.1` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`. Full 1.x tag history in the CHANGELOG.
+- **What 1.12.1 added:**
+  - **`vyk --export-theme=helix`** — Helix `theme.toml`
+    output (`"<scope>" = "<hex>"` per kind). Pairs with
+    `--theme=<name>` for palette selection.
+  - **`vyk --export-theme=iterm`** — iTerm `.itermcolors`
+    plist with the 16 ANSI colours plus background /
+    foreground / cursor / selection. Dark variant inverts
+    background + foreground.
+  - Closes the "deferred until a real consumer asks"
+    followup from 1.11.1's CHANGELOG.
 - **What 1.12.0 added (M7-prep groundwork):**
   - **Fuzz harnesses** (`fuzz/*.fcyr`) — one per public API
     entry: `tokenize.fcyr`, `detect.fcyr`,
@@ -279,27 +289,17 @@ Next scheduled audit: 1.13.x (RC polish) before tagging 1.13.0.
 
 ---
 
-## Next up — 1.12.1
+## Next up — 1.13.0
 
-The 1.11.x external-integrations wave is complete:
+Closed waves:
 
-- **1.11.0 — LSP semantic-tokens bridge.** Shipped. ADR 0012.
-- **1.11.1 — Grammar composition + theme export + self-
-  contained dist bundle.** Shipped. ADRs 0013, 0014.
-- **1.11.2 — Content-based language detection.** Shipped.
-  ADR 0015.
-
-The 1.12.x window:
-
-- **1.12.0 — Fuzz + stress harness + post-1.11 audit.**
-  Shipped (this cut). 3 fuzz harnesses, 10 stress probes,
-  one LOW finding fixed in-pass.
-- **1.12.1 — Helix + iTerm theme export.** Pulls the
-  followups deferred from 1.11.1. Reuses
-  `src/theme_export.cyr`'s kind→hex mapping; adds two new
-  emitter functions for `theme.toml` (Helix) and
-  `.itermcolors` plist (iTerm). Smoke probes per format.
-  No new ADR (extends 1.11.1's design).
+- **1.11.x — external integrations.** LSP bridge (1.11.0,
+  ADR 0012); grammar composition + theme export +
+  self-contained dist bundle (1.11.1, ADRs 0013–0014);
+  content-based detection (1.11.2, ADR 0015).
+- **1.12.x — hardening + theme export polish.** Fuzz +
+  stress harness + post-1.11 audit (1.12.0); Helix + iTerm
+  theme export (1.12.1).
 
 Still queued from earlier:
 
@@ -307,12 +307,24 @@ Still queued from earlier:
   `match = "compose"` rule shape uses literal-prefix start —
   can't bind a captured language tag. Would need a new
   `match = "compose_fenced"`. See ADR 0013 §When to revisit.
-  Likely 1.13.x or its own minor.
+  Likely lands as part of 1.13.x or its own minor.
 
-Beyond 1.12.x:
+Now in flight:
 
-- **1.13.0** — RC polish: binary size, startup benchmarks,
-  error messages, man page, AGNOS / Cyrius packaging.
+- **1.13.0 — RC polish.** Final pre-2.0 cut. Targets:
+  binary size pass (DCE everything we can; check that the
+  `dead:` list shrinks); startup benchmarks (grammar
+  bootstrap, first-tokenize latency — bench under
+  `tests/bcyr/`); error message review (every `EXIT_*` and
+  `usage_error` message readable in isolation); man page
+  (or `vyk --help` audit); AGNOS / Cyrius packaging
+  (`cyrius package` flow — make sure the `.ark` distributable
+  builds and runs); 1.13.x security audit. The user controls
+  whether 1.13.0 ships markdown fence routing or punts to
+  1.13.1.
+
+After 1.13.x:
+
 - **2.0.0** — Streaming tokenizer (M5 carryover). The one
   scheduled break in the public API.
 - **1.13.0** — RC polish: binary size, startup benchmarks,

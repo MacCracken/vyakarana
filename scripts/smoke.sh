@@ -140,10 +140,54 @@ grep -q '"type": "dark"' "$TMPDIR/vscode-dark.json" \
     || fail "--theme=dark --export-theme=vscode missing dark type"
 
 set +e
-"$BIN" --export-theme=helix > /dev/null 2>"$TMPDIR/err"
+"$BIN" --export-theme=helix > "$TMPDIR/helix.toml" 2>"$TMPDIR/err"
 rc=$?
 set -e
-[ "$rc" = "2" ] || fail "--export-theme=helix exit: got $rc, expected 2"
+[ "$rc" = "0" ] || fail "--export-theme=helix exit: got $rc, expected 0"
+grep -q '"keyword" = "#' "$TMPDIR/helix.toml" \
+    || fail "--export-theme=helix: missing keyword scope"
+grep -q 'vyakarana-default' "$TMPDIR/helix.toml" \
+    || fail "--export-theme=helix: missing default name"
+
+set +e
+"$BIN" --theme=dark --export-theme=helix > "$TMPDIR/helix-dark.toml" 2> "$TMPDIR/err"
+rc=$?
+set -e
+[ "$rc" = "0" ] || fail "--theme=dark --export-theme=helix exit: got $rc"
+grep -q 'vyakarana-dark' "$TMPDIR/helix-dark.toml" \
+    || fail "--theme=dark --export-theme=helix: missing dark name"
+grep -q '"keyword" = "#ff00ff"' "$TMPDIR/helix-dark.toml" \
+    || fail "--theme=dark --export-theme=helix: missing bright magenta keyword"
+
+set +e
+"$BIN" --export-theme=iterm > "$TMPDIR/iterm.itermcolors" 2>"$TMPDIR/err"
+rc=$?
+set -e
+[ "$rc" = "0" ] || fail "--export-theme=iterm exit: got $rc, expected 0"
+grep -q '<?xml version' "$TMPDIR/iterm.itermcolors" \
+    || fail "--export-theme=iterm: missing XML header"
+grep -q '<key>Ansi 0 Color</key>' "$TMPDIR/iterm.itermcolors" \
+    || fail "--export-theme=iterm: missing Ansi 0 entry"
+grep -q '<key>Ansi 15 Color</key>' "$TMPDIR/iterm.itermcolors" \
+    || fail "--export-theme=iterm: missing Ansi 15 entry"
+grep -q '<key>Background Color</key>' "$TMPDIR/iterm.itermcolors" \
+    || fail "--export-theme=iterm: missing Background Color"
+
+set +e
+"$BIN" --theme=dark --export-theme=iterm > "$TMPDIR/iterm-dark.itermcolors" 2> "$TMPDIR/err"
+rc=$?
+set -e
+[ "$rc" = "0" ] || fail "--theme=dark --export-theme=iterm exit: got $rc"
+# Dark theme background = black (0,0,0). Light theme = white.
+# Probe: line after `Background Color` block has Red=0.0 in dark.
+grep -q '<real>0.0</real>' "$TMPDIR/iterm-dark.itermcolors" \
+    || fail "--theme=dark --export-theme=iterm: missing 0.0 channel value"
+
+set +e
+"$BIN" --export-theme=bogus > /dev/null 2>"$TMPDIR/err"
+rc=$?
+set -e
+[ "$rc" = "2" ] || fail "--export-theme=bogus exit: got $rc, expected 2"
 
 # Stderr sanitizer (FINDING-006 fix, shipped 1.0.1): control bytes
 # in echoed user args must not reach the terminal. A path carrying

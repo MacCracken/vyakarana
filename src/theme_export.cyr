@@ -4,12 +4,12 @@
 # bundled themes (`src/theme.cyr`). Lets a user grab a starting
 # point for a personal theme without writing one from scratch.
 #
-# 1.11.1 ships **VS Code** (`theme.json`) export. Other formats
-# (Helix `theme.toml`, iTerm `.itermcolors`) are deferred until
-# a real consumer asks for them — the JSON output is the most
-# universal target since several other editors (Cursor,
-# Codium, the broader VS Code fork ecosystem) consume the same
-# format directly.
+# 1.11.1 shipped **VS Code** (`theme.json`) export.
+# 1.12.1 adds **Helix** (`theme.toml`) and **iTerm**
+# (`.itermcolors` plist) emitters — same kind→hex mapping
+# (and same bundled-theme palettes), different output format.
+# Each emitter is a separate function; the CLI dispatches on
+# `--export-theme=<format>`.
 #
 # The vyakarana → VS Code scope mapping is hardcoded here:
 #
@@ -139,6 +139,187 @@ fn theme_export_vscode(theme) {
     print(l7, strlen(l7));
     var l8 = "}\n";
     print(l8, strlen(l8));
+
+    return 0;
+}
+
+# ── Helix (theme.toml) ───────────────────────
+# Helix theme files are flat TOML — `"<scope>" = "<hex>"` per
+# line, optionally `"<scope>" = { fg = "<hex>", modifiers = [...]}`
+# for richer entries. We emit the simple `fg = "<hex>"` form for
+# every kind that has a hex value under the chosen theme.
+#
+# Helix scope vocabulary differs slightly from VS Code's TextMate
+# names. Closest equivalents:
+#   TK_KEYWORD       → "keyword"
+#   TK_STRING        → "string"
+#   TK_NUMBER        → "constant.numeric"
+#   TK_COMMENT       → "comment"
+#   TK_OPERATOR      → "operator"            (no `keyword.` prefix)
+#   TK_PUNCTUATION   → "punctuation"
+#   TK_PREPROCESSOR  → "keyword.directive"   (Helix's name for #include / @import)
+#   TK_ERROR         → "error"               (not "invalid")
+#   TK_IDENT         → "variable"            (when explicit hex set)
+
+# Emit one Helix scope assignment. Skip when the kind has no hex
+# under the chosen theme.
+fn _te_emit_helix_entry(scope, color_hex) {
+    if (strlen(color_hex) == 0) { return 0; }
+    var open_quote = "\"";
+    print(open_quote, 1);
+    print(scope, strlen(scope));
+    var middle = "\" = \"";
+    print(middle, strlen(middle));
+    print(color_hex, strlen(color_hex));
+    var close = "\"\n";
+    print(close, 2);
+    return 0;
+}
+
+fn theme_export_helix(theme) {
+    var name_str = "default";
+    if (theme == THEME_DARK) { name_str = "dark"; }
+    if (theme == THEME_NONE) { name_str = "none"; }
+
+    # Header comment — TOML files can carry it.
+    var h1 = "# vyakarana-";
+    print(h1, strlen(h1));
+    print(name_str, strlen(name_str));
+    var h2 = " — Helix theme exported by `vyk --export-theme=helix`\n";
+    print(h2, strlen(h2));
+    var h3 = "# Pair with `theme = \"vyakarana-";
+    print(h3, strlen(h3));
+    print(name_str, strlen(name_str));
+    var h4 = "\"` in your Helix `config.toml`.\n\n";
+    print(h4, strlen(h4));
+
+    _te_emit_helix_entry("variable",          _te_hex(theme, TK_IDENT));
+    _te_emit_helix_entry("keyword",           _te_hex(theme, TK_KEYWORD));
+    _te_emit_helix_entry("string",            _te_hex(theme, TK_STRING));
+    _te_emit_helix_entry("constant.numeric",  _te_hex(theme, TK_NUMBER));
+    _te_emit_helix_entry("comment",           _te_hex(theme, TK_COMMENT));
+    _te_emit_helix_entry("operator",          _te_hex(theme, TK_OPERATOR));
+    _te_emit_helix_entry("punctuation",       _te_hex(theme, TK_PUNCTUATION));
+    _te_emit_helix_entry("keyword.directive", _te_hex(theme, TK_PREPROCESSOR));
+    _te_emit_helix_entry("error",             _te_hex(theme, TK_ERROR));
+
+    return 0;
+}
+
+# ── iTerm (.itermcolors plist) ────────────────
+# iTerm color schemes are an Apple plist (XML) listing the 16
+# ANSI colors plus a few terminal-level entries (background,
+# foreground, cursor, selection). Each color is a `<dict>` with
+# Color Space (sRGB), Red/Green/Blue Component as `<real>` 0..1.
+#
+# Unlike VS Code / Helix where we emit per-kind theme rules,
+# iTerm wants a *terminal palette* — the 16 ANSI codes that the
+# shell uses for colour output. The bundled vyakarana themes are
+# already structured as ANSI-code mappings (theme.cyr's
+# theme_default_color / theme_dark_color emit `\e[3X` / `\e[9X`
+# escapes), so the export here writes the canonical 16 ANSI
+# colour values that match.
+#
+# Default theme → standard ANSI palette (0..7 standard, 8..15
+# bright). Dark theme → same 16 entries plus a darker background
+# so the bright kinds (which the dark theme uses) read clearly.
+#
+# Float strings are precomputed: each ANSI channel value is one
+# of {0, 92, 205, 229, 238, 255} → fixed strings to avoid having
+# to print floats from Cyrius (no float runtime).
+
+# Float-string for one byte channel value.
+fn _te_iterm_chan(byte_value) {
+    if (byte_value == 0)   { return "0.0"; }
+    if (byte_value == 92)  { return "0.3607843137"; }    # 0x5c
+    if (byte_value == 127) { return "0.4980392157"; }    # 0x7f
+    if (byte_value == 205) { return "0.8039215686"; }    # 0xcd
+    if (byte_value == 229) { return "0.8980392157"; }    # 0xe5
+    if (byte_value == 238) { return "0.9333333333"; }    # 0xee
+    if (byte_value == 255) { return "1.0"; }
+    # Fall-through "0.5" — only hit if the palette acquires a
+    # non-canonical channel value (none today).
+    return "0.5";
+}
+
+# One `Ansi N Color` plist dict. r/g/b are byte values.
+fn _te_iterm_emit_color(slot_name, r, g, b) {
+    var k1 = "\t<key>";
+    print(k1, strlen(k1));
+    print(slot_name, strlen(slot_name));
+    var k2 = "</key>\n\t<dict>\n";
+    print(k2, strlen(k2));
+    var space = "\t\t<key>Color Space</key>\n\t\t<string>sRGB</string>\n";
+    print(space, strlen(space));
+    var rk = "\t\t<key>Red Component</key>\n\t\t<real>";
+    print(rk, strlen(rk));
+    var rs = _te_iterm_chan(r);
+    print(rs, strlen(rs));
+    var rkc = "</real>\n";
+    print(rkc, strlen(rkc));
+    var gk = "\t\t<key>Green Component</key>\n\t\t<real>";
+    print(gk, strlen(gk));
+    var gs = _te_iterm_chan(g);
+    print(gs, strlen(gs));
+    print(rkc, strlen(rkc));
+    var bk = "\t\t<key>Blue Component</key>\n\t\t<real>";
+    print(bk, strlen(bk));
+    var bs = _te_iterm_chan(b);
+    print(bs, strlen(bs));
+    print(rkc, strlen(rkc));
+    var close = "\t</dict>\n";
+    print(close, strlen(close));
+    return 0;
+}
+
+fn theme_export_iterm(theme) {
+    var hdr = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+    print(hdr, strlen(hdr));
+    # Doctype split into two prints to keep source under 120
+    # chars per line (cyrius lint convention).
+    var dt1 = "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" ";
+    print(dt1, strlen(dt1));
+    var dt2 = "\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n";
+    print(dt2, strlen(dt2));
+    var pl = "<plist version=\"1.0\">\n<dict>\n";
+    print(pl, strlen(pl));
+
+    # Standard 16 ANSI colours. Default and dark themes share the
+    # palette; what changes between them is which kinds map to
+    # which slots (see theme.cyr). The .itermcolors file is the
+    # palette only — the user keeps using `vyk --theme=<name>` to
+    # pick the kind→ANSI mapping.
+    _te_iterm_emit_color("Ansi 0 Color",    0,   0,   0);     # black
+    _te_iterm_emit_color("Ansi 1 Color",    205, 0,   0);     # red
+    _te_iterm_emit_color("Ansi 2 Color",    0,   205, 0);     # green
+    _te_iterm_emit_color("Ansi 3 Color",    205, 205, 0);     # yellow
+    _te_iterm_emit_color("Ansi 4 Color",    0,   0,   238);   # blue
+    _te_iterm_emit_color("Ansi 5 Color",    205, 0,   205);   # magenta
+    _te_iterm_emit_color("Ansi 6 Color",    0,   205, 205);   # cyan
+    _te_iterm_emit_color("Ansi 7 Color",    229, 229, 229);   # white
+    _te_iterm_emit_color("Ansi 8 Color",    127, 127, 127);   # bright black
+    _te_iterm_emit_color("Ansi 9 Color",    255, 0,   0);     # bright red
+    _te_iterm_emit_color("Ansi 10 Color",   0,   255, 0);     # bright green
+    _te_iterm_emit_color("Ansi 11 Color",   255, 255, 0);     # bright yellow
+    _te_iterm_emit_color("Ansi 12 Color",   92,  92,  255);   # bright blue
+    _te_iterm_emit_color("Ansi 13 Color",   255, 0,   255);   # bright magenta
+    _te_iterm_emit_color("Ansi 14 Color",   0,   255, 255);   # bright cyan
+    _te_iterm_emit_color("Ansi 15 Color",   255, 255, 255);   # bright white
+
+    # Foreground / background — dark theme inverts them.
+    if (theme == THEME_DARK) {
+        _te_iterm_emit_color("Background Color", 0,   0,   0);
+        _te_iterm_emit_color("Foreground Color", 229, 229, 229);
+    }
+    if (theme != THEME_DARK) {
+        _te_iterm_emit_color("Background Color", 255, 255, 255);
+        _te_iterm_emit_color("Foreground Color", 0,   0,   0);
+    }
+    _te_iterm_emit_color("Cursor Color",      127, 127, 127);
+    _te_iterm_emit_color("Selection Color",   205, 205, 205);
+
+    var trail = "</dict>\n</plist>\n";
+    print(trail, strlen(trail));
 
     return 0;
 }

@@ -49,7 +49,9 @@ fn print_help() {
     println("                         of NDJSON. Themes: default, dark, none.");
     println("                         See docs/architecture/004-theme-palette-contract.md.");
     println("      --export-theme=<format>  Emit a theme file for the named");
-    println("                         editor format and exit. Formats: vscode.");
+    println("                         editor format and exit. Formats:");
+    println("                         vscode (theme.json), helix (theme.toml),");
+    println("                         iterm (.itermcolors plist).");
     println("                         Pair with --theme=<name> to pick the");
     println("                         palette (default: default).");
     println("");
@@ -312,17 +314,25 @@ fn main() {
 
         var exportv = parse_export_theme_arg(a);
         if (exportv != 0) {
-            # Only `vscode` for 1.11.1; helix and iTerm
-            # deferred. Selects which theme via the `--theme=`
+            # 1.11.1 added `vscode`; 1.12.1 adds `helix` and
+            # `iterm`. Selects which theme via the `--theme=`
             # flag if it appeared earlier; otherwise default.
-            if (streq(exportv, "vscode") == 0) {
-                usage_error(a);
-                return EXIT_USAGE;
-            }
             var which = theme;
             if (which < 0) { which = THEME_DEFAULT; }
-            theme_export_vscode(which);
-            return EXIT_OK;
+            if (streq(exportv, "vscode") == 1) {
+                theme_export_vscode(which);
+                return EXIT_OK;
+            }
+            if (streq(exportv, "helix") == 1) {
+                theme_export_helix(which);
+                return EXIT_OK;
+            }
+            if (streq(exportv, "iterm") == 1) {
+                theme_export_iterm(which);
+                return EXIT_OK;
+            }
+            usage_error(a);
+            return EXIT_USAGE;
         }
 
         # First non-flag: treat as a file path. Reject anything else

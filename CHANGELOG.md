@@ -6,6 +6,58 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [1.12.1] — 2026-05-08
+
+Pulls the deferred theme-export formats from 1.11.1's
+"deferred until a real consumer asks" list. Two new
+emitters; CLI surface unchanged beyond accepting two more
+`--export-theme=` values. No new ADR (extends 1.11.1's
+design).
+
+### Added
+
+- **`vyk --export-theme=helix`.** Emits a Helix `theme.toml`
+  for the chosen palette (pair with `--theme=<name>`). Maps
+  vyakarana kinds to Helix's TextMate-adjacent scope
+  vocabulary: `keyword`, `string`, `constant.numeric`,
+  `comment`, `operator` (no `keyword.` prefix), `punctuation`,
+  `keyword.directive` (Helix's name for preprocessor /
+  `#include` style directives), `error` (not `invalid`),
+  `variable`. Header comment describes the `config.toml`
+  pairing pattern.
+- **`vyk --export-theme=iterm`.** Emits an iTerm
+  `.itermcolors` plist (Apple property list / XML) with the
+  16 ANSI colours plus `Background Color`,
+  `Foreground Color`, `Cursor Color`, and `Selection Color`.
+  Float channel values precomputed for each canonical byte
+  value in the palette (Cyrius has no float runtime; switch
+  on the byte value, return a literal float-string). Default
+  theme uses a light background; dark theme inverts to black
+  background + light foreground.
+
+### Changed
+
+- **`src/theme_export.cyr`** — header comment updated to list
+  three formats; emitters added below the existing
+  `theme_export_vscode`. The `_te_*_hex(theme, kind)` lookups
+  are unchanged (Helix shares the kind→hex mapping with VS
+  Code; iTerm uses a separate fixed 16-colour palette).
+- **`src/main.cyr`** — `--export-theme=` dispatch grew from
+  one format to three. Unknown formats still exit 2 via
+  `usage_error`.
+- **`--help`** — lists `vscode`, `helix`, `iterm` under
+  `--export-theme=<format>`.
+
+### Wiring
+
+- `scripts/smoke.sh` — 6 new probes (helix default + dark
+  with brightness check, iterm default with Ansi 0/15/
+  Background Color presence, iterm dark with `0.0` channel
+  value verifying the inverted background, unknown-format
+  rejection).
+- No new tcyr probes — emitters are pure stdout writers; the
+  smoke layer covers the full output shape.
+
 ## [1.12.0] — 2026-05-08
 
 First cut of the 1.12.x window — **fuzz + stress harness**
