@@ -38,21 +38,35 @@ var _bc_arm_asm   = ".arch armv8-a\nmov x0, #0\nbl exit\nldp x29, x30, [sp]\n";
 fn setup() {
     # Force grammar bootstrap once before timing. Otherwise the
     # first benchmark would absorb the bootstrap cost into its
-    # average. Subsequent calls hit a populated registry.
-    tokenize_source("", "shell");
-    tokenize_source("", "rust");
-    tokenize_source("", "json");
-    tokenize_source("", "html");
-    tokenize_source("", "python");
+    # average. has_grammar triggers bootstrap_grammars.
+    has_grammar("shell");
+    has_grammar("rust");
+    has_grammar("json");
+    has_grammar("html");
+    has_grammar("python");
+    return 0;
+}
+
+# 2.0+ streaming-API helper. Each bench fn does the full
+# new/feed/finish/free dance — measures the steady-state cost
+# of the public API as consumers actually use it. The setup
+# bootstrap above ensures the cost of grammar load isn't
+# folded into these per-iteration averages.
+fn _bv_tokenize(src, lang) {
+    var s = tokenize_stream_new(lang);
+    var tb = tokenbuf_new();
+    tokenize_stream_feed(s, src, strlen(src));
+    tokenize_stream_finish(s, tb);
+    tokenize_stream_free(s);
     return 0;
 }
 
 # ── Tokenize bench fns ───────────────────────
 
-fn _bv_tk_shell()   { tokenize_source(_bc_shell_small, "shell");   return 0; }
-fn _bv_tk_rust()    { tokenize_source(_bc_rust_small,  "rust");    return 0; }
-fn _bv_tk_json()    { tokenize_source(_bc_json_small,  "json");    return 0; }
-fn _bv_tk_compose() { tokenize_source(_bc_html_compose, "html");   return 0; }
+fn _bv_tk_shell()   { return _bv_tokenize(_bc_shell_small,   "shell"); }
+fn _bv_tk_rust()    { return _bv_tokenize(_bc_rust_small,    "rust"); }
+fn _bv_tk_json()    { return _bv_tokenize(_bc_json_small,    "json"); }
+fn _bv_tk_compose() { return _bv_tokenize(_bc_html_compose,  "html"); }
 
 # ── Detect bench fns ─────────────────────────
 

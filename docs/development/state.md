@@ -4,16 +4,18 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–1.13.3 are
-> shipped — **the entire 1.x line is in the bag**. As of
-> 2026-05-08 the toolchain pin is `cyrius = "5.10.0"`.
-> 1.13.3 closes the RC-polish window with a distribution-paths
-> doc (`docs/development/distribution.md`) and the post-1.12
-> + 1.13.x security audit (`docs/audit/2026-05-09-1.13-
-> closeout-audit.md` — **0 findings**). 38 grammars bundled
-> (unchanged), 731/731 tests passing, 3/3 fuzz harnesses
-> passing. **Ready for 2.0.0** — streaming tokenizer, the
-> only scheduled break in the public API. See §Next up.
+> **Read this file before doing anything.** 1.0.0–2.0.0 are
+> shipped. 🎉 **First major version bump.** 1.x closed at
+> 1.13.3 with 0 audit findings. **2.0.0 ships the streaming
+> tokenizer** that's been spec'd since M0 — the only
+> scheduled API break in the roadmap. As of 2026-05-08 the
+> toolchain pin is `cyrius = "5.10.0"`. 2.0.0 sub-cut: API
+> surface only (push-based primitive, `tokenize_stream_*`).
+> Internal scanner unchanged — feed() buffers, finish()
+> runs the existing pipeline. Real per-token-resume
+> streaming + pull adapter land in 2.0.1+. 38 grammars
+> bundled (unchanged), 746/746 tests passing, 3/3 fuzz
+> harnesses passing. See §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -33,9 +35,29 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `1.13.3` in `VERSION`, `src/version_str.cyr`, and
-  `dist/vyakarana.cyr`. Full 1.x tag history in the CHANGELOG.
-  **Final 1.x cut.**
+- **Version:** `2.0.0` in `VERSION`, `src/version_str.cyr`, and
+  `dist/vyakarana.cyr`. Full 1.x + 2.0.0 tag history in the
+  CHANGELOG. **First 2.x cut.**
+- **What 2.0.0 added (streaming tokenizer):**
+  - **Push-based streaming primitive
+    ([ADR 0017](../adr/0017-streaming-api.md)).** Five
+    public entries: `tokenize_stream_new` / `_feed` /
+    `_drain` / `_finish` / `_free`. Replaces the 1.x
+    `tokenize_source(src, lang)` synchronous entry (which
+    was removed entirely; no compat shim). Migration is
+    mechanical — five lines instead of one.
+  - **2.0.0 sub-cut scope: API surface only.** Internal
+    scanner unchanged; feed() buffers, finish() runs
+    `tokenize_with_grammar` over the buffered bytes. The
+    public contract is stable across the upcoming 2.0.1+
+    scanner refactor.
+  - **15 new tcyr probes** locking the streaming contract:
+    multi-chunk feed byte-equivalent to single-chunk;
+    feed-after-finish errors with `VYK_ERR_FINISHED`;
+    drain-after-finish is idempotent.
+  - Bench overhead: ~5–25% per-call regression from the
+    extra alloc + buffer copy. Acceptable for the API-
+    surface cut; 2.0.1+ removes it.
 - **What 1.13.3 added (RC closeout):**
   - **`docs/development/distribution.md`** — the two
     distribution paths in current use (the
@@ -367,23 +389,26 @@ Closed waves:
   stress harness + post-1.11 audit (1.12.0); Helix + iTerm
   theme export (1.12.1).
 
-1.13.x is shipped:
+1.x is shipped (closed at 1.13.3 with 0 audit findings).
+2.0.0 just opened the 2.x line.
 
-- **1.13.0 — Binary size + startup benchmarks.** Shipped.
-- **1.13.1 — Error messages + man page / --help audit.**
-  Shipped.
-- **1.13.2 — Markdown fence routing.** Shipped. ADR 0016.
-  `match = "compose_fenced"` captures the language tag and
-  routes the body through the named inner grammar.
-- **1.13.3 — Distribution paths + security audit.**
-  Shipped (this cut). `docs/development/distribution.md`
-  documents the two real distribution paths;
-  `docs/audit/2026-05-09-1.13-closeout-audit.md` reviews
-  every surface added in 1.12.0–1.13.2 with **0 findings**.
-  No code changes. (`cyrius package` skipped — still
-  upstream-stubware.)
+Now in flight:
 
-After 1.13.x:
+- **2.0.1+ — Pull adapter + per-token-resume scanner.**
+  Two pieces deferred from 2.0.0:
+  - Pull adapter (`tokenize_stream_next(s, out_token)`)
+    wraps the push primitive for iteration-style consumers.
+    Trivial once the per-token-resume scanner lands.
+  - Real streaming: scanner refactor to yield mid-token
+    across feed() calls. Rolling buffer with `MAX_TOKEN_LEN`
+    cap. `drain()` actually drains per-feed instead of
+    deferring to `finish()`. Removes the buffer-everything
+    model and the 1 MB cap.
+  May ship as 2.0.1 (combined) or as 2.0.1 (pull adapter)
+  + 2.0.2 (scanner refactor) — call to be made when work
+  starts.
+
+After 2.0.x:
 
 - **2.0.0** — Streaming tokenizer (M5 carryover). The one
   scheduled break in the public API.

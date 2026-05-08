@@ -6,6 +6,105 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [2.0.0] — 2026-05-08
+
+🎉 **First major version bump.** The 1.x line shipped 14
+versions across the bundled-grammar growth (1.0.0–1.9.0) and
+the pre-2.0 prep wave (1.10.x–1.13.x). 2.0.0 delivers the
+**streaming tokenizer** that's been spec'd since M0 — the only
+scheduled API break in the entire roadmap.
+
+### BREAKING
+
+- **`tokenize_source(src, lang)` removed.** Replaced by the
+  push-based streaming primitive (see Added). Migration is
+  mechanical; the 1.x → 2.0 recipe is in
+  [ADR 0017](docs/adr/0017-streaming-api.md). Consumers that
+  can't migrate yet should pin `1.13.3` indefinitely — that
+  cut closed the 1.x line cleanly with 0 audit findings.
+
+### Added
+
+- **Streaming tokenizer API
+  ([ADR 0017](docs/adr/0017-streaming-api.md)).** Push-based
+  primitive, five entries:
+  - `tokenize_stream_new(lang)` — returns an opaque stream
+    handle, or 0 if the grammar isn't registered.
+  - `tokenize_stream_feed(s, chunk, n)` — appends `n` bytes
+    from `chunk` to the stream's internal buffer. Returns
+    `VYK_OK` (0), `VYK_ERR_OVERFLOW` (-1) on cap exceeded,
+    `VYK_ERR_FINISHED` (-2) after finish has run.
+  - `tokenize_stream_drain(s, out_tb)` — emits tokens for
+    completed spans into `out_tb`. Returns count appended.
+    **2.0.0 implementation:** scanner runs at finish, so
+    drain returns 0 until then. 2.0.1+ delivers per-feed
+    drainage.
+  - `tokenize_stream_finish(s, out_tb)` — marks done; runs
+    the scanner; emits every remaining token.
+  - `tokenize_stream_free(s)` — releases the stream handle.
+  Multi-chunk feed is byte-equivalent to single-chunk feed —
+  any chunking strategy produces the same `(kind, start, len)`
+  tokens. Verified by 8 new tcyr probes.
+- **15 new tcyr probes** in the 2.0.0 streaming-primitive
+  group: single-chunk feed, multi-chunk feed, unknown
+  grammar, empty grammar name, feed-after-finish error,
+  empty input, drain-after-finish idempotency, split-feed
+  byte-equivalence with one-shot feed. 731 → 746 passing.
+
+### Changed
+
+- **Sub-cut scope: API surface only.** 2.0.0 ships the new
+  contract; the internal scanner is unchanged. feed() buffers
+  chunks into a contiguous source; finish() runs the
+  existing `tokenize_with_grammar`. Real per-token-resume
+  streaming (rolling buffer, scanner state machine) lands in
+  2.0.1+. The public API is stable across that internal
+  refactor — consumers wire up the right shape today and
+  pick up the speedup automatically.
+- **Pull adapter (`tokenize_stream_next`) deferred to 2.0.1+.**
+  Useful for iteration-style consumers; trivial wrapper over
+  the push primitive once the per-token-resume scanner is in
+  place.
+- **`src/main.cyr`** — `tokenize_buf` now drives the streaming
+  API for the non-`--handcoded` path. CLI behaviour is
+  identical to 1.13.3 because the CLI always has the full
+  source available; the stream just buffers it once.
+- **`src/tokenize.cyr`** — full rewrite. Public symbols:
+  `tokenize_stream_*`, `has_grammar`, `bootstrap_grammars`,
+  `tokenize_source_handcoded` (internal regression oracle).
+  Removed: `tokenize_source`.
+- **Test harness** uses a `_t_tokenize(src, lang)` wrapper
+  that performs the new/feed/finish/free dance. Test bodies
+  stay readable while exercising the new API end-to-end.
+- **Fuzz harnesses + bench file** migrated. Bench numbers
+  regress modestly due to per-call alloc overhead:
+  shell 18 → 19 µs, rust 26 → 28 µs, json 3 → 5 µs,
+  html-compose 8 → 10 µs. The streaming benefit (memory
+  bound by per-token state) waits for 2.0.1+; 2.0.0
+  effectively still buffers everything.
+- **Architecture overview + consumer guide** updated to
+  describe the new entry shape. "Frozen public contracts"
+  list restated for 2.x.
+
+### Migration
+
+```cyrius
+# 1.x
+var tb = tokenize_source(src, "rust");
+
+# 2.0
+var s = tokenize_stream_new("rust");
+var tb = tokenbuf_new();
+tokenize_stream_feed(s, src, strlen(src));
+tokenize_stream_finish(s, tb);
+tokenize_stream_free(s);
+```
+
+Five lines instead of one. Detection (`detect_language*`),
+LSP bridge (`lsp_kind_*`), kind constants, tokenbuf accessors,
+theme export, grammar load, and registry helpers are all
+unchanged across 1.x → 2.x.
+
 ## [1.13.3] — 2026-05-08
 
 Final 1.13.x sub-cut and the **last release before 2.0.0**.

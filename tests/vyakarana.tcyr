@@ -29,6 +29,22 @@ fn tb_coverage_sum(tb) {
     return sum;
 }
 
+# Test helper: tokenize a small source string with the streaming
+# API and return the populated tokenbuf. 2.0+ replaces the 1.x
+# `_t_tokenize(src, lang)` synchronous entry; this wrapper
+# keeps the test bodies readable while exercising the new API.
+# Returns 0 if the grammar isn't loaded (same shape the old
+# tokenize_source used for unknown languages).
+fn _t_tokenize(src, lang) {
+    var s = tokenize_stream_new(lang);
+    if (s == 0) { return 0; }
+    var tb = tokenbuf_new();
+    tokenize_stream_feed(s, src, strlen(src));
+    tokenize_stream_finish(s, tb);
+    tokenize_stream_free(s);
+    return tb;
+}
+
 fn main() {
     alloc_init();
 
@@ -69,9 +85,9 @@ fn main() {
     assert_eq(has_grammar("nosuchlang"), 0, "fake-name grammar not loaded");
     assert_eq(has_grammar(""),    0, "empty name not loaded");
 
-    test_group("tokenize_source returns empty (0) for unknown languages");
-    assert_eq(tokenize_source("x", "nosuchlang"), 0, "fake-name returns 0");
-    assert_eq(tokenize_source("x", ""),           0, "empty name returns 0");
+    test_group("tokenize_stream_new returns 0 for unknown languages");
+    assert_eq(_t_tokenize("x", "nosuchlang"), 0, "fake-name returns 0");
+    assert_eq(_t_tokenize("x", ""),           0, "empty name returns 0");
 
     test_group("M1 shell grammar — known-offset assertions");
     # Input: `if true; then echo hi; fi`
@@ -79,7 +95,7 @@ fn main() {
     #   [kw:if @0,2] [ws @2,1] [id:true @3,4] [punc:; @7,1] [ws @8,1]
     #   [kw:then @9,4] [ws @13,1] [id:echo @14,4] [ws @18,1] [id:hi @19,2]
     #   [punc:; @21,1] [ws @22,1] [kw:fi @23,2]
-    var tb1 = tokenize_source("if true; then echo hi; fi", "shell");
+    var tb1 = _t_tokenize("if true; then echo hi; fi", "shell");
     assert_neq(tb1, 0, "tokenbuf allocated");
     assert_eq(tokenbuf_count(tb1), 13, "13 tokens for the sample line");
 
@@ -101,7 +117,7 @@ fn main() {
 
     test_group("M1 shell grammar — shebang and comments");
     # `#!/bin/sh\n# comment\nx`
-    var tb2 = tokenize_source("#!/bin/sh\n# comment\nx", "shell");
+    var tb2 = _t_tokenize("#!/bin/sh\n# comment\nx", "shell");
     assert_neq(tb2, 0, "tokenbuf allocated");
     assert_eq(tokenbuf_kind(tb2, 0),  TK_PREPROCESSOR, "shebang is preprocessor");
     assert_eq(tokenbuf_start(tb2, 0), 0,               "shebang starts at 0");
@@ -112,7 +128,7 @@ fn main() {
     assert_eq(tb_coverage_sum(tb2),   21,              "coverage holds");
 
     test_group("M1 shell grammar — strings (single and double)");
-    var tb3 = tokenize_source("x=\"a b\" y='c d'", "shell");
+    var tb3 = _t_tokenize("x=\"a b\" y='c d'", "shell");
     assert_neq(tb3, 0, "tokenbuf allocated");
     # x =  "a b"  space  y  =  'c d'
     # 0 1  2..6  7      8  9  10..14
@@ -125,7 +141,7 @@ fn main() {
     assert_eq(tb_coverage_sum(tb3),   15,         "coverage holds");
 
     test_group("M1 shell grammar — numbers (decimal, hex)");
-    var tb4 = tokenize_source("42 0xff 0b10 0o7", "shell");
+    var tb4 = _t_tokenize("42 0xff 0b10 0o7", "shell");
     assert_neq(tb4, 0, "tokenbuf allocated");
     assert_eq(tokenbuf_kind(tb4, 0),  TK_NUMBER, "42 is number");
     assert_eq(tokenbuf_len(tb4, 0),   2,         "42 len 2");
@@ -138,7 +154,7 @@ fn main() {
     assert_eq(tb_coverage_sum(tb4),   16,        "coverage holds");
 
     test_group("M1 shell grammar — operators and [[ ]]");
-    var tb5 = tokenize_source("[[ a != b ]] && c || d", "shell");
+    var tb5 = _t_tokenize("[[ a != b ]] && c || d", "shell");
     assert_neq(tb5, 0, "tokenbuf allocated");
     assert_eq(tokenbuf_kind(tb5, 0),  TK_PUNCTUATION, "[[ punctuation");
     assert_eq(tokenbuf_len(tb5, 0),   2,              "[[ len 2");
@@ -151,7 +167,7 @@ fn main() {
     # Every byte must land in a non-error kind for a passing grammar.
     # This would catch a regression where the recognizer priority
     # accidentally skips a common byte.
-    var tb6 = tokenize_source("if [[ $x -eq 42 ]]; then echo \"$x\"; fi", "shell");
+    var tb6 = _t_tokenize("if [[ $x -eq 42 ]]; then echo \"$x\"; fi", "shell");
     assert_neq(tb6, 0, "tokenbuf allocated");
     var n6 = tokenbuf_count(tb6);
     var i6 = 0;
@@ -2312,6 +2328,114 @@ fn main() {
         f6k = f6k + 1;
     }
     assert_eq(sum_f6, strlen(src_f6), "c++ tag: coverage holds");
+
+    test_group("2.0.0 streaming primitive — push-based API");
+
+    # Single-chunk feed (the 1.x equivalent path).
+    var s1 = tokenize_stream_new("shell");
+    assert_neq(s1, 0, "stream_new returns non-null for known grammar");
+    var tb_str1 = tokenbuf_new();
+    var src_str1 = "echo hello";
+    var fr1 = tokenize_stream_feed(s1, src_str1, strlen(src_str1));
+    assert_eq(fr1, 0, "feed returns VYK_OK on single chunk");
+    var drained1 = tokenize_stream_drain(s1, tb_str1);
+    assert_eq(drained1, 0,
+              "2.0.0 drain before finish: 0 (deferred to finish)");
+    var fin1 = tokenize_stream_finish(s1, tb_str1);
+    assert(fin1 > 0, "finish drains some tokens");
+    var sum_s1 = tb_coverage_sum(tb_str1);
+    assert_eq(sum_s1, strlen(src_str1),
+              "single-chunk: coverage invariant holds");
+    tokenize_stream_free(s1);
+
+    # Multi-chunk feed — splitting `echo hello` across three feeds
+    # must produce the same tokens as a single feed (the buffer
+    # is concatenated under the hood in 2.0.0; that contract
+    # holds regardless of chunking strategy).
+    var s2 = tokenize_stream_new("shell");
+    var tb_str2 = tokenbuf_new();
+    tokenize_stream_feed(s2, "ec", 2);
+    tokenize_stream_feed(s2, "ho ", 3);
+    tokenize_stream_feed(s2, "hello", 5);
+    tokenize_stream_finish(s2, tb_str2);
+    tokenize_stream_free(s2);
+    assert_eq(tokenbuf_count(tb_str2), tokenbuf_count(tb_str1),
+              "multi-chunk: same token count as single-chunk");
+    var sum_s2 = tb_coverage_sum(tb_str2);
+    assert_eq(sum_s2, 10, "multi-chunk: coverage invariant holds");
+
+    # Unknown grammar → stream_new returns 0.
+    var s3 = tokenize_stream_new("nonesuch");
+    assert_eq(s3, 0, "stream_new returns 0 for unknown grammar");
+
+    # Empty grammar name → stream_new returns 0.
+    var s4 = tokenize_stream_new("");
+    assert_eq(s4, 0, "stream_new returns 0 for empty grammar name");
+
+    # Feed-after-finish returns VYK_ERR_FINISHED (-2).
+    var s5 = tokenize_stream_new("shell");
+    var tb_s5 = tokenbuf_new();
+    tokenize_stream_feed(s5, "x", 1);
+    tokenize_stream_finish(s5, tb_s5);
+    var fr5 = tokenize_stream_feed(s5, "y", 1);
+    assert_eq(fr5, (0 - 2), "feed-after-finish returns VYK_ERR_FINISHED");
+    tokenize_stream_free(s5);
+
+    # Empty input — finish drains 0 tokens.
+    var s6 = tokenize_stream_new("shell");
+    var tb_s6 = tokenbuf_new();
+    var fin6 = tokenize_stream_finish(s6, tb_s6);
+    assert_eq(fin6, 0, "empty input: finish drains 0 tokens");
+    assert_eq(tokenbuf_count(tb_s6), 0, "empty input: empty tokenbuf");
+    tokenize_stream_free(s6);
+
+    # Drain after finish is a no-op (already drained).
+    var s7 = tokenize_stream_new("shell");
+    var tb_s7 = tokenbuf_new();
+    tokenize_stream_feed(s7, "echo x", 6);
+    tokenize_stream_finish(s7, tb_s7);
+    var second_drain = tokenize_stream_drain(s7, tb_s7);
+    assert_eq(second_drain, 0,
+              "drain after finish returns 0 (idempotent)");
+    tokenize_stream_free(s7);
+
+    # Chunk feed must match a one-shot feed byte-for-byte across
+    # token boundaries — pick a multi-line shell snippet so chunks
+    # span comments / strings / keywords.
+    var src_big = "if [[ $x -eq 42 ]]; then\n  echo \"hi $x\"\nfi";
+    var n_big = strlen(src_big);
+    var s8 = tokenize_stream_new("shell");
+    var tb_one = tokenbuf_new();
+    tokenize_stream_feed(s8, src_big, n_big);
+    tokenize_stream_finish(s8, tb_one);
+    tokenize_stream_free(s8);
+
+    var s9 = tokenize_stream_new("shell");
+    var tb_split = tokenbuf_new();
+    var split_at = 13;
+    tokenize_stream_feed(s9, src_big, split_at);
+    tokenize_stream_feed(s9, src_big + split_at, n_big - split_at);
+    tokenize_stream_finish(s9, tb_split);
+    tokenize_stream_free(s9);
+
+    assert_eq(tokenbuf_count(tb_split), tokenbuf_count(tb_one),
+              "split feed: same count as one-shot");
+    var idx = 0;
+    var same_kinds = 1;
+    while (idx < tokenbuf_count(tb_one)) {
+        if (tokenbuf_kind(tb_one, idx) != tokenbuf_kind(tb_split, idx)) {
+            same_kinds = 0;
+        }
+        if (tokenbuf_start(tb_one, idx) != tokenbuf_start(tb_split, idx)) {
+            same_kinds = 0;
+        }
+        if (tokenbuf_len(tb_one, idx) != tokenbuf_len(tb_split, idx)) {
+            same_kinds = 0;
+        }
+        idx = idx + 1;
+    }
+    assert_eq(same_kinds, 1,
+              "split feed: every (kind, start, len) matches one-shot");
 
     test_group("version string shape");
     # VYK_VERSION lives in src/version_str.cyr (auto-generated by

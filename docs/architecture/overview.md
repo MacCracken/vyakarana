@@ -44,10 +44,10 @@ parses past the lexical layer.
                                     │ called by
                      ┌──────────────┴───────────────┐
                      │      src/tokenize.cyr        │
-                     │  tokenize_source(src, lang)  │
-                     │  — public dispatch + lazy    │
-                     │  bootstrap of bundled        │
-                     │  grammars                    │
+                     │  tokenize_stream_* (2.0+)    │
+                     │  — push-based streaming      │
+                     │    primitive + lazy bootstrap│
+                     │    of bundled grammars       │
                      └──────────────┬───────────────┘
                                     │
               ┌─────────────────────┴──────────────────────┐
@@ -84,10 +84,14 @@ path can never silently drift away from the M1 reference.
 - **`src/grammars/shell.cyr`** — hand-coded M1 tokenizer, retained
   as a regression oracle. Wired into `vyk --handcoded` and the
   smoke diff check.
-- **`src/tokenize.cyr`** — dispatch. `tokenize_source(src, lang)`
-  loads bundled grammars lazily, looks up `lang` in the registry,
-  calls the default scanner. `bootstrap_grammars()` is the
-  explicit-load hook for callers that bypass `tokenize_source`.
+- **`src/tokenize.cyr`** — public streaming primitive (2.0+).
+  `tokenize_stream_new(lang)` allocates a stream; `_feed(s,
+  chunk, n)` buffers bytes; `_drain(s, tb)` / `_finish(s, tb)`
+  emit tokens; `_free(s)` releases. Loads bundled grammars
+  lazily on first `_new` / `has_grammar` call.
+  `bootstrap_grammars()` is the explicit-load hook. See
+  [ADR 0017](../adr/0017-streaming-api.md). The 1.x
+  `tokenize_source(src, lang)` synchronous entry was removed.
 - **`src/token.cyr`** — palette, `Token` layout, `tokenbuf` (see
   [ADR 0002](../adr/0002-token-storage-layout.md)). Accessors
   `tokenbuf_count/kind/start/len` are the consumer contract.
@@ -123,9 +127,12 @@ user's explicit ACK.
    CHANGELOG entry.
 2. **Token layout.** `(kind: u8, start: u32, len: u32)` — 12 bytes,
    no pointers. See [ADR 0002](../adr/0002-token-storage-layout.md).
-3. **Entry-point signature.** `tokenize_source(src, lang)` is what
-   owl imports. The return type can evolve (vec now, iterator in
-   M5), but the name and arg order do not change.
+3. **Public entry shape (2.0+).** The streaming primitive —
+   `tokenize_stream_new` / `_feed` / `_drain` / `_finish` /
+   `_free` — is the consumer contract. Names and arg order
+   stable across the 2.x line. The 1.x `tokenize_source` is
+   gone (ADR 0017). Implementation internals (per-token-resume,
+   rolling buffer) can change without breaking consumers.
 4. **`vyk` CLI surface.** `--version`, `--help`, `--list-kinds`,
    `--list-languages` are covered by the smoke test. Additions
    are fine; renames/removals are breaking.

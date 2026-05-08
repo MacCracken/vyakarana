@@ -44,8 +44,9 @@ fn _gl_fill_printable(buf, n) {
 }
 
 fn fuzz_main(data, n) {
-    # 1. All 38 bundled blobs round-trip.
-    if (tokenize_source("", "shell") == 0) {
+    # 1. All 38 bundled blobs round-trip. Triggers
+    # bootstrap_grammars via has_grammar.
+    if (has_grammar("shell") == 0) {
         eprint("FAIL: shell didn't bootstrap\n", 30);
         return 1;
     }

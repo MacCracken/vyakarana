@@ -272,8 +272,18 @@ fn tokenize_buf(buf, n, path, lang, handcoded, theme) {
     var tb = 0;
     if (handcoded == 1) {
         tb = tokenize_source_handcoded(buf, lang);
-    } else {
-        tb = tokenize_source(buf, lang);
+    }
+    if (handcoded != 1) {
+        # 2.0+ streaming entry: feed the whole buffer in one shot
+        # then finish. The CLI's pre-read flow always has the full
+        # source available, so a single feed() is the natural use.
+        var s = tokenize_stream_new(lang);
+        if (s != 0) {
+            tb = tokenbuf_new();
+            tokenize_stream_feed(s, buf, n);
+            tokenize_stream_finish(s, tb);
+            tokenize_stream_free(s);
+        }
     }
     if (tb == 0) {
         no_grammar_error(path);

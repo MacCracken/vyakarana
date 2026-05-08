@@ -4,7 +4,7 @@ How to integrate vyakarana into a downstream Cyrius project
 (owl, cyim, agnoshi, vidya, or anything else that needs to
 tokenize source code).
 
-> **Last updated:** 2026-05-08 (1.11.2)
+> **Last updated:** 2026-05-08 (2.0.0)
 >
 > Audience: implementers writing the *renderer*, *editor*,
 > *theme*, or *content pipeline* that sits on top of vyakarana.
@@ -25,7 +25,7 @@ project's `cyrius.cyml`:
 ```toml
 [deps.vyakarana]
 git     = "https://github.com/MacCracken/vyakarana.git"
-tag     = "1.11.2"
+tag     = "2.0.0"
 modules = ["dist/vyakarana.cyr"]
 ```
 
@@ -38,6 +38,13 @@ release.
 > `cyrius deps` only vendors the bundle file. Pin **1.11.1 or
 > later** for a working integration. Older tags will silently
 > register zero grammars and return empty tokenbufs.
+>
+> **1.x → 2.x is a breaking change.** The synchronous
+> `tokenize_source(src, lang)` entry was removed in 2.0.0 in
+> favor of the streaming primitive. See
+> [ADR 0017](../adr/0017-streaming-api.md) for the design and
+> migration recipe. 1.x consumers can stay pinned to 1.13.3
+> indefinitely; 2.x consumers update one function call.
 
 ## What you get
 
@@ -46,12 +53,20 @@ Once the dep resolves, your project has access to:
 ### Public API surface
 
 ```cyrius
-fn tokenize_source(src, lang) -> tokenbuf
+# Streaming tokenizer (2.0+). Push chunks of bytes; drain
+# tokens. Replaces the 1.x `tokenize_source` synchronous entry.
+# See ADR 0017 for the design and migration recipe.
+fn tokenize_stream_new(lang)            -> stream_handle  # 0 if grammar unknown
+fn tokenize_stream_feed(s, chunk, n)    -> i64            # VYK_OK / VYK_ERR_*
+fn tokenize_stream_drain(s, out_tb)     -> i64            # tokens appended this call
+fn tokenize_stream_finish(s, out_tb)    -> i64            # final drain
+fn tokenize_stream_free(s)
+
 fn has_grammar(name) -> i64                # 1 if known, 0 otherwise
 fn list_languages_into(out_vec) -> i64     # populates a vec of cstr names
 
 # Language detection (1.11.2+). All three return a language
-# name (cstr) suitable for tokenize_source, or 0 if no match.
+# name (cstr) suitable for tokenize_stream_new, or 0 if no match.
 fn detect_language(path) -> cstr                    # extension + basename suffix match
 fn detect_language_from_content(src, src_len) -> cstr   # BOM/shebang/signature sniff
 fn detect_language_combined(path, src, src_len) -> cstr # path first, content fallback + asm flavour vote
@@ -103,12 +118,19 @@ all stable across 1.x — see
 
 ## How to render
 
-Walk the tokenbuf in order. For each token, slice
+Drive the streaming primitive (push bytes, drain tokens), then
+walk the resulting tokenbuf. For each token, slice
 `src[start..start+len]` and apply your renderer's mapping for
 that kind. Pseudocode:
 
 ```cyrius
-var tb = tokenize_source(src, "rust");
+var s = tokenize_stream_new("rust");
+if (s == 0) { /* unknown grammar */ return; }
+var tb = tokenbuf_new();
+tokenize_stream_feed(s, src, strlen(src));
+tokenize_stream_finish(s, tb);
+tokenize_stream_free(s);
+
 var n = tokenbuf_count(tb);
 var i = 0;
 while (i < n) {
@@ -150,10 +172,10 @@ it. Don't free `src` until you're done reading the tokens.
 
 ## Lazy loading
 
-Grammars are loaded the first time `tokenize_source` is called
-for a given language. If your renderer wants to pre-load the
-registry at startup (e.g., to validate that `--language=foo`
-will work later), call:
+Grammars are loaded the first time `tokenize_stream_new` /
+`has_grammar` is called for any language. If your renderer
+wants to pre-load the registry at startup (e.g., to validate
+that `--language=foo` will work later), call:
 
 ```cyrius
 bootstrap_grammars();        # loads all 38 bundled grammars
@@ -164,25 +186,32 @@ you the registry contents.
 
 ## Error handling
 
-`tokenize_source` returns `0` if the language name doesn't
-match any registered grammar. Otherwise it returns a non-zero
-tokenbuf handle. Check before reading.
+`tokenize_stream_new` returns `0` if the language name doesn't
+match any registered grammar. Check before feeding.
 
 ```cyrius
-var tb = tokenize_source(src, "unknown-lang");
-if (tb == 0) {
+var s = tokenize_stream_new("unknown-lang");
+if (s == 0) {
     # No grammar matched. Render `src` as plain text.
     your_renderer_write_plain(src, strlen(src));
     return;
 }
 ```
 
+`tokenize_stream_feed` returns:
+- `VYK_OK` (0) — bytes accepted.
+- `VYK_ERR_OVERFLOW` (-1) — buffer cap (`VYK_STREAM_CAP`,
+  1 MB in 2.0.0) would be exceeded. 2.0.1+ removes this with
+  rolling-buffer streaming.
+- `VYK_ERR_FINISHED` (-2) — `tokenize_stream_finish` already
+  ran on this stream; create a fresh one for new input.
+
 Per the **coverage invariant** ([architecture note
 001](../architecture/001-coverage-invariant.md)),
-`tokenize_source` always either returns 0 (unknown language) or
-returns a tokenbuf where every byte of `src` is accounted for
-in exactly one token. There is no partial-tokenization state to
-worry about. `error` tokens (`TK_ERROR`) cover bytes the
+`tokenize_stream_finish` produces a tokenbuf where every byte
+fed into the stream is accounted for in exactly one token.
+There is no partial-tokenization state to worry about. `error`
+tokens (`TK_ERROR`) cover bytes the
 grammar couldn't classify but the buffer is still complete.
 
 ## Corpus / sample sync

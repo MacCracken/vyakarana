@@ -91,22 +91,26 @@ fn _fuzz_check(tb, n_bytes, label) {
     return 0;
 }
 
-# Run one input across the public API. tokenize_source treats `buf`
-# as a cstr (strlen-determined length), so the coverage invariant
-# is checked against strlen(buf), not the caller's `n` — random
-# NUL bytes early-terminate the buffer, which is correct API
-# behaviour and not a bug.
+# Run one input across the public API. tokenize_stream_feed
+# treats the chunk as a byte buffer + explicit length; for fuzz
+# parity with the 1.x semantics (where tokenize_source did
+# strlen(src) and stopped at NUL), we keep using strlen here so
+# random NUL bytes mid-buffer behave the same way.
 fn _fuzz_one(buf, lang, label) {
     if (has_grammar(lang) == 0) { return 0; }   # skip if not loaded
     var effective_n = strlen(buf);
-    var tb = tokenize_source(buf, lang);
+    var s = tokenize_stream_new(lang);
+    if (s == 0) { return 0; }
+    var tb = tokenbuf_new();
+    tokenize_stream_feed(s, buf, effective_n);
+    tokenize_stream_finish(s, tb);
+    tokenize_stream_free(s);
     return _fuzz_check(tb, effective_n, label);
 }
 
 fn fuzz_main(data, n) {
-    # Seed the registry on first call. tokenize_source is lazy.
-    var seed = tokenize_source("", "shell");
-    if (seed == 0) {
+    # Seed the registry on first call. has_grammar bootstraps.
+    if (has_grammar("shell") == 0) {
         eprint("FAIL: shell grammar didn't load\n", 33);
         return 1;
     }

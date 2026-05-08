@@ -65,7 +65,7 @@ fn _detect_check_lang(name, label) {
 
 fn fuzz_main(data, n) {
     # Seed grammar registry.
-    tokenize_source("", "shell");
+    has_grammar("shell");   # triggers bootstrap_grammars (2.0+)
 
     # 1. Path API — fixed adversarial paths.
     if (_detect_check_lang(detect_language(""),                "path/empty")     != 0) { return 1; }
