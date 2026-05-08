@@ -4,15 +4,17 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–1.7.0 are
+> **Read this file before doing anything.** 1.0.0–1.8.0 are
 > shipped. As of 2026-05-08 the toolchain pin is `cyrius = "5.9.36"`.
-> 1.6.0 added SQL/GraphQL/Protobuf + ADR 0011; **1.7.0 adds
-> HTML/XML/CSS/SCSS (markup + styling batch).** No new scanner
-> extensions; the multi-byte-pair-rule shape from ADR 0008
-> handled HTML's `<!-- -->` and XML's `<![CDATA[…]]>` cleanly.
-> **33 grammars bundled now, 577/577 tests passing.** LESS
-> deferred. Next: 1.8.0 — devops + infrastructure (dockerfile,
-> makefile, ini, nginx) — see §Next up.
+> 1.7.0 added HTML/XML/CSS/SCSS; **1.8.0 adds Dockerfile/
+> Makefile/INI (DevOps + infrastructure batch).** No new
+> scanner extensions; ADR 0011's case-insensitive keywords
+> (originally for SQL) was reused for Dockerfile instruction
+> heads, and the `special_vars` flag (originally for shell)
+> was reused for Makefile automatic variables. **36 grammars
+> bundled now, 599/599 tests passing.** LESS and nginx
+> deferred. Next: 1.9.0 — AGNOS-native (cyml, llvm-ir) — see
+> §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -32,49 +34,43 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `1.7.0` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `1.8.0` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`. Full 1.x tag history in the CHANGELOG.
-- **What 1.7.0 added:** four markup + styling grammars in one
-  cut — **HTML, XML, CSS, SCSS**. All four ship with hand-
+- **What 1.8.0 added:** three DevOps + infrastructure grammars
+  — **Dockerfile, Makefile, INI**. All three ship with hand-
   rolled stand-in corpora per
   [ADR 0006](../adr/0006-standin-corpus-policy.md). Token
-  counts: html 249, xml 380, css 689, scss 526 — zero errors
-  on canonical samples. **No new scanner extensions needed**;
-  HTML's `<!-- -->` (4-byte / 3-byte) and XML's
-  `<![CDATA[ … ]]>` (10-byte / 3-byte) are just multi-byte
-  pair rules of the kind ADR 0008 introduced for TOML.
-- **Three grammar-author findings worth recording (1.7.0):**
-  - HTML doesn't keyword-list element names. HTML5 has hundreds
-    of valid elements plus arbitrary custom-element names
-    (`<my-component>`); a static keyword list would constantly
-    drift. Same call as ADR 0004 for shell built-ins — themes
-    handle the colouring by token text.
-  - CSS custom properties (`--color-bg`) need `-` in
-    `ident_start`, not just `ident_cont`. Without that, the
-    leading `--` would tokenize as two operator hyphens.
-  - HTML embedded `<style>` and `<script>` blocks tokenize
-    as plain HTML at this layer. **Grammar composition** —
-    routing inner content through CSS / JS grammars — is
-    scheduled for 1.11.0 in the restructured roadmap. Until
-    then, `body { color: #FF6600; }` inside a `<style>` block
-    just produces structural HTML tokens, which is correct
-    coverage but loses semantic colouring of the embedded
-    content.
-- **Test count:** 577/577 (was 544 at 1.6.0; added 33
-  assertions across 4 new grammars).
-- **Grammars:** 33 bundled (shell, toml, json, cyrius, rust,
+  counts: dockerfile 284, makefile 671, ini 327 — zero errors
+  on canonical samples. **No new scanner extensions needed.**
+- **Two flags pay forward in 1.8.0** — both originally built
+  for one grammar, now reused for a second:
+  - **ADR 0011 case_insensitive_keywords** (built for SQL in
+    1.6.0) drives Dockerfile's `FROM`/`from`/`From`
+    matching. The shared scanner path means the second use
+    cost zero new code.
+  - **`special_vars` flag** (built for shell in 1.0.0)
+    drives Makefile's `$@`/`$?`/`$*` automatic variables.
+    The shared char-set covers Make's most-common auto-vars;
+    the rarer ones (`$<`/`$^`/`$%`/`$+`/`$|`) gracefully
+    degrade to `$` op + char op rather than risking false
+    positives in shell.
+- **Test count:** 599/599 (was 577 at 1.7.0; added 22
+  assertions across 3 new grammars + the case-fold and
+  special-var probes).
+- **Grammars:** 36 bundled (shell, toml, json, cyrius, rust,
   yaml, markdown, c, typescript, javascript, python, go, zig,
   asm_x86_64, asm_aarch64, java, kotlin, cpp, csharp, php,
   ruby, lua, swift, elixir, ocaml, haskell, sql, graphql,
-  protobuf, **html, xml, css, scss**).
+  protobuf, html, xml, css, scss, **dockerfile, makefile,
+  ini**).
 - **Toolchain pin:** `cyrius = "5.9.36"` in `cyrius.cyml`
   (unchanged since 1.0.3).
 - **Build state: GREEN on cyrius 5.9.36.** `cyrius build`
-  clean; `cyrius test tests/vyakarana.tcyr` 577/577;
+  clean; `cyrius test tests/vyakarana.tcyr` 599/599;
   `sh scripts/smoke.sh build/vyk` reports M0+M1+M2+M3 passing
-  at v1.7.0. `dist/vyakarana.cyr` regenerated.
+  at v1.8.0. `dist/vyakarana.cyr` regenerated.
 - **Consumer pressure:** unchanged. Public `tokenize_source` /
-  `tokenbuf` API is unchanged across 1.0.0 → 1.7.0. Grammar
+  `tokenbuf` API is unchanged across 1.0.0 → 1.8.0. Grammar
   record stayed at 160 bytes since 1.6.0.
 
 ### Stand-in corpora — replace when vidya ships
@@ -151,31 +147,32 @@ additions land).
 
 ---
 
-## Next up — 1.8.0 (DevOps + infrastructure)
+## Next up — 1.9.0 (AGNOS-native)
 
 Per the [roadmap](./roadmap.md), the next batch is
-**1.8.0 — DevOps + infrastructure formats**: `dockerfile`,
-`makefile`, `ini` / `.conf`. `nginx` tracked post-1.8 if demand
-emerges. ADR 0006 stand-ins likely.
+**1.9.0 — AGNOS-native formats**: `cyml`, `llvm-ir`. ADR 0006
+stand-ins likely.
 
 Surfaces to watch:
-- **Dockerfile** is line-oriented with reserved instruction
-  heads (`FROM`, `RUN`, `COPY`, `WORKDIR`, `ENV`, `EXPOSE`,
-  `CMD`, `ENTRYPOINT`, `HEALTHCHECK`, `ARG`, `LABEL`, `USER`,
-  `VOLUME`, `STOPSIGNAL`, `ONBUILD`, `SHELL`). Case-insensitive
-  per spec (`FROM` and `from` both work) — same flag SQL uses
-  in 1.6.0 (ADR 0011).
-- **Makefile** is **tab-sensitive** — recipe lines must start
-  with a tab, not spaces. Tokenization at the byte level
-  doesn't care about that, but worth flagging in the grammar
-  header.
-- **INI / .conf** is the simplest of the three: `;` or `#`
-  line comments, `[section]` headers, `key = value` lines.
-  Mostly mechanical.
+- **CYML** is vyakarana's own grammar-file format — currently
+  routes to TOML via `detect_language` (`.cyml` → toml). A
+  proper grammar would recognise the `---` markdown-body
+  delimiter that some yukti config and vidya content files use,
+  plus the TOML-shaped header. Self-hosting payoff: vyakarana
+  starts using its own grammar to tokenize itself.
+- **LLVM-IR** has a moderately rich syntax: `;` line comments,
+  `@global` / `%local` / `%struct` register names, `!metadata`
+  references, type literals (`i32`, `i64`, `float`, `double`,
+  `void`, `ptr`), function signatures with attributes, and
+  basic-block labels. `@`/`%`/`!` in `ident_start` would
+  collapse those forms into single idents (same trick used
+  for Java annotations, Zig builtins, Rust macros).
 
-After 1.8.0, the roadmap continues with 1.9.0 (AGNOS-native:
-`cyml` proper-grammar, `llvm-ir`), then the pre-2.0 prep
-waves (1.10–1.13). 2.0.0 is the streaming-tokenizer break.
+After 1.9.0, the roadmap continues with the pre-2.0 prep
+waves (1.10–1.13): theme-palette + vidya consumption, external
+integrations, fuzz harness, RC polish. 2.0.0 is the
+streaming-tokenizer break — the only release scheduled in the
+2.x line under the current versioning rule.
 
 Each new grammar is a `grammars/<name>.cyml` plus a
 `tests/corpus/<name>.<ext>` (vidya snapshot per

@@ -1,0 +1,103 @@
+# ini — INI / .conf tokenizer grammar
+#
+# Rule scheme per ADR 0005. INI is one of the simplest formats
+# in the bundled set:
+#   - `;` and `#` line comments (both common; some tools use
+#     only one).
+#   - `[section]` headers — `[` + ident + `]` punctuation.
+#   - `key = value` lines — `=` operator, value can be
+#     unquoted or `"..."`/`'...'` quoted.
+#   - No real keywords. `true`/`false`/`null`/`yes`/`no`/`on`/
+#     `off` sometimes carry semantics, but it varies by parser
+#     dialect; we don't promote them.
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# vidya doesn't ship an INI reference sample yet. The local
+# `tests/corpus/concept.ini` covers section headers (including
+# the `[a.b.c]` nested-key convention), both `;` and `#`
+# comment forms, quoted and unquoted values, comma-separated
+# value lists, and URL-style values. Replace with a vidya
+# snapshot when one ships.
+#
+# Many INI dialects (and `.conf` formats) share this shape:
+# .gitconfig, .editorconfig, systemd unit files, php.ini, the
+# pip / setuptools config families, and most desktop-app
+# config files. This grammar is intentionally permissive
+# rather than dialect-specific.
+#
+# Known gaps (not triggered by the stand-in):
+#   - Multi-line values via line-continuation (`\` at end of
+#     line). Tokenizes as `\` operator + newline + content.
+#     Cosmetic; coverage holds.
+#   - `KEY[]` repeated-key array syntax (PHP-style ini).
+#     Tokenizes as ident + `[` + `]`. Cosmetic.
+
+[grammar]
+name = "ini"
+extensions = [".ini", ".conf", ".cfg", ".properties"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+# Section names and keys can have dots, dashes, and slashes
+# in some dialects; keep `_`/`-`/`.` in `ident_cont` so
+# `[auth.providers.github]` and `max-age` are single idents.
+ident_start = "A-Za-z_"
+ident_cont  = "A-Za-z0-9_.-/"
+
+number_decimal = true
+number_0x      = true
+number_0b      = false
+number_0o      = false
+
+special_vars = false
+unicode_ident = true
+char_literal  = false
+
+operators = [
+    "=", ":", "+", "-", "*", "/",
+    "<", ">",
+    "&", "|", "@",
+    "!", "?", "#", "$",
+    "\\",
+]
+
+punctuation = [
+    "(", ")", "{", "}", "[", "]",
+    ";", ",", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+# `;` line comment (classic INI form). Must come BEFORE the
+# `;` punctuation listing has any effect — the line-rule step
+# (step 2) fires before punctuation (step 9). For grammars
+# where `;` is also a statement terminator, the grammar would
+# need to choose; here we choose comment.
+[[rules]]
+kind = "comment"
+match = "line"
+start = ";"
+
+
+[[rules]]
+kind = "comment"
+match = "line"
+start = "#"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "'"
+end = "'"

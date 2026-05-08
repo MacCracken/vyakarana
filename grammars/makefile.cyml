@@ -1,0 +1,134 @@
+# makefile — GNU Make tokenizer grammar
+#
+# Rule scheme per ADR 0005. Makefile's surface:
+#   - `#` line comments.
+#   - Variable assignments: `=` (lazy), `:=` (immediate), `?=`
+#     (conditional), `+=` (append), `!=` (shell expansion in
+#     GNU 4.0+).
+#   - Automatic variables: `$@`, `$<`, `$^`, `$?`, `$*`, `$%`,
+#     `$+`, `$|`. The shell-style `special_vars = true` flag
+#     (1.0.0) handles all of these as 2-byte operators.
+#   - Function calls: `$(name args)` and `${name args}`.
+#   - Wildcards: `%` in pattern rules (`%.o: %.c`).
+#   - Conditional / include directives: `ifeq`, `ifneq`,
+#     `ifdef`, `ifndef`, `else`, `endif`, `include`,
+#     `-include`, `define`, `endef`, `export`, `unexport`,
+#     `override`, `vpath`.
+#   - `.PHONY:` is a special target — `.PHONY` tokenizes as
+#     `.` + `PHONY`; theme can re-pair.
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# vidya doesn't ship a Makefile reference sample yet. The
+# local `tests/corpus/Makefile` exercises every assignment
+# form, automatic variables, GNU function calls (`$(wildcard)`,
+# `$(shell)`, `$(notdir)`, `$(MAKE)`), pattern rules,
+# conditional flag blocks (`ifeq`/`ifdef`/`ifndef`), `.PHONY`,
+# and a small build graph. Replace with a vidya snapshot when
+# one ships.
+#
+# Tab-sensitive recipes: GNU make requires recipe lines to
+# start with a tab (or the rule won't fire). At the byte level
+# tabs are just whitespace; this grammar doesn't (and can't)
+# enforce the column-0-tab rule. Documented for grammar
+# authors who might be tempted to add layout-sensitive
+# tokenization.
+#
+# Filename dispatch: standard names are `Makefile`, `makefile`,
+# `GNUmakefile`. `detect_language` matches them by basename
+# suffix.
+#
+# Known gaps (not triggered by the stand-in):
+#   - `define VAR …` … `endef` multi-line variable bodies
+#     tokenize as `define` keyword + ident + arbitrary content
+#     up to `endef`. Bodies are not wrapped as a string-pair
+#     token because the body can include any byte.
+#   - Recipe lines (after a tab) are arbitrary shell text. No
+#     attempt is made to route them to the shell grammar.
+#     Grammar composition (1.11.0) covers this class of
+#     concern.
+
+[grammar]
+name = "makefile"
+extensions = []
+
+[defaults]
+shebang = false
+whitespace = true
+
+ident_start = "A-Za-z_"
+ident_cont  = "A-Za-z0-9_"
+
+number_decimal = true
+number_0x      = false
+number_0b      = false
+number_0o      = false
+
+# `special_vars = true` reuses the shell rule type to match
+# 2-byte automatic variables: `$@`, `$<`, `$^`, `$?`, `$*`,
+# `$%`, `$+`, `$|`. Bare `$` falls out as a 1-byte operator
+# (then `$(name)` tokenizes as `$` + `(` + ident + `)`).
+special_vars = true
+unicode_ident = true
+char_literal  = false
+
+# Operators in longest-match order. Make-specific assignment
+# forms `:=`, `?=`, `+=`, `!=` (latter only in GNU 4.0+).
+operators = [
+    ":=", "?=", "+=", "!=",
+    "=",
+    "+", "-", "*", "/", "%",
+    "<", ">",
+    "&", "|", "^", "~",
+    "@", "?", "!",
+    "\\",
+]
+
+punctuation = [
+    "(", ")", "{", "}", "[", "]",
+    ";", ",", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+[[rules]]
+kind = "comment"
+match = "line"
+start = "#"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "'"
+end = "'"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # Conditional directives
+    "ifeq", "ifneq", "ifdef", "ifndef",
+    "else", "endif",
+    # Include / load
+    "include", "sinclude",
+    # Definition
+    "define", "endef",
+    # Exporting
+    "export", "unexport",
+    # Override / private
+    "override", "private",
+    # Search paths
+    "vpath",
+    # Recursive / extra
+    "undefine", "load",
+]

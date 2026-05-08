@@ -164,6 +164,8 @@ fn detect_language(path) {
     if (n >= 4) {
         if (memeq(path + n - 4, ".htm", 4) == 1) { return "html"; }
         if (memeq(path + n - 4, ".css", 4) == 1) { return "css"; }
+        if (memeq(path + n - 4, ".ini", 4) == 1) { return "ini"; }
+        if (memeq(path + n - 4, ".cfg", 4) == 1) { return "ini"; }
         if (memeq(path + n - 4, ".xml", 4) == 1) { return "xml"; }
         if (memeq(path + n - 4, ".xsl", 4) == 1) { return "xml"; }
         if (memeq(path + n - 4, ".xsd", 4) == 1) { return "xml"; }
@@ -200,6 +202,7 @@ fn detect_language(path) {
         if (memeq(path + n - 5, ".html", 5) == 1) { return "html"; }
         if (memeq(path + n - 5, ".scss", 5) == 1) { return "scss"; }
         if (memeq(path + n - 5, ".sass", 5) == 1) { return "scss"; }
+        if (memeq(path + n - 5, ".conf", 5) == 1) { return "ini"; }
         if (memeq(path + n - 5, ".bash", 5) == 1) { return "shell"; }
         if (memeq(path + n - 5, ".toml", 5) == 1) { return "toml"; }
         if (memeq(path + n - 5, ".json", 5) == 1) { return "json"; }
@@ -212,6 +215,29 @@ fn detect_language(path) {
     if (n >= 6) {
         if (memeq(path + n - 6, ".swift", 6) == 1) { return "swift"; }
         if (memeq(path + n - 6, ".proto", 6) == 1) { return "protobuf"; }
+    }
+    # Dockerfile is matched by basename (canonical filename has
+    # no extension). Suffix `Dockerfile` covers `./Dockerfile`,
+    # `/path/to/Dockerfile`, and `name.Dockerfile`. The
+    # `Dockerfile.<variant>` form (e.g. `Dockerfile.dev`)
+    # would need basename-and-prefix matching; today users with
+    # those names pass `--language=dockerfile` explicitly.
+    if (n >= 10) {
+        if (memeq(path + n - 10, "Dockerfile", 10) == 1) { return "dockerfile"; }
+    }
+    if (n >= 13) {
+        if (memeq(path + n - 13, "Containerfile", 13) == 1) { return "dockerfile"; }
+    }
+    # Makefile is matched by basename. Standard names are
+    # `Makefile`, `makefile`, `GNUmakefile`. Variant suffixes
+    # like `Makefile.am` (autotools) need explicit
+    # `--language=makefile`.
+    if (n >= 8) {
+        if (memeq(path + n - 8, "Makefile", 8) == 1) { return "makefile"; }
+        if (memeq(path + n - 8, "makefile", 8) == 1) { return "makefile"; }
+    }
+    if (n >= 11) {
+        if (memeq(path + n - 11, "GNUmakefile", 11) == 1) { return "makefile"; }
     }
     return 0;
 }

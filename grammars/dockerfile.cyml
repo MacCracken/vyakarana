@@ -1,0 +1,121 @@
+# dockerfile — Dockerfile tokenizer grammar
+#
+# Rule scheme per ADR 0005. Dockerfile is line-oriented with a
+# fixed instruction-head vocabulary (FROM, RUN, COPY, etc.).
+# Per spec, instruction heads are **case-insensitive** —
+# `FROM`, `from`, and `From` are all the same instruction.
+# This grammar uses [ADR 0011](../docs/adr/0011-case-insensitive-keywords-default.md)'s
+# `case_insensitive_keywords` flag (same as SQL since 1.6.0)
+# so the canonical UPPER list matches all case variants.
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# vidya doesn't ship a Dockerfile reference sample yet. The
+# local `tests/corpus/Dockerfile` is a multi-stage build with
+# the modern `# syntax=docker/dockerfile:1.7` directive,
+# build-args, distroless runtime, JSON-form CMD/ENTRYPOINT,
+# OCI labels, healthcheck, and intentional case-mixing on the
+# instruction heads (UPPER / lower / Mixed) to exercise ADR
+# 0011. Replace with a vidya snapshot when one ships.
+#
+# Variable expansion (`${VAR}`, `$VAR`): `$` and `@` are not
+# in `ident_start`. `$VAR` tokenizes as `$` op + `VAR` ident.
+# Coverage holds; theme can re-pair. (Unlike shell, Dockerfile
+# does not have a `special_vars` rule — Dockerfile's `$VAR`
+# is statically bound at build time, no runtime expansion
+# semantics.)
+#
+# Filename dispatch: Dockerfile uses no extension. `detect_language`
+# in `src/main.cyr` matches the literal name `Dockerfile` (and
+# common variants like `Containerfile`, `*.Dockerfile`,
+# `Dockerfile.*`). Users with non-standard names pass
+# `--language=dockerfile` explicitly.
+#
+# Known gaps (not triggered by the stand-in):
+#   - Heredoc syntax (`COPY <<EOT`, etc.). Variable-length
+#     terminator — same scanner-shape gap as Lua's `[==[…]==]`,
+#     Ruby/PHP heredocs, Swift raw strings.
+#   - Parser directives `# syntax=…` and `# escape=…` are
+#     plain `#` line comments at this layer; theme can re-pair
+#     by token text.
+
+[grammar]
+name = "dockerfile"
+extensions = []
+
+[defaults]
+shebang = false
+whitespace = true
+
+ident_start = "A-Za-z_"
+ident_cont  = "A-Za-z0-9_.-"
+
+number_decimal = true
+number_0x      = true
+number_0b      = false
+number_0o      = false
+
+special_vars = false
+unicode_ident = true
+char_literal  = false
+
+# ADR 0011: Dockerfile instruction heads are case-insensitive
+# (Dockerfile reference, "Format" section).
+case_insensitive_keywords = true
+
+operators = [
+    "=", "+", "-", "*", "/",
+    "<", ">",
+    "&", "|", "^", "~",
+    "!", "?", "@", "$", "#",
+    "\\",
+]
+
+punctuation = [
+    "(", ")", "{", "}", "[", "]",
+    ";", ",", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+[[rules]]
+kind = "comment"
+match = "line"
+start = "#"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "'"
+end = "'"
+
+
+# Instruction heads. Per the Dockerfile reference, all
+# instructions are case-insensitive — declared here in
+# canonical UPPER form, matched case-folded via ADR 0011.
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # Metadata / build args
+    "FROM", "ARG", "LABEL", "MAINTAINER",
+    # File-system / build steps
+    "WORKDIR", "COPY", "ADD", "RUN",
+    # Runtime configuration
+    "USER", "ENV", "EXPOSE", "VOLUME",
+    "CMD", "ENTRYPOINT", "STOPSIGNAL", "HEALTHCHECK",
+    "SHELL",
+    # Build modifiers
+    "ONBUILD",
+    # `AS` for `FROM x AS name`; `--from=` is operator + ident
+    "AS",
+]

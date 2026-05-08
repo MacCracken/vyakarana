@@ -6,6 +6,67 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [1.8.0] — 2026-05-08
+
+DevOps + infrastructure language batch. Three new grammars in
+one cut: Dockerfile, Makefile, INI. All three ship with
+stand-in corpora per
+[ADR 0006](docs/adr/0006-standin-corpus-policy.md). No new
+scanner extensions; both case-insensitive keyword matching
+(ADR 0011, originally for SQL) and the `special_vars` flag
+(originally for shell) paid forward — Dockerfile reuses the
+former for instruction heads, Makefile reuses the latter for
+automatic variables.
+
+### Added
+
+- **Dockerfile grammar.** New `grammars/dockerfile.cyml` +
+  `tests/corpus/Dockerfile` (284 tokens, zero errors).
+  **Case-insensitive instruction heads via ADR 0011** —
+  `FROM` / `from` / `From` all match the canonical UPPER
+  keyword list. Filename-matched (Dockerfile uses no
+  extension): `detect_language` checks suffix `Dockerfile` or
+  `Containerfile`, covering `./Dockerfile`,
+  `/path/to/Dockerfile`, `name.Dockerfile`. Variants like
+  `Dockerfile.dev` need explicit `--language=dockerfile`.
+- **Makefile grammar.** New `grammars/makefile.cyml` +
+  `tests/corpus/Makefile` (671 tokens, zero errors). All four
+  GNU Make assignment forms (`=`, `:=`, `?=`, `+=`, `!=`).
+  Automatic variables `$@`/`$?`/`$*` work via the existing
+  `special_vars` flag (built for shell, char-set is `#`/`?`/
+  `@`/`!`/`*`/`$`/`-`). The remaining auto-vars `$<`/`$^`/
+  `$%`/`$+`/`$|` gracefully degrade to `$` op + char op —
+  documented as a deliberate trade-off (extending the shared
+  helper would risk false positives in shell). Conditional /
+  include / define / export directives in keyword list.
+  Filename-matched: `Makefile`, `makefile`, `GNUmakefile`.
+- **INI grammar.** New `grammars/ini.cyml` +
+  `tests/corpus/concept.ini` (327 tokens, zero errors). Both
+  `;` and `#` line-comment forms; `[section]` headers; quoted
+  and unquoted values. `.` in `ident_cont` so dotted-key
+  sections like `[auth.providers.github]` tokenize as one
+  ident. Default extension covers `.ini`/`.conf`/`.cfg`/
+  `.properties` — captures most modern .conf-file shapes
+  (.gitconfig, .editorconfig, systemd unit files, php.ini,
+  pip / setuptools config families). nginx-specific syntax
+  deferred (curly-brace blocks aren't INI-shape; if a real
+  nginx corpus surfaces, fork from this grammar).
+
+### Wiring
+
+- `src/tokenize.cyr` — all three added to `bootstrap_grammars()`
+  (now loads 36 grammars).
+- `src/main.cyr` — extension dispatch: `.ini`/`.conf`/`.cfg`/
+  `.properties`. Filename-suffix dispatch for Dockerfile +
+  Containerfile and Makefile + makefile + GNUmakefile.
+- `scripts/smoke.sh` — all three added to `--list-languages`
+  check (now 36 grammars) and the corpus round-trip loop.
+- `tests/vyakarana.tcyr` — three Dockerfile probes (mixing
+  UPPER / lower / Mixed instruction heads to exercise ADR
+  0011), three Makefile probes (`:=` op, `$@` auto-var,
+  `ifeq` keyword), four INI probes (section header, both
+  comment forms, dotted-section ident). 577 → 599 passing.
+
 ## [1.7.0] — 2026-05-08
 
 Markup + styling language batch. Four new grammars in one cut:
