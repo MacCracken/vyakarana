@@ -62,6 +62,15 @@ fn tokenize_stream_drain(s, out_tb)     -> i64            # tokens appended this
 fn tokenize_stream_finish(s, out_tb)    -> i64            # final drain
 fn tokenize_stream_free(s)
 
+# Pull adapter (2.0.2+). Iterator over the same stream;
+# pass 0 as out_tb to drain/finish to route into the
+# stream's internal staging tokenbuf, then walk it via
+# tokenize_stream_next.
+fn tokenize_stream_next(s)              -> i64            # 1 advanced, 0 exhausted
+fn tokenize_stream_kind(s)              -> i64            # current token's kind
+fn tokenize_stream_start(s)             -> i64            # current token's start
+fn tokenize_stream_len(s)               -> i64            # current token's len
+
 fn has_grammar(name) -> i64                # 1 if known, 0 otherwise
 fn list_languages_into(out_vec) -> i64     # populates a vec of cstr names
 
@@ -147,6 +156,31 @@ while (i < n) {
     i = i + 1;
 }
 ```
+
+Or with the **pull adapter** (2.0.2+) — same end result, no
+intermediate tokenbuf to manage:
+
+```cyrius
+var s = tokenize_stream_new("rust");
+if (s == 0) { /* unknown grammar */ return; }
+tokenize_stream_feed(s, src, strlen(src));
+tokenize_stream_finish(s, 0);   # 0 = drain into internal staging
+
+while (tokenize_stream_next(s) == 1) {
+    var k = tokenize_stream_kind(s);
+    var p = tokenize_stream_start(s);
+    var l = tokenize_stream_len(s);
+
+    var style = your_theme_lookup(kind_name(k));
+    your_renderer_write_styled(style, src + p, l);
+}
+tokenize_stream_free(s);
+```
+
+For interleaved feed + iterate (the actual streaming use case),
+call `_next` in a loop between feeds — drain refills the
+staging incrementally, `_next` returns 0 when no more tokens
+are available right now, and you continue feeding.
 
 ### The theme contract
 

@@ -4,15 +4,16 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.0.1 are
-> shipped. 1.x closed at 1.13.3 with 0 audit findings. 2.0.0
-> shipped the streaming-API surface (push-based, `tokenize_stream_*`);
-> **2.0.1 delivers the rolling buffer** so drain actually
-> streams tokens per feed and the 1 MB total-input cap is
-> gone. As of 2026-05-08 the toolchain pin is `cyrius = "5.10.0"`.
-> 38 grammars bundled (unchanged), 758/758 tests passing,
-> 3/3 fuzz harnesses passing. Next is 2.0.2 (pull adapter,
-> `tokenize_stream_next`). See §Next up.
+> **Read this file before doing anything.** 1.0.0–2.0.2 are
+> shipped. 1.x closed at 1.13.3 with 0 audit findings. The
+> 2.0.x prep wave is complete: 2.0.0 shipped the streaming-
+> API surface (push), 2.0.1 the rolling buffer (per-feed
+> drainage), **2.0.2 the pull adapter (`tokenize_stream_next`
+> iterator-style API)**. As of 2026-05-08 the toolchain pin
+> is `cyrius = "5.10.0"`. 38 grammars bundled (unchanged),
+> 769/769 tests passing, 3/3 fuzz harnesses passing. Next:
+> the post-streaming queue is open; nothing forced. See
+> §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -32,9 +33,24 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `2.0.1` in `VERSION`, `src/version_str.cyr`, and
-  `dist/vyakarana.cyr`. Full 1.x + 2.0.0–2.0.1 tag history in
+- **Version:** `2.0.2` in `VERSION`, `src/version_str.cyr`, and
+  `dist/vyakarana.cyr`. Full 1.x + 2.0.0–2.0.2 tag history in
   the CHANGELOG.
+- **What 2.0.2 added (pull adapter):**
+  - **`tokenize_stream_next(s)`** — iterator-style cursor;
+    advances and returns 1, or 0 when exhausted. Refills
+    via `_drain` automatically.
+  - **`tokenize_stream_kind(s)` / `_start(s)` / `_len(s)`**
+    — read the current token (the one just advanced to).
+  - **drain / finish accept `out_tb = 0`** to route into
+    the stream's internal staging tokenbuf — lets the
+    iterator pattern work without managing a tokenbuf
+    externally.
+  - 11 new tcyr probes covering iteration vs push baseline,
+    interleaved feed + iterate, empty-stream EOF, null
+    safety. Stream record: 56 → 72 bytes (added staging_tb
+    + next_idx).
+  - Closes the followup queued from 2.0.0.
 - **What 2.0.1 added (rolling-buffer streaming):**
   - **Per-feed drainage.** `tokenize_stream_drain(s, tb)`
     re-runs the scanner over the current buffer, commits
@@ -391,7 +407,7 @@ FINDING-002/003/004 mitigations are designed for).
 
 ---
 
-## Next up — 1.13.x
+## Next up — open queue
 
 Closed waves:
 
@@ -402,28 +418,41 @@ Closed waves:
 - **1.12.x — hardening + theme export polish.** Fuzz +
   stress harness + post-1.11 audit (1.12.0); Helix + iTerm
   theme export (1.12.1).
+- **1.13.x — RC polish.** Bench baseline (1.13.0), error
+  messages + man page (1.13.1), markdown fence routing
+  (1.13.2, ADR 0016), distribution + 1.13-closeout audit
+  (1.13.3 — 0 findings).
+- **2.0.x — streaming tokenizer.** API surface (2.0.0,
+  ADR 0017); rolling-buffer per-feed drainage (2.0.1);
+  pull adapter (2.0.2).
 
-1.x is shipped (closed at 1.13.3 with 0 audit findings).
-2.0.0 just opened the 2.x line.
+**No work currently in flight.** No work currently in
+flight. The post-streaming queue is open — nothing forces
+the next cut. Possible directions when work resumes:
 
-Now in flight:
+- **Scanner state-machine optimization.** 2.0.1's
+  rescan-and-commit drain is O(buf_len) per call. A real
+  state machine would scan only the new bytes since the
+  previous commit, dropping the per-feed cost from
+  O(buf_len) to O(new_bytes). Worth doing if a real
+  consumer surfaces a profiling complaint.
+- **Discardable staging buffer.** The pull adapter's
+  internal tokenbuf grows monotonically across iteration.
+  For very long streams (millions of tokens) the tokenbuf
+  itself becomes a memory cost. Adding a "discard tokens
+  before index N" primitive would cap pull-mode memory
+  too.
+- **Additional grammars.** Eight categories surfaced in
+  prior cuts but didn't make 2.x: shell variants,
+  Terraform / HCL, Nix, Vue / Svelte single-file, MDX,
+  PowerShell, Crystal, Julia.
+- **Real-corpus fuzz harness** (flagged in the
+  2026-05-09 1.13-closeout audit's recommendations).
+  Mutates vidya snapshots instead of random bytes —
+  catches shape-specific regressions.
 
-- **2.0.2 — Pull adapter (`tokenize_stream_next`).**
-  Wraps the 2.0.1 push primitive for iteration-style
-  consumers. Maintains a small per-stream tokenbuf that
-  drain() refills from the underlying stream; `_next`
-  returns the next entry by index and increments. EOF
-  signalled when finish has run and the internal tokenbuf
-  is exhausted. No new ADR — extends ADR 0017's design.
-
-After 2.0.x:
-
-- **2.0.0** — Streaming tokenizer (M5 carryover). The one
-  scheduled break in the public API.
-- **1.13.0** — RC polish: binary size, startup benchmarks,
-  error messages, man page, AGNOS / Cyrius packaging.
-- **2.0.0** — Streaming tokenizer (M5 carryover). The one
-  scheduled break in the public API.
+These are all consumer-driven. No forced minor; the next
+cut waits for a real ask.
 
 Each new grammar is a `grammars/<name>.cyml` plus a
 `tests/corpus/<name>.<ext>` (vidya snapshot per

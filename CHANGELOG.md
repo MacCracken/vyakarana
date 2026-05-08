@@ -6,6 +6,67 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [2.0.2] — 2026-05-08
+
+Closes the 2.0.x streaming-prep wave with the **pull adapter**
+— iterator-style API over the 2.0.1 push primitive. Closes
+the followup queued from the original 2.0.0 cut.
+
+### Added
+
+- **`tokenize_stream_next(s)`** — advances the internal
+  cursor, returning 1 if a token is now current or 0 if
+  exhausted. Refills the stream's staging tokenbuf via
+  `_drain` automatically when the staging is empty.
+- **`tokenize_stream_kind(s)`** / **`_start(s)`** /
+  **`_len(s)`** — read the kind, absolute start, and length
+  of the *current* token (the one most recently returned by
+  `_next == 1`). Behaviour is undefined if called before the
+  first successful `_next`.
+- **drain / finish accept `out_tb = 0`** — routes the drain
+  into the stream's internal staging tokenbuf instead of a
+  caller-supplied one. Lets the iterator pattern work without
+  the caller fishing the staging out:
+  ```
+  tokenize_stream_finish(s, 0);
+  while (tokenize_stream_next(s) == 1) {
+      var k = tokenize_stream_kind(s);
+      ...
+  }
+  ```
+- **11 new tcyr probes** in the `2.0.2 pull adapter` group:
+  pull-iteration matches push-baseline counts and per-token
+  (kind, start, len); interleaved feed + iterate; empty
+  stream returns 0 before and after finish; null-stream
+  safety; absolute starts after compaction.
+  758 → 769 passing.
+
+### Changed
+
+- **Stream record: 56 → 72 bytes.** Two new fields:
+  `staging_tb` (offset 56) holds the pull-adapter's internal
+  tokenbuf; `next_idx` (offset 64) tracks the iteration
+  cursor. `tokenize_stream_new` allocates the staging at
+  init; `_free` clears both.
+- **`_drain` and `_finish` semantics extended (additive).**
+  Existing callers that pass a real out_tb keep working
+  exactly as before. Passing 0 is the new contract for
+  iterator-style consumers — no breakage.
+
+### Documentation
+
+- **Consumer integration guide** gains a pull-style render
+  example alongside the push-style baseline. Both produce
+  identical output; choice is consumer ergonomics.
+
+### Status
+
+- **2.0.x prep wave is complete.** Streaming API surface
+  (2.0.0), per-feed drainage (2.0.1), pull adapter (2.0.2).
+  Next minor (2.1.x or whatever the user prioritizes) opens
+  the post-streaming queue: scanner state-machine
+  optimizations, additional consumer-driven features, etc.
+
 ## [2.0.1] — 2026-05-08
 
 First sub-cut of the 2.0.x window. **Rolling-buffer

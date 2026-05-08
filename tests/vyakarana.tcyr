@@ -2531,6 +2531,114 @@ fn main() {
     assert_eq(byte_drip_match, 1,
               "byte-at-a-time stream: every (kind, start, len) matches baseline");
 
+    test_group("2.0.2 pull adapter — tokenize_stream_next");
+
+    # Iterator pattern: feed → finish → iterate to EOF. Token
+    # sequence must be identical to the push-API equivalent.
+    var sp1 = tokenize_stream_new("shell");
+    var src_pull = "echo hello";
+    tokenize_stream_feed(sp1, src_pull, strlen(src_pull));
+    tokenize_stream_finish(sp1, 0);
+    var pull_count = 0;
+    var pull_sum = 0;
+    while (tokenize_stream_next(sp1) == 1) {
+        pull_count = pull_count + 1;
+        pull_sum = pull_sum + tokenize_stream_len(sp1);
+    }
+    assert(pull_count > 0, "pull adapter: at least one token");
+    assert_eq(pull_sum, strlen(src_pull),
+              "pull adapter: coverage invariant holds across iteration");
+
+    # Compare against the push baseline.
+    var sp_base = tokenize_stream_new("shell");
+    var tb_pb = tokenbuf_new();
+    tokenize_stream_feed(sp_base, src_pull, strlen(src_pull));
+    tokenize_stream_finish(sp_base, tb_pb);
+    tokenize_stream_free(sp_base);
+    assert_eq(pull_count, tokenbuf_count(tb_pb),
+              "pull adapter: same token count as push baseline");
+
+    # Read the first token via accessors and verify it matches.
+    var sp2 = tokenize_stream_new("shell");
+    tokenize_stream_feed(sp2, src_pull, strlen(src_pull));
+    tokenize_stream_finish(sp2, 0);
+    tokenize_stream_next(sp2);
+    assert_eq(tokenize_stream_kind(sp2), tokenbuf_kind(tb_pb, 0),
+              "pull adapter: first token kind matches");
+    assert_eq(tokenize_stream_start(sp2), tokenbuf_start(tb_pb, 0),
+              "pull adapter: first token start matches");
+    assert_eq(tokenize_stream_len(sp2), tokenbuf_len(tb_pb, 0),
+              "pull adapter: first token len matches");
+    tokenize_stream_free(sp2);
+    tokenize_stream_free(sp1);
+
+    # Interleaved feed + iterate (the streaming use case).
+    # Push some bytes, drain through `_next` until exhausted,
+    # push more, iterate again. Final tokens must match a
+    # single-shot push.
+    var sp_inter = tokenize_stream_new("shell");
+    var ipart1 = "echo ";
+    var ipart2 = "hello";
+    tokenize_stream_feed(sp_inter, ipart1, strlen(ipart1));
+    var inter_count_a = 0;
+    while (tokenize_stream_next(sp_inter) == 1) {
+        inter_count_a = inter_count_a + 1;
+    }
+    # After feed of "echo " in feed mode: drain commits "echo"
+    # (whitespace held back as potentially-extending). next
+    # returns 1 once, then 0. inter_count_a >= 0 (could be 0
+    # if drain decided everything was partial — that's also
+    # acceptable).
+    tokenize_stream_feed(sp_inter, ipart2, strlen(ipart2));
+    tokenize_stream_finish(sp_inter, 0);
+    var inter_count_b = 0;
+    var inter_sum = 0;
+    while (tokenize_stream_next(sp_inter) == 1) {
+        inter_count_b = inter_count_b + 1;
+        inter_sum = inter_sum + tokenize_stream_len(sp_inter);
+    }
+    var total_inter = inter_count_a + inter_count_b;
+    assert_eq(total_inter, tokenbuf_count(tb_pb),
+              "interleaved pull: same total as push baseline");
+    # Coverage requires summing both halves; compute partial sum
+    # from the first batch (we lost those lens above).
+    # Simpler check: re-iterate via push baseline after
+    # exhaustion isn't possible; instead verify the total bytes
+    # via the inter_sum + the bytes covered before mid-feed.
+    # Since stream emits tokens in order with absolute offsets,
+    # the last token's start + len must equal total input len.
+    # `inter_sum` is the sum from the second half only —
+    # combined coverage = strlen(ipart1)+strlen(ipart2)=10.
+    # We don't have inter_sum_a saved, so just assert the
+    # last token's end == total bytes (re-using sp_inter's
+    # internal state isn't possible; we'll check via a fresh
+    # stream).
+    var sp_check = tokenize_stream_new("shell");
+    tokenize_stream_feed(sp_check, "echo hello", 10);
+    tokenize_stream_finish(sp_check, 0);
+    var last_end = 0;
+    while (tokenize_stream_next(sp_check) == 1) {
+        last_end = tokenize_stream_start(sp_check) + tokenize_stream_len(sp_check);
+    }
+    assert_eq(last_end, 10,
+              "pull adapter: last token's start+len equals total input");
+    tokenize_stream_free(sp_check);
+    tokenize_stream_free(sp_inter);
+
+    # _next on a stream that hasn't seen any bytes returns 0.
+    var sp_empty = tokenize_stream_new("shell");
+    var n_empty = tokenize_stream_next(sp_empty);
+    assert_eq(n_empty, 0, "pull adapter: empty stream returns 0");
+    tokenize_stream_finish(sp_empty, 0);
+    var n_empty_after = tokenize_stream_next(sp_empty);
+    assert_eq(n_empty_after, 0,
+              "pull adapter: empty stream after finish returns 0 (EOF)");
+    tokenize_stream_free(sp_empty);
+
+    # _next on null stream is safe (returns 0).
+    var n_null = tokenize_stream_next(0);
+    assert_eq(n_null, 0, "pull adapter: null stream returns 0");
+
     test_group("version string shape");
     # VYK_VERSION lives in src/version_str.cyr (auto-generated by
     # scripts/version-bump.sh). Asserting shape, not value, so the
