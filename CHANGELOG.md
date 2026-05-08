@@ -4,7 +4,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Changed
+
+- **Single source of truth for `vyk --version`.** The CLI version
+  literal moved from a hand-edited `var VYK_VERSION = "vyk X.Y.Z"`
+  in `src/main.cyr` to a new auto-generated module
+  `src/version_str.cyr` that `src/main.cyr` now `include`s. A new
+  `scripts/version-bump.sh` (modeled on cyim's and cyrius's)
+  regenerates the file from `VERSION` and inserts a CHANGELOG
+  header in one shot — same-version invocation is supported as
+  the documented "regenerate without bumping" path. Eliminates
+  the fourth-file drift that nearly shipped 1.0.3 with `vyk
+  --version` still reporting 1.0.2. `version_str.cyr` is
+  deliberately not in `[lib] modules` — downstream consumers of
+  `dist/vyakarana.cyr` don't need the CLI string.
+
+## [1.0.3] — 2026-05-08
+
+### Changed
+
+- **Toolchain pin bumped to cyrius `5.9.36`** (was `5.6.0` on the
+  1.0.2 cut; an interim bump to `5.9.32` was filed as blocked on an
+  upstream `include`-graph regression — see
+  `docs/development/issues/2026-05-07-cyrius-include-graph-regression.md`).
+  The regression is resolved on `5.9.36`: `cyrius build src/main.cyr
+  build/vyk` is green, `cyrius test tests/vyakarana.tcyr` reports
+  399/399 passing, and `scripts/smoke.sh` reports all M0+M1+M2+M3
+  gates passing. No vyakarana sources changed for this cut — the
+  release exists to track the new known-good toolchain pin.
+- `dist/vyakarana.cyr` regenerated against 1.0.3 (no source-level
+  drift; bundle stays at 1806 lines).
 
 ## [1.0.2] — 2026-04-23
 

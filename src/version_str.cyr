@@ -1,0 +1,17 @@
+# src/version_str.cyr — AUTO-GENERATED from `VERSION` by
+# `scripts/version-bump.sh`. Do NOT edit by hand; the next bump
+# will overwrite. To regenerate without bumping, run:
+#
+#   sh scripts/version-bump.sh "$(cat VERSION)"
+#
+# Why this file exists: through 1.0.3 the `vyk --version` literal
+# lived as `var VYK_VERSION = "vyk X.Y.Z"` in `src/main.cyr`. The
+# 1.0.2 → 1.0.3 cut nearly shipped with `vyk --version` still
+# saying 1.0.2 because the CLI literal was a fourth file outside
+# the version-sync checklist (VERSION / cyrius.cyml package /
+# CHANGELOG header). Centralising the string here means
+# version-bump.sh writes ONE file every time and `src/main.cyr`
+# just references the var. No regex hunting; no drift; no
+# fourth-file gotcha. cyrius and cyim use the same pattern.
+
+var VYK_VERSION = "vyk 1.0.3";

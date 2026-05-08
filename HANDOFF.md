@@ -1,83 +1,42 @@
 # vyakarana — Agent handoff
 
-> **Read this file before doing anything.** As of 2026-05-07 the
-> 1.0.0 cut is **blocked by an upstream cyrius regression** — see
-> §Current status. Design context lives in
+> **Read this file before doing anything.** 1.0.0–1.0.3 are
+> shipped. As of 2026-05-08 the toolchain pin is `cyrius = "5.9.36"`,
+> the upstream `include`-graph regression that blocked 5.9.32 is
+> resolved, and all three gates are green. Design context lives in
 > [vyakarana-design-spec.md](./vyakarana-design-spec.md); milestone
-> detail lives in [docs/development/roadmap.md](./docs/development/roadmap.md); architecture decisions
-> live as ADRs under [docs/adr/](./docs/adr/).
+> detail lives in [docs/development/roadmap.md](./docs/development/roadmap.md);
+> architecture decisions live as ADRs under [docs/adr/](./docs/adr/).
 
 ---
 
-## Current status (2026-05-07)
+## Current status (2026-05-08)
 
-- **Version:** `1.0.2` in `VERSION` (last patched 2026-04-23 against
-  cyrius `5.6.0`).
-- **Toolchain pin:** `cyrius = "5.9.32"` in `cyrius.cyml` —
-  bumped 2026-05-07 from `5.6.0`. **Uncommitted** (per CLAUDE.md
-  the user handles git).
-- **Build state: RED on cyrius 5.9.32.**
-  `cyrius build src/main.cyr build/vyk` fails at
-  `src/tokenize.cyr:16` with `expected '=', got string`. The
-  failure is in the cyrius compiler's `include` directive
-  handling, **not** in vyakarana's sources — each constituent
-  file passes `cyrius check` on its own. Issue filed at
-  [`docs/development/issues/2026-05-07-cyrius-include-graph-regression.md`](./docs/development/issues/2026-05-07-cyrius-include-graph-regression.md);
-  reproduction at `/tmp/cyrius-nested-include-broken/`
-  (README + bisect.sh + ruled-out minimal repros).
-- **Gates not validated against 5.9.32** — `cyrius test` and
-  `scripts/smoke.sh` cannot run because there is no `build/vyk`
-  to test. Last green gate run was 2026-04-23 against cyrius
-  5.6.0 (399 test assertions, 11 corpora round-trip clean).
+- **Version:** `1.0.3` in `VERSION` and `src/main.cyr` `VYK_VERSION`.
+  `1.0.0` (initial stable), `1.0.1` (FINDING-006 ANSI-escape
+  sanitizer), and `1.0.2` (`[lib]` distlib + `dist/vyakarana.cyr`)
+  are all tagged. `1.0.3` exists to lock in the toolchain bump
+  below — no source-level changes vs. 1.0.2.
+- **Toolchain pin:** `cyrius = "5.9.36"` in `cyrius.cyml` (was
+  `5.6.0` on 1.0.2). The 2026-05-07 bump to `5.9.32` was filed
+  as red on an upstream `include`-graph regression
+  (`docs/development/issues/2026-05-07-cyrius-include-graph-regression.md`);
+  that regression is fixed on 5.9.36 and the build goes through
+  unmodified.
+- **Build state: GREEN on cyrius 5.9.36.**
+  `cyrius build src/main.cyr build/vyk` clean, `cyrius test
+  tests/vyakarana.tcyr` 399/399, `sh scripts/smoke.sh build/vyk`
+  reports M0+M1+M2+M3 gates passing. `dist/vyakarana.cyr`
+  regenerates at 1806 lines with no source-level drift.
 - **Consumer pressure:** unchanged — owl's M3b stays unblocked;
   the public `tokenize_source` signature and `tokenbuf`
-  accessors are not affected by the upstream regression.
-- **Release path on hold:** the 1.0.0 cut (Hardening → Security
-  audit → Closeout → tag) cannot proceed until either (a) the
-  upstream cyrius `include` regression is fixed and the build
-  goes green again, or (b) vyakarana flattens its include graph
-  as a workaround (see §Workaround options below).
-
-## What the language agent is here to do (2026-05-07 session)
-
-The user is starting a **cyrius language agent** to investigate
-the upstream regression. **Do not modify vyakarana sources** in
-this session — the bug is upstream and vyakarana's role is
-reporter, not patcher. The reproduction and bisect data are
-self-contained:
-
-- [`docs/development/issues/2026-05-07-cyrius-include-graph-regression.md`](./docs/development/issues/2026-05-07-cyrius-include-graph-regression.md)
-  — full diagnostic, status timeline, what's needed upstream
-- `/tmp/cyrius-nested-include-broken/README.md` — full
-  repro write-up with three ruled-out hypotheses
-- `/tmp/cyrius-nested-include-broken/bisect.sh` — runs the seven
-  probes from inside the vyakarana repo root
-
-Quickest path for the agent:
-
-```sh
-cyriusly use 5.9.32       # already active on this machine
-cd /home/macro/Repos/vyakarana
-cyrius build src/main.cyr build/vyk      # → reproduces the failure
-/tmp/cyrius-nested-include-broken/bisect.sh   # narrows to grammar+shell
-```
-
-`cyriusly list` has every patch from 5.7.35 → 5.9.33 installed
-locally; `cyriusly use <ver>` + a re-run of `bisect.sh` will
-bracket the regression window in a few minutes.
-
-## Workaround options (consumer-side, deferred)
-
-If upstream fix slips, vyakarana can flatten its include graph
-— have `src/main.cyr` include `token.cyr`, `grammar.cyr`,
-`shell.cyr`, `default_scanner.cyr`, `tokenize.cyr` directly in
-dependency order, and remove the `include "src/..."` lines from
-the non-entry files. This matches the `cyrius/programs/*.cyr`
-single-file pattern and avoids the failing graph shape, but
-loses the property that each module declares its own deps
-explicitly (the convention sandhi / agnosys / yukti also use).
-**Not yet applied.** Preferred order is upstream fix; the
-workaround is escape hatch only.
+  accessors did not change across 1.0.0 → 1.0.3.
+- **Open task on this session:** modernization survey — read
+  `vidya/content/lexing_and_parsing/` and per-language samples
+  for shapes that the 11 grammars don't yet cover (char literals,
+  UTF-8 idents, f-string prefixes, block comments, template
+  literals, INDENT/DEDENT) and decide which graduate from the
+  "known cosmetic gaps" list into an ADR + scanner extension.
 
 ---
 
@@ -233,25 +192,27 @@ or post-1.0:
 
 ---
 
-## Next up — unblock the toolchain, then hardening + 1.0.0
+## Next up — modernization survey, then M4
 
-Per the user's 1.0.0 plan, in order:
+1.0.0–1.0.3 are shipped and gates are green on cyrius 5.9.36. The
+hardening / security audit / closeout sequence ran for the 1.0.0
+cut on 2026-04-23 and stays valid for 1.0.3 (no source changes).
+Active work:
 
-0. **Unblock the toolchain (current).** Either upstream cyrius
-   fixes the `include` regression (preferred — see linked issue)
-   or vyakarana flattens its include graph as a workaround. Until
-   one of these lands, the rest of the path is on hold.
-1. **Hardening step** — see CLAUDE.md §Hardening step. Cleanliness
-   baseline, doc drift sweep, internal review, external research,
-   tests / docs touchup, post-review gate run.
-2. **Security audit** — byte-level input handling: every
-   `load8`/`store8` on `src + i` where `i` depends on input,
-   every `alloc(N)` where N derives from input, `file_read_all`
-   caps. File findings in `docs/audit/YYYY-MM-DD-audit.md`.
-3. **Closeout pass** — CLAUDE.md §Closeout pass. Full test + smoke
-   + lint + clean build from scratch. `VERSION` / `cyrius.cyml` /
-   git tag aligned.
-4. **User cuts 1.0.0.**
+0. **Modernization survey (current).** Walk
+   `vidya/content/lexing_and_parsing/` and the per-language
+   samples in `vidya/content/`. For each of the 11 grammars,
+   identify shapes the current scanner doesn't cover but real
+   modern code uses — char literals, UTF-8 outside strings,
+   f-string / r-string / b-string prefixes, block comments,
+   template literals (extension beyond the TS pass), Python
+   INDENT/DEDENT. The "Known cosmetic gaps" list earlier in this
+   file is the starting set; the survey decides what graduates
+   into an ADR + scanner extension and what stays deferred.
+1. Any extensions that come out of the survey — propose via ADR
+   under `docs/adr/`, land behind a `[defaults]` flag, exercise
+   via the relevant grammar's corpus, document in CHANGELOG
+   `[Unreleased]`.
 
 Post-1.0 roadmap ([docs/development/roadmap.md](./docs/development/roadmap.md) has the detail):
 
@@ -305,6 +266,8 @@ Full process lives in [CLAUDE.md](./CLAUDE.md). In short:
 M1, M2, and M3 the same day. Refreshed at the start of the
 hardening / 1.0.0 pass. Refreshed 2026-05-07: VERSION corrected
 to 1.0.2, cyrius pin bumped to 5.9.32, build flagged red pending
-the upstream `include`-graph regression. Update this file when
-the regression resolves, after the hardening + security audit
-ship, and again when 1.0.0 is tagged.*
+the upstream `include`-graph regression. Refreshed 2026-05-08:
+cyrius pin bumped to 5.9.36, regression resolved, gates green,
+1.0.3 cut to lock in the toolchain bump. Next refresh: when the
+modernization survey turns up an actionable scanner extension
+or the survey finishes deferred-only.*
