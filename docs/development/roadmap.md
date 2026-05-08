@@ -308,6 +308,17 @@ if a real consumer forces an earlier landing.
   - Man page, README finalized, examples in `--help`.
   - AGNOS / Cyrius packaging (zugot recipe etc.) pinned to a
     1.x tag, verified on amd64 + arm64.
+  - Post-1.12 security audit doc.
+- **1.13.1 — Markdown fence routing.** Pulls the followup
+  deferred from ADR 0013 — `match = "compose"` (1.11.1)
+  uses literal-prefix start markers and can't bind a
+  captured language tag. New `match = "compose_fenced"`
+  rule type captures the tag from `` ```rust `` /
+  `` ```python `` style fences and routes the body through
+  the named inner grammar. Markdown adopts it for code
+  fences; smoke probes per common embedded language. Same
+  deferred-followup minor pattern as 1.12.1 (Helix + iTerm
+  theme export).
 
 ### 2.0.0 — Streaming tokenizer (the only breaking change)
 

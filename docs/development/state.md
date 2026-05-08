@@ -4,14 +4,15 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–1.12.1 are
+> **Read this file before doing anything.** 1.0.0–1.13.0 are
 > shipped. As of 2026-05-08 the toolchain pin is `cyrius = "5.9.36"`.
-> 1.11.x closed the external-integrations wave; **1.12.1 ships
-> Helix + iTerm theme export formats** — pulls the followups
-> deferred from 1.11.1. 1.12.0 already locked in the fuzz +
-> stress harness + post-1.11 audit. 38 grammars bundled
-> (unchanged), 717/717 tests passing, 3/3 fuzz harnesses
-> passing. Next is 1.13.0 (RC polish) — see §Next up.
+> 1.11.x closed the external-integrations wave; 1.12.x added
+> hardening + theme-export polish. **1.13.0 establishes the
+> pre-2.0 performance baseline** — 8-benchmark suite under
+> `tests/bcyr/`, binary-size measurement, performance.md doc.
+> 38 grammars bundled (unchanged), 717/717 tests passing,
+> 3/3 fuzz harnesses passing. Next is 1.13.1 (error messages
+> + man page audit) — see §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -31,8 +32,21 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `1.12.1` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `1.13.0` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`. Full 1.x tag history in the CHANGELOG.
+- **What 1.13.0 added (performance baseline cut):**
+  - **`tests/bcyr/vyakarana.bcyr`** — 8-benchmark suite
+    covering tokenize (shell / rust / json / html-compose),
+    detect (path / content / combined), and blob-load.
+  - **`docs/development/performance.md`** — binary size +
+    per-call latency baseline. Future agents diff against
+    this at each minor.
+  - Binary size measured: `build/vyk` = 325.9 KB (~26 KB
+    over the 300 KB roadmap target — dominated by embedded
+    grammar blobs per ADR 0014; soft cap, no fix this cut).
+  - Tokenize: 3–26 µs for small inputs. Detect: 30 ns
+    (path) / 184 ns (content) / 5 µs (combined asm vote).
+    Grammar load: 32 µs.
 - **What 1.12.1 added:**
   - **`vyk --export-theme=helix`** — Helix `theme.toml`
     output (`"<scope>" = "<hex>"` per kind). Pairs with
@@ -289,7 +303,7 @@ Next scheduled audit: 1.13.x (RC polish) before tagging 1.13.0.
 
 ---
 
-## Next up — 1.13.0
+## Next up — 1.13.x
 
 Closed waves:
 
@@ -301,27 +315,29 @@ Closed waves:
   stress harness + post-1.11 audit (1.12.0); Helix + iTerm
   theme export (1.12.1).
 
-Still queued from earlier:
+Now in flight (1.13.x sub-cut by area, like 1.11.x):
 
-- **Markdown fence routing** (`` ```rust `` etc.). Current
-  `match = "compose"` rule shape uses literal-prefix start —
-  can't bind a captured language tag. Would need a new
-  `match = "compose_fenced"`. See ADR 0013 §When to revisit.
-  Likely lands as part of 1.13.x or its own minor.
-
-Now in flight:
-
-- **1.13.0 — RC polish.** Final pre-2.0 cut. Targets:
-  binary size pass (DCE everything we can; check that the
-  `dead:` list shrinks); startup benchmarks (grammar
-  bootstrap, first-tokenize latency — bench under
-  `tests/bcyr/`); error message review (every `EXIT_*` and
-  `usage_error` message readable in isolation); man page
-  (or `vyk --help` audit); AGNOS / Cyrius packaging
-  (`cyrius package` flow — make sure the `.ark` distributable
-  builds and runs); 1.13.x security audit. The user controls
-  whether 1.13.0 ships markdown fence routing or punts to
-  1.13.1.
+- **1.13.0 — Binary size + startup benchmarks.** Measure
+  `build/vyk` and `dist/vyakarana.cyr` against the 300KB
+  soft target. Add `tests/bcyr/vyakarana.bcyr` covering
+  grammar bootstrap, first-tokenize latency, per-grammar
+  tokenize. Capture a baseline in CHANGELOG / state.md.
+  Soft cap — measure+report, don't block on overage.
+- **1.13.1 — Error messages + man page / --help audit.**
+  Every `EXIT_*` / `usage_error` / `no_grammar_error` /
+  `io_error` reads cleanly in isolation. Audit `vyk --help`
+  for completeness and accuracy. Optional man page.
+- **1.13.2 — Markdown fence routing.** Pulls the followup
+  deferred from ADR 0013. New `match = "compose_fenced"`
+  rule type with captured-tag dispatch — `` ```rust `` /
+  `` ```python `` etc. route the body through the named
+  inner grammar. Markdown grammar adopts it for code
+  fences. Same deferred-followup pattern as 1.12.1.
+- **1.13.3 — Packaging + 1.13.x security audit.** AGNOS /
+  Cyrius packaging via `cyrius package` — `.ark`
+  distributable builds and runs. Post-1.12 audit doc
+  covering surfaces added in 1.12.x and 1.13.x. Last
+  release before 2.0.
 
 After 1.13.x:
 

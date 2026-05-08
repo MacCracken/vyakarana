@@ -6,6 +6,51 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [1.13.0] — 2026-05-08
+
+First sub-cut of the 1.13.x RC-polish window. Establishes the
+performance baseline ahead of 2.0.0. No public API change; no
+new ADRs. Adds `tests/bcyr/vyakarana.bcyr` and
+`docs/development/performance.md` so future agents have a
+reference number to diff against.
+
+### Added
+
+- **`tests/bcyr/vyakarana.bcyr` — eight-benchmark suite.**
+  Tokenize hot paths (`tokenize/shell-small`, `rust-small`,
+  `json-small`, `html-compose`); detection paths
+  (`detect/path-shell`, `content-python`, `combined-asm-arm`);
+  blob-load path (`blob/grammar-load-shell`). Run with
+  `cyrius bench tests/bcyr/vyakarana.bcyr`. `setup()` warms the
+  grammar registry so the per-iteration cost reflects the
+  steady-state path, not bootstrap.
+- **`docs/development/performance.md` — release-boundary
+  baseline.** Captures binary size + per-call latency table for
+  1.13.0 (Linux x86_64). Future cuts append a §History entry
+  and refresh the table.
+
+### Measured (1.13.0 baseline, Linux x86_64)
+
+- **Binary size:** `build/vyk` is **325.9 KB**, ~26 KB over the
+  300 KB soft target from the 1.13.x roadmap entry. The
+  dominant contributor is the embedded grammar blobs (~170 KB
+  of inlined CYML text per ADR 0014). 300 KB target predates
+  ADR 0014; revisiting it before 2.0 is open. `dist/vyakarana.cyr`
+  is 263.3 KB.
+- **Tokenize latencies (small inputs):** shell 18 µs / rust
+  26 µs / json 3 µs / html-with-compose 8 µs.
+- **Detection latencies:** path-only 30 ns / content sniff
+  184 ns / combined asm-flavour vote 5 µs.
+- **Grammar load (blob path):** 32 µs per `grammar_load` call
+  — one-time cost per grammar at bootstrap.
+
+### Changed
+
+- **CLAUDE.md §Hardening step item 3** — bench step now
+  references the concrete `tests/bcyr/vyakarana.bcyr` and
+  `docs/development/performance.md`. Watch for >20%
+  regressions on tokenize and detect rows.
+
 ## [1.12.1] — 2026-05-08
 
 Pulls the deferred theme-export formats from 1.11.1's

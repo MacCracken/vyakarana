@@ -74,9 +74,12 @@ catch drift before it compounds.
    markers — know what was intended.
 2. Cleanliness check: `cyrius build`, `cyrius lint src/*.cyr`,
    `cyrius test`, `sh scripts/smoke.sh build/vyk` — all green.
-3. Benchmark baseline (once a `tests/bcyr/*.bcyr` exists):
-   `cyrius bench tests/bcyr/vyakarana.bcyr`. Save the CSV for
-   comparison against post-milestone runs.
+3. Benchmark baseline:
+   `cyrius bench tests/bcyr/vyakarana.bcyr`. Compare against
+   the table in `docs/development/performance.md`; refresh the
+   doc at each minor-release boundary (1.13.0+ has the
+   baseline). Watch for >20% regressions on the tokenize and
+   detect rows — those are the hot paths consumers depend on.
 4. Internal deep review — re-read the scanner, grammar loader, and
    tokenbuf for gaps, cosmetic losses, or correctness drift.
    Cross-check every grammar's `.cyml` against its corpus for

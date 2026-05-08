@@ -1,0 +1,117 @@
+# vyakarana — performance baseline
+#
+# Establishes a per-call timing baseline for the public API's
+# hot paths. Run with `cyrius bench tests/bcyr/vyakarana.bcyr`.
+# CSV output is captured in `docs/development/performance.md` at
+# each release boundary; future agents diff against the baseline
+# to spot regressions.
+#
+# What's measured (1.13.0 establishes these eight):
+#
+#   tokenize/shell-small     — 32-byte shell snippet
+#   tokenize/rust-small      — 64-byte rust snippet
+#   tokenize/json-small      — 32-byte json snippet
+#   tokenize/html-compose    — 64-byte html with <style> compose block
+#   detect/path-shell        — extension-only dispatch
+#   detect/content-python    — shebang-driven content sniff
+#   detect/combined-asm-arm  — asm flavour vote
+#   blob/grammar-load-shell  — grammar_load via embedded blob path
+
+include "src/token.cyr"
+include "src/grammar.cyr"
+include "src/tokenize.cyr"
+include "src/detect.cyr"
+include "lib/bench.cyr"
+
+# Shared corpora — small enough that the per-iteration cost is
+# dominated by the API call rather than buffer scan, but large
+# enough to exercise multiple tokens per call.
+var _bc_shell_small = "if [ -d /tmp ]; then echo 'ok'; fi";
+var _bc_rust_small  = "fn add(x: i64, y: i64) -> i64 { x + y }";
+var _bc_json_small  = "{\"name\":\"x\",\"vals\":[1,2,3]}";
+var _bc_html_compose = "<style>.x{color:#FF6600;}</style>hi";
+
+# Detection inputs.
+var _bc_py_shebang = "#!/usr/bin/env python3\nprint(1)\n";
+var _bc_arm_asm   = ".arch armv8-a\nmov x0, #0\nbl exit\nldp x29, x30, [sp]\n";
+
+fn setup() {
+    # Force grammar bootstrap once before timing. Otherwise the
+    # first benchmark would absorb the bootstrap cost into its
+    # average. Subsequent calls hit a populated registry.
+    tokenize_source("", "shell");
+    tokenize_source("", "rust");
+    tokenize_source("", "json");
+    tokenize_source("", "html");
+    tokenize_source("", "python");
+    return 0;
+}
+
+# ── Tokenize bench fns ───────────────────────
+
+fn _bv_tk_shell()   { tokenize_source(_bc_shell_small, "shell");   return 0; }
+fn _bv_tk_rust()    { tokenize_source(_bc_rust_small,  "rust");    return 0; }
+fn _bv_tk_json()    { tokenize_source(_bc_json_small,  "json");    return 0; }
+fn _bv_tk_compose() { tokenize_source(_bc_html_compose, "html");   return 0; }
+
+# ── Detect bench fns ─────────────────────────
+
+fn _bv_det_path()     { detect_language("foo.sh"); return 0; }
+fn _bv_det_content()  {
+    detect_language_from_content(_bc_py_shebang, strlen(_bc_py_shebang));
+    return 0;
+}
+fn _bv_det_combined() {
+    detect_language_combined("foo.s", _bc_arm_asm, strlen(_bc_arm_asm));
+    return 0;
+}
+
+# ── Grammar load bench fns ────────────────────
+
+fn _bv_blob_load() { grammar_load("grammars/shell.cyml"); return 0; }
+
+# ── Driver ────────────────────────────────────
+
+fn main() {
+    alloc_init();
+    setup();
+
+    var b = 0;
+
+    b = bench_new("tokenize/shell-small");
+    bench_run_batch(b, &_bv_tk_shell, 10000, 100);
+    bench_report(b);
+
+    b = bench_new("tokenize/rust-small");
+    bench_run_batch(b, &_bv_tk_rust, 10000, 100);
+    bench_report(b);
+
+    b = bench_new("tokenize/json-small");
+    bench_run_batch(b, &_bv_tk_json, 10000, 100);
+    bench_report(b);
+
+    b = bench_new("tokenize/html-compose");
+    bench_run_batch(b, &_bv_tk_compose, 10000, 100);
+    bench_report(b);
+
+    b = bench_new("detect/path-shell");
+    bench_run_batch(b, &_bv_det_path, 100000, 100);
+    bench_report(b);
+
+    b = bench_new("detect/content-python");
+    bench_run_batch(b, &_bv_det_content, 100000, 100);
+    bench_report(b);
+
+    b = bench_new("detect/combined-asm-arm");
+    bench_run_batch(b, &_bv_det_combined, 10000, 100);
+    bench_report(b);
+
+    b = bench_new("blob/grammar-load-shell");
+    bench_run_batch(b, &_bv_blob_load, 1000, 100);
+    bench_report(b);
+
+    syscall(1, 1, "\ndone\n", 6);
+    syscall(60, 0);
+}
+
+main();
