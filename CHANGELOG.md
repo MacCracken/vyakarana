@@ -6,6 +6,57 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [1.2.0] — 2026-05-08
+
+### Added
+
+- **Go grammar.** New `grammars/go.cyml` + `tests/corpus/go.go`
+  (snapshot of `vidya/content/lexing_and_parsing/go.go`, 7402 B,
+  2151 tokens at zero `error` kinds). Covers `//` line comments,
+  `/* … */` block comments (non-nestable per Go spec §3.4),
+  double-quoted strings, the standard C-family operator set plus
+  Go-specific `:=` short-var-decl, `<-` channel send/recv, `...`
+  variadic, `&^` bit-clear (and their `=`-paired forms), and the
+  25 reserved words. Predeclared identifiers (`true`, `false`,
+  `nil`, `iota`, `len`, `cap`, `make`, `new`, `append`, …)
+  tokenize as `ident`, not `keyword`, per the
+  [ADR 0004](docs/adr/0004-shell-builtins-as-ident.md) pattern.
+  Spot-check: 6 of 7 vidya `go.go` samples come back at zero
+  errors; the seventh (`error_handling/go.go`) hits the
+  pre-existing char-literal-with-escape gap (`'\n'`) that C and
+  Rust also have. Wired into `bootstrap_grammars`,
+  `detect_language` (`.go`), the smoke loop, and four probe
+  assertions in `tests/vyakarana.tcyr`.
+- **Zig grammar.** New `grammars/zig.cyml` + `tests/corpus/zig.zig`
+  (snapshot of `vidya/content/lexing_and_parsing/zig.zig`,
+  2279 tokens at zero `error` kinds). `@` is in `ident_start` so
+  `@import`, `@as`, `@TypeOf`, etc. tokenize as one `ident`
+  (same pragmatic move as Rust's `$` in
+  [ADR 0007](docs/adr/0007-rust-dollar-in-ident-start.md);
+  builtins-as-ident matches
+  [ADR 0004](docs/adr/0004-shell-builtins-as-ident.md)). Operator
+  set covers `=>`, `**`, `++`, `..`, plus saturating `+|`/`-|`/`*|`,
+  wrapping `+%`/`-%`/`*%`, and their `=`-paired forms. Word-keyword
+  set includes `orelse`, `try`, `catch`, `and`, `or`, `unreachable`,
+  `comptime`, `errdefer`, etc. (~50 keywords). Spot-check: 6 of 7
+  vidya `zig.zig` samples come back at zero errors; the seventh
+  hits the same `'\n'` char-literal-escape gap. Wired into
+  `bootstrap_grammars`, `detect_language` (`.zig`), the smoke
+  loop, and four probe assertions.
+
+### Changed
+
+- **Test suite uses `VYK_VERSION` directly.** `tests/vyakarana.tcyr`
+  now `include`s `src/version_str.cyr` and asserts the *shape*
+  (`strlen > 4`, `starts with "vyk "`) of the live `VYK_VERSION`
+  symbol instead of a stale literal. Eliminates a source of
+  drift the version-bump checklist used to miss.
+- **`tests/vyakarana.tcyr` "fake-name returns 0" assertions.**
+  Replaced the legacy "zig not yet loaded" / "go not yet loaded"
+  assertions with `nosuchlang` / empty-string assertions, since
+  zig and go are now loaded. The contract being checked
+  (unknown-language returns 0) is unchanged.
+
 ## [1.1.0] — 2026-05-08
 
 ### Added

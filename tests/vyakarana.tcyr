@@ -11,6 +11,7 @@
 include "src/token.cyr"
 include "src/grammar.cyr"
 include "src/tokenize.cyr"
+include "src/version_str.cyr"
 
 # Coverage-invariant helper: sum of every token's len equals src_len.
 # Used across M1 assertions to catch gap/overlap bugs early.
@@ -62,12 +63,12 @@ fn main() {
 
     test_group("M1 grammar registry");
     assert_eq(has_grammar("shell"),  1, "shell loaded in M1");
-    assert_eq(has_grammar("zig"), 0, "zig not yet loaded");
+    assert_eq(has_grammar("nosuchlang"), 0, "fake-name grammar not loaded");
     assert_eq(has_grammar(""),    0, "empty name not loaded");
 
     test_group("tokenize_source returns empty (0) for unknown languages");
-    assert_eq(tokenize_source("x", "zig"),    0, "zig not yet loaded");
-    assert_eq(tokenize_source("x", "go"),     0, "go not yet loaded");
+    assert_eq(tokenize_source("x", "nosuchlang"), 0, "fake-name returns 0");
+    assert_eq(tokenize_source("x", ""),           0, "empty name returns 0");
 
     test_group("M1 shell grammar — known-offset assertions");
     # Input: `if true; then echo hi; fi`
@@ -683,11 +684,100 @@ fn main() {
     tokenize_with_grammar(gpy, src_py4, strlen(src_py4), tb_py4);
     assert_eq(tokenbuf_kind(tb_py4, 0), TK_COMMENT, "# still a comment");
 
+    test_group("1.2.0 go grammar — loads and tokenizes cleanly");
+    var ggo = grammar_load("grammars/go.cyml");
+    assert_neq(ggo, 0, "grammar_load go returned non-null");
+    assert_eq(streq(grammar_name(ggo), "go"), 1, "name is 'go'");
+
+    # `package` is a reserved word.
+    var tb_go1 = tokenbuf_new();
+    var src_go1 = "package main";
+    tokenize_with_grammar(ggo, src_go1, strlen(src_go1), tb_go1);
+    assert_eq(tokenbuf_kind(tb_go1, 0), TK_KEYWORD, "package keyword");
+    assert_eq(tokenbuf_len(tb_go1, 0),  7,          "package len 7");
+
+    # `:=` short-var-decl is one operator.
+    var tb_go2 = tokenbuf_new();
+    var src_go2 = "x := 1";
+    tokenize_with_grammar(ggo, src_go2, strlen(src_go2), tb_go2);
+    var saw_walrus_go = 0;
+    var go2i = 0;
+    var go2n = tokenbuf_count(tb_go2);
+    while (go2i < go2n) {
+        if (tokenbuf_kind(tb_go2, go2i) == TK_OPERATOR) {
+            if (tokenbuf_len(tb_go2, go2i) == 2) {
+                var sgo = tokenbuf_start(tb_go2, go2i);
+                if (memeq(src_go2 + sgo, ":=", 2) == 1) { saw_walrus_go = 1; }
+            }
+        }
+        go2i = go2i + 1;
+    }
+    assert_eq(saw_walrus_go, 1, ":= short-var-decl op");
+
+    # Block comment `/* ... */` collapses into one TK_COMMENT span.
+    var tb_go3 = tokenbuf_new();
+    var src_go3 = "/* go block */ x";
+    tokenize_with_grammar(ggo, src_go3, strlen(src_go3), tb_go3);
+    assert_eq(tokenbuf_kind(tb_go3, 0), TK_COMMENT, "/* … */ is one comment");
+    assert_eq(tokenbuf_len(tb_go3, 0), 14,          "/* go block */ len 14");
+
+    # Predeclared `len` is ident, not keyword (per ADR 0004 pattern).
+    var tb_go4 = tokenbuf_new();
+    var src_go4 = "len";
+    tokenize_with_grammar(ggo, src_go4, strlen(src_go4), tb_go4);
+    assert_eq(tokenbuf_kind(tb_go4, 0), TK_IDENT, "len is ident, not keyword");
+
+    test_group("1.2.0 zig grammar — loads and tokenizes cleanly");
+    var gzig = grammar_load("grammars/zig.cyml");
+    assert_neq(gzig, 0, "grammar_load zig returned non-null");
+    assert_eq(streq(grammar_name(gzig), "zig"), 1, "name is 'zig'");
+
+    # `pub` is a reserved word.
+    var tb_zig1 = tokenbuf_new();
+    var src_zig1 = "pub fn main";
+    tokenize_with_grammar(gzig, src_zig1, strlen(src_zig1), tb_zig1);
+    assert_eq(tokenbuf_kind(tb_zig1, 0), TK_KEYWORD, "pub keyword");
+    assert_eq(tokenbuf_kind(tb_zig1, 2), TK_KEYWORD, "fn keyword");
+
+    # `@import` tokenizes as one ident (the `@` prefix).
+    var tb_zig2 = tokenbuf_new();
+    var src_zig2 = "@import";
+    tokenize_with_grammar(gzig, src_zig2, strlen(src_zig2), tb_zig2);
+    assert_eq(tokenbuf_count(tb_zig2), 1,          "@import is one token");
+    assert_eq(tokenbuf_kind(tb_zig2, 0), TK_IDENT, "@import is ident");
+    assert_eq(tokenbuf_len(tb_zig2, 0),  7,        "@import len 7");
+
+    # `=>` switch arm as one operator.
+    var tb_zig3 = tokenbuf_new();
+    var src_zig3 = ".plus => 1";
+    tokenize_with_grammar(gzig, src_zig3, strlen(src_zig3), tb_zig3);
+    var saw_arrow_zig = 0;
+    var zig3i = 0;
+    var zig3n = tokenbuf_count(tb_zig3);
+    while (zig3i < zig3n) {
+        if (tokenbuf_kind(tb_zig3, zig3i) == TK_OPERATOR) {
+            if (tokenbuf_len(tb_zig3, zig3i) == 2) {
+                var szig = tokenbuf_start(tb_zig3, zig3i);
+                if (memeq(src_zig3 + szig, "=>", 2) == 1) { saw_arrow_zig = 1; }
+            }
+        }
+        zig3i = zig3i + 1;
+    }
+    assert_eq(saw_arrow_zig, 1, "=> switch-arm op");
+
+    # `orelse` is a word-keyword (Zig spells some operators as words).
+    var tb_zig4 = tokenbuf_new();
+    var src_zig4 = "x orelse 0";
+    tokenize_with_grammar(gzig, src_zig4, strlen(src_zig4), tb_zig4);
+    assert_eq(tokenbuf_kind(tb_zig4, 2), TK_KEYWORD, "orelse keyword");
+    assert_eq(tokenbuf_len(tb_zig4, 2),  6,          "orelse len 6");
+
     test_group("version string shape");
-    # Keep in sync with VYK_VERSION in src/main.cyr and with VERSION.
-    var v = "vyk 1.0.2";
-    assert(strlen(v) > 4, "version string is longer than 4 chars");
-    assert_eq(memeq(v, "vyk ", 4), 1, "version string starts with 'vyk '");
+    # VYK_VERSION lives in src/version_str.cyr (auto-generated by
+    # scripts/version-bump.sh). Asserting shape, not value, so the
+    # test doesn't drift on every bump.
+    assert(strlen(VYK_VERSION) > 4, "version string is longer than 4 chars");
+    assert_eq(memeq(VYK_VERSION, "vyk ", 4), 1, "version string starts with 'vyk '");
 
     return assert_summary();
 }

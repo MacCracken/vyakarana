@@ -134,9 +134,9 @@ user's explicit ACK.
 
 ## Bundled grammars
 
-The 11 starter grammars that ship in 1.x. Token counts are from
-the canonical-corpus run that locks each grammar's behaviour;
-they change only when a corpus is re-synced from vidya or the
+The starter grammars that ship in 1.x. Token counts are from the
+canonical-corpus run that locks each grammar's behaviour; they
+change only when a corpus is re-synced from vidya or the
 grammar's `.cyml` is materially altered.
 
 | Grammar     | Corpus                              | Tokens | Notes |
@@ -152,9 +152,11 @@ grammar's `.cyml` is materially altered.
 | typescript  | vidya `typescript.ts` (8473B)       | 2009 | template literals captured. |
 | javascript  | stand-in `concept.js` (4827B)       | 1275 | ADR 0006; TS-subset. |
 | python      | vidya `python.py` (8528B)           | 1790 | triple-quoted + walrus. |
+| go          | vidya `go.go` (7402B)               | 2151 | Added in 1.2.0. `:=`, `<-`, `...`, `&^`; `/* … */` block comments. |
+| zig         | vidya `zig.zig` (~6500B)            | 2279 | Added in 1.2.0. `@`-builtins via `ident_start`; `=>`, `**`, `++`, saturating/wrapping ops. |
 
-The 1.2.x line is reserved for new-language additions (go, zig,
-asm, openqasm) — see `state.md` "Next up."
+Remaining 1.2.x candidates: `asm_x86_64` / `asm_aarch64` and
+`openqasm` — see `../development/state.md` "Next up."
 
 ---
 

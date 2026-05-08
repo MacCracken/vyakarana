@@ -1,0 +1,119 @@
+# go — Go tokenizer grammar
+#
+# Rule scheme per ADR 0005. Close in shape to rust.cyml — the same
+# data-driven scanner with a Go-specific `[defaults]` and rule list.
+#
+# Scope: covers what vidya's content/lexing_and_parsing/go.go
+# exercises (line comments, double-quoted strings, the standard
+# operator set including `:=`, `<-`, `...`, plus the 25 reserved
+# words).
+#
+# Block comments `/* … */` are recognised via a `match = "pair"`
+# rule below. Go's block comments are non-nestable (Go spec §3.4),
+# so the same simple greedy match used in C works.
+#
+# Known gaps for future ADRs (not triggered by the vidya sample):
+#   - Raw strings `` `…` `` (backtick-delimited, no escapes,
+#     embedded newlines allowed). The canonical sample has zero.
+#     Trivial follow-on: a third `[[rules]] match = "pair"` with
+#     `start = end = "`"`, no escape.
+#   - Rune literals `'x'`. Same pattern as Rust / C — splits into
+#     op/body/op. Cosmetic; coverage holds.
+#   - Type literals with explicit underscores in numbers
+#     (`1_000_000`). Today's number scanner stops at the `_`,
+#     yielding `number + ident`. Cosmetic; coverage holds.
+#   - Predeclared identifiers (`true`, `false`, `nil`, `iota`,
+#     `len`, `cap`, `make`, `new`, `append`, `panic`, …) tokenize
+#     as `ident`, not `keyword`. Same call as ADR 0004 for shell
+#     built-ins: keyword means *reserved*, and these are
+#     shadowable in Go (you can write `len := 5`).
+
+[grammar]
+name = "go"
+extensions = [".go"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+ident_start = "A-Za-z_"
+ident_cont  = "A-Za-z0-9_"
+
+number_decimal = true
+number_0x      = true
+number_0b      = true
+number_0o      = true
+
+special_vars = false
+
+# UTF-8 in `/* … */` and `//` comment text → one ident instead of
+# per-byte errors. Same call as ADR 0009.
+unicode_ident = true
+
+# Operators in longest-match order. Go-specific: `:=` (short var
+# decl), `<-` (channel send/recv), `...` (variadic / spread),
+# `&^` and `&^=` (bit-clear), `++` / `--` (statement-only but at
+# the token level just operators), plus the standard C-family set.
+operators = [
+    "<<=", ">>=", "&^=",
+    "<<", ">>", "&^",
+    "&&", "||",
+    "==", "!=", "<=", ">=",
+    ":=", "<-", "...",
+    "++", "--",
+    "+=", "-=", "*=", "/=", "%=",
+    "&=", "|=", "^=",
+    "=", "+", "-", "*", "/", "%",
+    "!", "~", "&", "|", "^",
+    "<", ">",
+    "?", "'",
+]
+
+# Punctuation, longest-match.
+punctuation = [
+    "(", ")", "{", "}", "[", "]",
+    ";", ",", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+[[rules]]
+kind = "comment"
+match = "line"
+start = "//"
+
+
+# Block comments `/* … */`. Non-nestable per Go spec §3.4 — simple
+# greedy match. Ordered after `//` (which is itself ordered ahead
+# of any `/`-operator step in the scanner pipeline).
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "/*"
+end = "*/"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # Declarations
+    "package", "import", "func", "var", "const", "type",
+    # Composite-type keywords
+    "struct", "interface", "map", "chan",
+    # Control flow
+    "if", "else", "for", "switch", "case", "default",
+    "select", "range",
+    "return", "break", "continue", "goto", "fallthrough",
+    # Concurrency / cleanup
+    "go", "defer",
+]

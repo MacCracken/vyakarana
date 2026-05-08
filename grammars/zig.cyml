@@ -1,0 +1,134 @@
+# zig — Zig tokenizer grammar
+#
+# Rule scheme per ADR 0005. Close in shape to rust.cyml + go.cyml —
+# C-family operator set with Zig-specific additions.
+#
+# Scope: covers what vidya's content/lexing_and_parsing/zig.zig
+# exercises (line / `///` doc comments, double-quoted strings, the
+# standard operator set, plus a subset of Zig's reserved-word
+# table sufficient for the corpus).
+#
+# Builtins: `@` is in `ident_start` so `@import`, `@as`,
+# `@divTrunc`, `@TypeOf`, etc. tokenize as a single `ident`. The
+# bare `@` doesn't appear standalone in legal Zig — adding it to
+# ident_start is the same pragmatic move as `$` for Rust macros
+# (see ADR 0007).
+#
+# Doc comments: Zig uses `///` for top-level docs and `//!` for
+# container docs. Both start with `//`, so the existing line-comment
+# rule consumes them. Theme renderers wanting to distinguish doc vs
+# regular comments can post-process the comment-token text.
+#
+# Known gaps for future ADRs (not triggered by the vidya sample):
+#   - Char literals `'x'`. Same pattern as C / Rust / Go. The
+#     canonical sample has 13 simple-ASCII char literals (`'+'`,
+#     `'0'`, `' '`, …) and they all tokenize as op + ident/op + op.
+#     Zero `error` kinds; coverage holds. Will close out together
+#     with the C/Rust char-literal ADR.
+#   - Multi-line strings (lines starting with `\\`). Not present
+#     in the canonical sample. Distinct from C-style strings; would
+#     need a new line-rule shape that consumes from `\\` to end of
+#     line.
+#   - Builtins as a distinct kind. `@import` tokenizes as `ident`,
+#     not `keyword`. Same call as ADR 0004 — themes can apply a
+#     secondary palette via the `@` prefix.
+
+[grammar]
+name = "zig"
+extensions = [".zig"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+# `@` is in ident_start (Zig builtins). `_` is the conventional
+# discard / unused-binding name and behaves like an ident.
+ident_start = "A-Za-z_@"
+ident_cont  = "A-Za-z0-9_"
+
+number_decimal = true
+number_0x      = true
+number_0b      = true
+number_0o      = true
+
+special_vars = false
+
+# UTF-8 in `//` comment text → one ident instead of per-byte
+# errors. Same call as ADR 0009.
+unicode_ident = true
+
+# Operators in longest-match order. Zig-specific: `=>` (switch
+# arms), `**` (pointer-to-pointer / array repetition), `++`
+# (concatenation), `..` (range), saturating `+|` `-|` `*|`,
+# wrapping `+%` `-%` `*%`, plus the standard C-family comparison /
+# bitwise / assignment set.
+operators = [
+    "<<=", ">>=",
+    "+%=", "-%=", "*%=",
+    "+|=", "-|=", "*|=",
+    "<<", ">>",
+    "&&", "||",
+    "==", "!=", "<=", ">=",
+    "=>", "->",
+    "++", "**", "..",
+    "+%", "-%", "*%",
+    "+|", "-|", "*|",
+    "+=", "-=", "*=", "/=", "%=",
+    "&=", "|=", "^=",
+    "=", "+", "-", "*", "/", "%",
+    "!", "~", "&", "|", "^",
+    "<", ">",
+    "?", "'",
+]
+
+# Punctuation, longest-match.
+punctuation = [
+    "(", ")", "{", "}", "[", "]",
+    ";", ",", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+[[rules]]
+kind = "comment"
+match = "line"
+start = "//"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # Declarations
+    "const", "var", "fn", "pub", "extern", "export", "inline",
+    "noinline", "comptime", "threadlocal", "packed",
+    # Control flow
+    "if", "else", "switch", "while", "for", "break", "continue",
+    "return", "defer", "errdefer",
+    # Error / optional handling
+    "try", "catch", "orelse", "error", "unreachable",
+    # Composite types
+    "struct", "union", "enum", "opaque",
+    # Async (kept for completeness; pre-0.11 era keywords)
+    "async", "await", "suspend", "resume", "nosuspend",
+    # Linkage / layout
+    "linksection", "callconv", "align", "allowzero", "volatile",
+    "noalias",
+    # Misc
+    "test", "usingnamespace", "asm",
+    # Boolean / null / undefined literals
+    "true", "false", "null", "undefined",
+    # Logical (Zig spells these as words, not symbols)
+    "and", "or",
+    # Type-flavoured keywords
+    "anytype", "anyframe",
+]

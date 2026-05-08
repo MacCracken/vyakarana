@@ -49,7 +49,7 @@ done
 # src/tokenize.cyr). Assert presence rather than exact order so that
 # adding grammars in M3 is a one-line change here.
 llist=$("$BIN" --list-languages)
-for lang in shell toml json cyrius rust yaml markdown c typescript javascript python; do
+for lang in shell toml json cyrius rust yaml markdown c typescript javascript python go zig; do
     printf '%s\n' "$llist" | grep -q "^$lang\$" \
         || fail "--list-languages missing '$lang': '$llist'"
 done
@@ -163,6 +163,8 @@ c:tests/corpus/c.c
 typescript:tests/corpus/typescript.ts
 javascript:tests/corpus/concept.js
 python:tests/corpus/python.py
+go:tests/corpus/go.go
+zig:tests/corpus/zig.zig
 "
 
 for entry in $M3_CORPUS_ENTRIES; do

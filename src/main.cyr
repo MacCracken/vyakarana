@@ -143,6 +143,7 @@ fn detect_language(path) {
         if (memeq(path + n - 3, ".ts", 3) == 1) { return "typescript"; }
         if (memeq(path + n - 3, ".js", 3) == 1) { return "javascript"; }
         if (memeq(path + n - 3, ".py", 3) == 1) { return "python"; }
+        if (memeq(path + n - 3, ".go", 3) == 1) { return "go"; }
     }
     if (n >= 4) {
         if (memeq(path + n - 4, ".mjs", 4) == 1) { return "javascript"; }
@@ -159,6 +160,7 @@ fn detect_language(path) {
     }
     if (n >= 4) {
         if (memeq(path + n - 4, ".cyr", 4) == 1) { return "cyrius"; }
+        if (memeq(path + n - 4, ".zig", 4) == 1) { return "zig"; }
     }
     if (n >= 5) {
         if (memeq(path + n - 5, ".bash", 5) == 1) { return "shell"; }
