@@ -6,6 +6,76 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [1.11.2] — 2026-05-08
+
+Third (and final) sub-cut of the 1.11.x window. **Content-based
+language detection** — resolves the `.s` / `.S` asm flavour
+ambiguity carried since 1.2.3, plus shebang and signature
+sniffing for extensionless files. New ADR (0015), one new
+public module, no new grammars.
+
+### Added
+
+- **`src/detect.cyr` module ([ADR 0015](docs/adr/0015-content-based-detection.md)).**
+  Three public entries:
+  - `detect_language(path)` — extension/basename suffix match
+    (moved from `src/main.cyr`; same shape).
+  - `detect_language_from_content(src, src_len)` — pure byte
+    sniff. Strips UTF-8 BOM, then tries shebang interp lookup
+    (`bash` / `zsh` / `dash` / `sh` → `shell`; `python*` →
+    `python`; `node*` → `javascript`; `ruby*` → `ruby`; `lua*`
+    → `lua`; `php*` → `php`) and signature peek (`<?xml` →
+    `xml`; `<!DOCTYPE html` / `<!doctype html` / `<html` →
+    `html`; other `<!DOCTYPE …` → `xml`). Returns 0 when
+    nothing matches.
+  - `detect_language_combined(path, src, src_len)` — path
+    first; if path returns `asm_x86_64` the asm flavour is
+    rescored from content (see below); if path returns 0
+    falls through to the content sniff.
+- **Asm flavour scoring.** First 4KB scan, weighted hits for
+  ARM signals (`.arch armv8` / `.arch armv7` / `b.eq` / `b.ne`
+  / `ldp ` / `stp ` / ` x0,` / ` x1,` / ` w0,` / ` w1,` /
+  `xzr` / `wzr`) vs x86 signals (`.intel_syntax` /
+  `.att_syntax` / ` rax` / ` rdi` / ` rsi` / ` rsp` / ` rbp` /
+  `syscall` / `xmm0`). Higher score wins; tie / no-signal
+  defaults to `asm_x86_64`. Verified: both
+  `tests/corpus/asm_x86_64.s` and `tests/corpus/asm_aarch64.s`
+  auto-route to the correct grammar with zero `TK_ERROR`
+  tokens — closes the long-standing `.s` extension dispatch
+  hack.
+
+### Changed
+
+- **`vyk` reads the source file before detection.** Previously
+  the file read happened inside `tokenize_file`; the function
+  was renamed `tokenize_buf` and now takes a pre-read buffer +
+  length. Detection runs against the same buffer, no second
+  read. Net behaviour: identical for path-known extensions;
+  vyk now succeeds for shebang-led extensionless files and
+  picks the right asm flavour automatically.
+- **`src/detect.cyr` joins `[lib] modules`** so consumers
+  pulling `dist/vyakarana.cyr` via `cyrius deps` get the
+  three detection entries alongside `tokenize_source` and
+  `lsp_kind_*`. ADR 0001's "frozen public contracts" set
+  grows by three names; documented in the consumer guide.
+
+### Wiring
+
+- `src/detect.cyr` — new module (≈220 lines).
+- `src/main.cyr` — removed inline `detect_language` (≈120
+  lines), replaced with `detect_language_combined` call;
+  `tokenize_file` → `tokenize_buf`.
+- `cyrius.cyml [lib] modules` — added `src/detect.cyr` after
+  `src/tokenize.cyr`, before `src/lsp.cyr`.
+- `tests/vyakarana.tcyr` — 25 new probes (path, content
+  shebang for 6 interps, signature for 5 patterns, BOM strip,
+  combined dispatch including asm flavour). 682 → 707
+  passing.
+- `scripts/smoke.sh` — 4 new content-detect probes
+  (auto-detect both asm corpora with zero error tokens,
+  shebang-routed python file with `def` keyword check, `<?xml`
+  signature on extensionless file).
+
 ## [1.11.1] — 2026-05-08
 
 Second sub-cut of the 1.11.x window. **Grammar composition**

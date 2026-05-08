@@ -305,4 +305,52 @@ for entry in $M3_CORPUS_ENTRIES; do
         || fail "$lang coverage: token len sum $sumlen != file bytes $bytes"
 done
 
+# ============================================================
+# Content-based detection (1.11.2+).
+# Verify auto-detect (no --language= flag) picks the right asm
+# flavour from buffer content. Both corpora share the `.s`
+# extension; without the content sniff in detect_language_combined,
+# both would route to asm_x86_64 and the aarch64 corpus would
+# light up with errors (`//` not a valid x86 GAS comment marker).
+# ============================================================
+
+# x86_64 corpus auto-detects as asm_x86_64.
+"$BIN" tests/corpus/asm_x86_64.s > "$TMPDIR/auto_x86.ndjson" 2> "$TMPDIR/err" \
+    || fail "auto-detect asm_x86_64 corpus: exit non-zero (stderr: $(cat "$TMPDIR/err"))"
+if grep -q '"kind":"error"' "$TMPDIR/auto_x86.ndjson"; then
+    n=$(grep -c '"kind":"error"' "$TMPDIR/auto_x86.ndjson")
+    fail "auto-detect asm_x86_64: $n error-kind tokens (wrong flavour picked?)"
+fi
+
+# aarch64 corpus auto-detects as asm_aarch64. The discriminator is
+# `b.eq` / `b.ne` / `ldp` / `stp` / register names in the file
+# body (see _detect_asm_flavor in src/detect.cyr).
+"$BIN" tests/corpus/asm_aarch64.s > "$TMPDIR/auto_arm.ndjson" 2> "$TMPDIR/err" \
+    || fail "auto-detect asm_aarch64 corpus: exit non-zero (stderr: $(cat "$TMPDIR/err"))"
+if grep -q '"kind":"error"' "$TMPDIR/auto_arm.ndjson"; then
+    n=$(grep -c '"kind":"error"' "$TMPDIR/auto_arm.ndjson")
+    fail "auto-detect asm_aarch64: $n error-kind tokens (asm flavour sniff failed; routed to wrong grammar)"
+fi
+
+# Shebang sniff — synth a file with a python shebang and no
+# extension; vyk should pick `python` from the interp name.
+# Body uses `def` (a python-only keyword) so the test fails
+# audibly if the file is misrouted to shell.
+SHEBANG_FIXTURE="$TMPDIR/no_ext_python"
+printf '#!/usr/bin/env python3\ndef foo(): pass\n' > "$SHEBANG_FIXTURE"
+"$BIN" "$SHEBANG_FIXTURE" > "$TMPDIR/shebang.ndjson" 2> "$TMPDIR/err" \
+    || fail "shebang detection: exit non-zero (stderr: $(cat "$TMPDIR/err"))"
+# `def` and `pass` are python keywords; under shell they'd
+# tokenize as plain idents.
+grep -q '"kind":"keyword","start":23,"len":3' "$TMPDIR/shebang.ndjson" \
+    || fail "shebang detection: python shebang did not route to python grammar (no 'def' keyword)"
+
+# `<?xml` signature — extensionless file with the XML PI.
+XML_FIXTURE="$TMPDIR/no_ext_xml"
+printf '<?xml version="1.0"?>\n<root><child/></root>\n' > "$XML_FIXTURE"
+"$BIN" "$XML_FIXTURE" > "$TMPDIR/xml.ndjson" 2> "$TMPDIR/err" \
+    || fail "xml signature detection: exit non-zero (stderr: $(cat "$TMPDIR/err"))"
+[ -s "$TMPDIR/xml.ndjson" ] \
+    || fail "xml signature detection: empty NDJSON"
+
 echo "smoke: OK ($v_long) — M0 + M1 + M2 + M3 gates passing"

@@ -4,7 +4,7 @@ How to integrate vyakarana into a downstream Cyrius project
 (owl, cyim, agnoshi, vidya, or anything else that needs to
 tokenize source code).
 
-> **Last updated:** 2026-05-08 (1.11.1)
+> **Last updated:** 2026-05-08 (1.11.2)
 >
 > Audience: implementers writing the *renderer*, *editor*,
 > *theme*, or *content pipeline* that sits on top of vyakarana.
@@ -25,7 +25,7 @@ project's `cyrius.cyml`:
 ```toml
 [deps.vyakarana]
 git     = "https://github.com/MacCracken/vyakarana.git"
-tag     = "1.11.1"
+tag     = "1.11.2"
 modules = ["dist/vyakarana.cyr"]
 ```
 
@@ -49,6 +49,17 @@ Once the dep resolves, your project has access to:
 fn tokenize_source(src, lang) -> tokenbuf
 fn has_grammar(name) -> i64                # 1 if known, 0 otherwise
 fn list_languages_into(out_vec) -> i64     # populates a vec of cstr names
+
+# Language detection (1.11.2+). All three return a language
+# name (cstr) suitable for tokenize_source, or 0 if no match.
+fn detect_language(path) -> cstr                    # extension + basename suffix match
+fn detect_language_from_content(src, src_len) -> cstr   # BOM/shebang/signature sniff
+fn detect_language_combined(path, src, src_len) -> cstr # path first, content fallback + asm flavour vote
+
+# LSP semantic-tokens bridge (1.11.0+). Maps LSP's standard
+# token-type taxonomy onto vyakarana's 10 TK_* kinds.
+fn lsp_kind_from_token_type(name) -> i64       # by name (one of LSP's 23 standard types)
+fn lsp_kind_from_standard_index(idx) -> i64    # by integer index in LSP 3.17 legend
 ```
 
 These are the **stable** entry points. Their names and arg

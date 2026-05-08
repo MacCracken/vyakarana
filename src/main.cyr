@@ -13,6 +13,7 @@
 include "src/token.cyr"
 include "src/grammar.cyr"
 include "src/tokenize.cyr"
+include "src/detect.cyr"
 include "src/theme.cyr"
 include "src/theme_export.cyr"
 include "src/version_str.cyr"
@@ -134,125 +135,6 @@ fn no_grammar_error(path) {
     return 0;
 }
 
-# Extension-based detection. Returns a language name (string literal)
-# or 0 when nothing matches.
-fn detect_language(path) {
-    var n = strlen(path);
-    if (n >= 3) {
-        if (memeq(path + n - 3, ".sh", 3) == 1) { return "shell"; }
-    }
-    if (n >= 2) {
-        if (memeq(path + n - 2, ".c", 2) == 1) { return "c"; }
-        if (memeq(path + n - 2, ".h", 2) == 1) { return "c"; }
-        # `.s` / `.S` ambiguous between asm_x86_64 and asm_aarch64.
-        # Default to x86_64 (more common); ARM users pass
-        # --language=asm_aarch64 explicitly.
-        if (memeq(path + n - 2, ".s", 2) == 1) { return "asm_x86_64"; }
-        if (memeq(path + n - 2, ".S", 2) == 1) { return "asm_x86_64"; }
-    }
-    if (n >= 3) {
-        if (memeq(path + n - 3, ".hs", 3) == 1) { return "haskell"; }
-        if (memeq(path + n - 3, ".ll", 3) == 1) { return "llvm_ir"; }
-        if (memeq(path + n - 3, ".rs", 3) == 1) { return "rust"; }
-        if (memeq(path + n - 3, ".md", 3) == 1) { return "markdown"; }
-        if (memeq(path + n - 3, ".ts", 3) == 1) { return "typescript"; }
-        if (memeq(path + n - 3, ".js", 3) == 1) { return "javascript"; }
-        if (memeq(path + n - 3, ".py", 3) == 1) { return "python"; }
-        if (memeq(path + n - 3, ".go", 3) == 1) { return "go"; }
-        if (memeq(path + n - 3, ".kt", 3) == 1) { return "kotlin"; }
-        if (memeq(path + n - 3, ".cs", 3) == 1) { return "csharp"; }
-        if (memeq(path + n - 3, ".cc", 3) == 1) { return "cpp"; }
-        if (memeq(path + n - 3, ".rb", 3) == 1) { return "ruby"; }
-        if (memeq(path + n - 3, ".ex", 3) == 1) { return "elixir"; }
-        if (memeq(path + n - 3, ".ml", 3) == 1) { return "ocaml"; }
-    }
-    if (n >= 4) {
-        if (memeq(path + n - 4, ".exs", 4) == 1) { return "elixir"; }
-        if (memeq(path + n - 4, ".mli", 4) == 1) { return "ocaml"; }
-        if (memeq(path + n - 4, ".lhs", 4) == 1) { return "haskell"; }
-    }
-    if (n >= 4) {
-        if (memeq(path + n - 4, ".htm", 4) == 1) { return "html"; }
-        if (memeq(path + n - 4, ".css", 4) == 1) { return "css"; }
-        if (memeq(path + n - 4, ".ini", 4) == 1) { return "ini"; }
-        if (memeq(path + n - 4, ".cfg", 4) == 1) { return "ini"; }
-        if (memeq(path + n - 4, ".xml", 4) == 1) { return "xml"; }
-        if (memeq(path + n - 4, ".xsl", 4) == 1) { return "xml"; }
-        if (memeq(path + n - 4, ".xsd", 4) == 1) { return "xml"; }
-        if (memeq(path + n - 4, ".svg", 4) == 1) { return "xml"; }
-        if (memeq(path + n - 4, ".sql", 4) == 1) { return "sql"; }
-        if (memeq(path + n - 4, ".gql", 4) == 1) { return "graphql"; }
-        if (memeq(path + n - 4, ".mjs", 4) == 1) { return "javascript"; }
-        if (memeq(path + n - 4, ".cjs", 4) == 1) { return "javascript"; }
-        if (memeq(path + n - 4, ".cpp", 4) == 1) { return "cpp"; }
-        if (memeq(path + n - 4, ".cxx", 4) == 1) { return "cpp"; }
-        if (memeq(path + n - 4, ".hpp", 4) == 1) { return "cpp"; }
-        if (memeq(path + n - 4, ".hxx", 4) == 1) { return "cpp"; }
-        if (memeq(path + n - 4, ".kts", 4) == 1) { return "kotlin"; }
-        if (memeq(path + n - 4, ".php", 4) == 1) { return "php"; }
-        if (memeq(path + n - 4, ".lua", 4) == 1) { return "lua"; }
-    }
-    if (n >= 4) {
-        if (memeq(path + n - 4, ".yml", 4) == 1) { return "yaml"; }
-    }
-    if (n >= 8) {
-        if (memeq(path + n - 8, ".graphql", 8) == 1) { return "graphql"; }
-    }
-    if (n >= 9) {
-        if (memeq(path + n - 9, ".markdown", 9) == 1) { return "markdown"; }
-    }
-    if (n >= 5) {
-        if (memeq(path + n - 5, ".yaml", 5) == 1) { return "yaml"; }
-    }
-    if (n >= 4) {
-        if (memeq(path + n - 4, ".cyr", 4) == 1) { return "cyrius"; }
-        if (memeq(path + n - 4, ".zig", 4) == 1) { return "zig"; }
-    }
-    if (n >= 5) {
-        if (memeq(path + n - 5, ".html", 5) == 1) { return "html"; }
-        if (memeq(path + n - 5, ".scss", 5) == 1) { return "scss"; }
-        if (memeq(path + n - 5, ".sass", 5) == 1) { return "scss"; }
-        if (memeq(path + n - 5, ".conf", 5) == 1) { return "ini"; }
-        if (memeq(path + n - 5, ".bash", 5) == 1) { return "shell"; }
-        if (memeq(path + n - 5, ".toml", 5) == 1) { return "toml"; }
-        if (memeq(path + n - 5, ".json", 5) == 1) { return "json"; }
-        if (memeq(path + n - 5, ".java", 5) == 1) { return "java"; }
-        # `.cyml` is vyakarana's own format — TOML-shaped header
-        # plus optional `---`/markdown body. The cyml.cyml grammar
-        # (1.9.0+) handles both halves; before that, .cyml routed
-        # to the toml grammar.
-        if (memeq(path + n - 5, ".cyml", 5) == 1) { return "cyml"; }
-    }
-    if (n >= 6) {
-        if (memeq(path + n - 6, ".swift", 6) == 1) { return "swift"; }
-        if (memeq(path + n - 6, ".proto", 6) == 1) { return "protobuf"; }
-    }
-    # Dockerfile is matched by basename (canonical filename has
-    # no extension). Suffix `Dockerfile` covers `./Dockerfile`,
-    # `/path/to/Dockerfile`, and `name.Dockerfile`. The
-    # `Dockerfile.<variant>` form (e.g. `Dockerfile.dev`)
-    # would need basename-and-prefix matching; today users with
-    # those names pass `--language=dockerfile` explicitly.
-    if (n >= 10) {
-        if (memeq(path + n - 10, "Dockerfile", 10) == 1) { return "dockerfile"; }
-    }
-    if (n >= 13) {
-        if (memeq(path + n - 13, "Containerfile", 13) == 1) { return "dockerfile"; }
-    }
-    # Makefile is matched by basename. Standard names are
-    # `Makefile`, `makefile`, `GNUmakefile`. Variant suffixes
-    # like `Makefile.am` (autotools) need explicit
-    # `--language=makefile`.
-    if (n >= 8) {
-        if (memeq(path + n - 8, "Makefile", 8) == 1) { return "makefile"; }
-        if (memeq(path + n - 8, "makefile", 8) == 1) { return "makefile"; }
-    }
-    if (n >= 11) {
-        if (memeq(path + n - 11, "GNUmakefile", 11) == 1) { return "makefile"; }
-    }
-    return 0;
-}
-
 # Emit ANSI-themed source bytes per the chosen theme (see
 # src/theme.cyr). Walks the tokenbuf in order; for each token,
 # writes the theme's ANSI prefix (if non-empty), then the source
@@ -320,15 +202,10 @@ fn emit_ndjson(tb) {
 #
 # `theme` is the theme tag from `theme_resolve()`, or -1 if
 # `--theme=` was not passed (NDJSON output).
-fn tokenize_file(path, lang, handcoded, theme) {
-    var buf = alloc(VYK_SRC_CAP);
-    var n = file_read_all(path, buf, VYK_SRC_CAP - 1);
-    if (n < 0) {
-        io_error(path);
-        return EXIT_IO;
-    }
-    # NUL-terminate so strlen inside tokenize_source returns n.
-    store8(buf + n, 0);
+# Tokenize an already-read buffer. `buf` is a NUL-terminated cstr;
+# `n` is its length. Detection happens upstream so the same buffer
+# can be sniffed and tokenized without a second file read (1.11.2).
+fn tokenize_buf(buf, n, path, lang, handcoded, theme) {
     var tb = 0;
     if (handcoded == 1) {
         tb = tokenize_source_handcoded(buf, lang);
@@ -469,8 +346,20 @@ fn main() {
         return EXIT_OK;
     }
 
+    # Read the source file once, then run detection + tokenization
+    # against the same buffer. Lets detect_language_combined sniff
+    # bytes (shebang, signature, asm flavour) without a second
+    # read.
+    var buf = alloc(VYK_SRC_CAP);
+    var n = file_read_all(path, buf, VYK_SRC_CAP - 1);
+    if (n < 0) {
+        io_error(path);
+        return EXIT_IO;
+    }
+    store8(buf + n, 0);
+
     var lang = lang_override;
-    if (lang == 0) { lang = detect_language(path); }
+    if (lang == 0) { lang = detect_language_combined(path, buf, n); }
     if (lang == 0) {
         no_grammar_error(path);
         return EXIT_NO_GRAMMAR;
@@ -480,7 +369,7 @@ fn main() {
         return EXIT_NO_GRAMMAR;
     }
 
-    return tokenize_file(path, lang, handcoded, theme);
+    return tokenize_buf(buf, n, path, lang, handcoded, theme);
 }
 
 var exit_code = main();

@@ -4,16 +4,17 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–1.11.1 are
+> **Read this file before doing anything.** 1.0.0–1.11.2 are
 > shipped. As of 2026-05-08 the toolchain pin is `cyrius = "5.9.36"`.
 > 1.10.0 opened the pre-2.0 prep sequence with the theme-palette
-> contract and consumer guide; **1.11.1 ships grammar composition
-> (embedded blocks routed to inner grammars) and theme export to
-> external editor formats** (second sub-cut of the external-
-> integrations wave). 38 grammars bundled (unchanged), 682/682
-> tests passing. The 1.11.x window splits into three sub-cuts:
-> 1.11.0 LSP bridge, 1.11.1 grammar composition + theme export
-> (this cut), 1.11.2 content-based detection — see §Next up.
+> contract and consumer guide; **1.11.2 ships content-based
+> language detection** — closes the 1.11.x external-integrations
+> wave. 38 grammars bundled (unchanged), 707/707 tests passing.
+> The 1.11.x window split into three sub-cuts: 1.11.0 LSP
+> bridge, 1.11.1 grammar composition + theme export + self-
+> contained dist bundle, 1.11.2 content-based detection
+> (this cut). With 1.11.x done, next is 1.12.0 (fuzz + stress
+> harness, M7 prep) — see §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -33,8 +34,30 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `1.11.1` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `1.11.2` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`. Full 1.x tag history in the CHANGELOG.
+- **What 1.11.2 added (third and final sub-cut of the
+  external-integrations wave):**
+  - **Content-based language detection** (`src/detect.cyr` +
+    ADR 0015). Three public entries:
+    `detect_language(path)` (extension/basename, moved from
+    main.cyr), `detect_language_from_content(src, len)` (BOM
+    strip + shebang interp lookup + signature peek for
+    `<?xml` / `<!DOCTYPE html>`), and
+    `detect_language_combined(path, src, len)` (path first,
+    then asm flavour rescore for `.s` / `.S`, content
+    fall-through for extensionless files).
+  - **Asm flavour resolution.** `tests/corpus/asm_x86_64.s`
+    and `tests/corpus/asm_aarch64.s` now auto-detect
+    correctly via weighted-signal scoring on the first 4KB.
+    Closes the `.s` ambiguity carried since 1.2.3.
+  - **`vyk` flow change.** Source file read happens in
+    `main()` before detection, so the same buffer feeds
+    detection and tokenization (no second read). The old
+    `tokenize_file` is now `tokenize_buf(buf, n, …)`.
+  - **`src/detect.cyr` joins `[lib] modules`** so consumers
+    pulling `dist/vyakarana.cyr` get the byte API alongside
+    `tokenize_source` and `lsp_kind_*`.
 - **What 1.11.1 added (second sub-cut of the external-integrations
   wave):**
   - **Grammar composition** (`match = "compose"` rule type +
@@ -68,12 +91,12 @@
     gate run). `grammar_load` consults the blob registry
     first; file-load fallback retained for grammar-author
     dev workflow. Bundle grew 82KB → 253KB.
-- **Test count:** 682/682 (was 674 at 1.11.0; 8 new compose
-  probes — CSS body tokenization through `<style>`, JS body
-  tokenization through `<script>`, marker emission as
-  `TK_PUNCTUATION`, coverage invariant). 4 new theme-export
-  smoke probes. 1 new isolated-dir smoke probe (verifies
-  bundle works without `grammars/` reachable).
+- **Test count:** 707/707 (was 682 at 1.11.1; 25 new detect
+  probes covering path dispatch, shebang interp matching for
+  six interp families, three signature patterns, BOM strip,
+  combined dispatch with asm flavour vote). 4 new
+  content-detect smoke probes (auto-detect both asm corpora,
+  shebang-routed python file, `<?xml` signature).
 - **No new grammars** — 38 bundled, unchanged.
 
 ### 1.10.0 deliverables (recap)
@@ -233,28 +256,34 @@ additions land).
 
 ---
 
-## Next up — 1.11.x continuation
+## Next up — 1.12.0
 
-The 1.11.x window covers three sub-cuts:
+The 1.11.x external-integrations wave is complete:
 
-- **1.11.0 — LSP semantic-tokens bridge.** Shipped.
-- **1.11.1 — Grammar composition + theme export.** Shipped
-  (this cut). ADR 0013 for compose rules; HTML now routes
-  `<style>` → CSS and `<script>` → JS. `--export-theme=vscode`
-  ships; Helix / iTerm formats deferred until a real consumer
-  asks. Markdown fence routing (`` ```rust ``) is still on
-  the table for a follow-up — current literal-prefix matcher
-  can't bind a captured language tag, would need a new
-  `match = "compose_fenced"` shape. See ADR 0013 §When to
-  revisit.
-- **1.11.2 — Content-based language detection.** Fallback in
-  `detect_language` for extensionless / ambiguous files.
-  Heuristics: shebang sniff, BOM detect, signature peek,
-  register-name pattern match. Resolves the `.s` dispatch
-  ambiguity (asm_x86_64 vs asm_aarch64) that's been carried
-  since 1.2.3.
+- **1.11.0 — LSP semantic-tokens bridge.** Shipped. ADR 0012.
+- **1.11.1 — Grammar composition + theme export + self-
+  contained dist bundle.** Shipped. ADRs 0013, 0014. HTML
+  routes `<style>` → CSS and `<script>` → JS; bundle inlines
+  every grammar so `cyrius deps` consumers no longer need
+  `grammars/`.
+- **1.11.2 — Content-based language detection.** Shipped
+  (this cut). ADR 0015. `src/detect.cyr` exposes path,
+  byte-content, and combined entries; auto-detect resolves
+  the `.s` ambiguity and handles extensionless shebang /
+  signature files.
 
-After 1.11.x:
+Followups from the 1.11.x window that are still queued:
+
+- **Markdown fence routing** (`` ```rust `` etc.). Current
+  `match = "compose"` rule shape uses literal-prefix start —
+  can't bind a captured language tag. Would need a new
+  `match = "compose_fenced"`. See ADR 0013 §When to revisit.
+- **Helix / iTerm theme export formats.** 1.11.1 ships the
+  VS Code `theme.json` only. Add formats when a real consumer
+  asks.
+
+Now in flight:
+
 - **1.12.0** — Fuzz + stress harness (M7 prep). Audit doc.
 - **1.13.0** — RC polish: binary size, startup benchmarks,
   error messages, man page, AGNOS / Cyrius packaging.
