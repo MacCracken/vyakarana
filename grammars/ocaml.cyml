@@ -1,0 +1,139 @@
+# ocaml — OCaml tokenizer grammar
+#
+# Rule scheme per ADR 0005. OCaml's surface differs from the
+# C-family on several axes:
+#   - `(* … *)` block comments. Nestable per spec; the pair-rule
+#     scanner is greedy so nested forms close at the first `*)`
+#     — same documented gap as Rust.
+#   - No line comments. `//` and `#` are not comment markers.
+#   - `'a` type variables AND `'c'` char literals share the same
+#     opening byte. The char_literal helper's lifetime-preservation
+#     logic ([ADR 0010](../docs/adr/0010-char-literal-default.md))
+#     handles the disambiguation: `'a` (no closing `'` at offset
+#     2) falls through to operator + ident; `'a'` matches the
+#     char-literal shape.
+#   - Rich operator surface: `|>` (pipe), `<-` (mutable assign),
+#     `:=` (ref assign), `->` (function arrow), `;;` (REPL
+#     terminator), `[|…|]` (array literal), `**` (power).
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# vidya doesn't ship an OCaml reference sample yet. The local
+# `tests/corpus/concept.ml` mirrors the lexer+parser theme used
+# elsewhere, exercising algebraic data types (`type expr = | Num
+# | Unary | BinOp`), pattern matching with guards, mutable
+# references, and the OCaml keyword set. Replace with a vidya
+# snapshot when one ships.
+#
+# Known gaps (not triggered by the stand-in):
+#   - Quoted strings `{|…|}` and `{tag|…|tag}`. Not in the
+#     stand-in. Variable-length-delimiter form — same scanner-
+#     shape gap as Lua's `[==[…]==]`, Ruby/PHP heredocs, Swift
+#     raw strings.
+#   - Polymorphic variants `` `Foo `` (backtick prefix). Not
+#     in the stand-in. Treated as backtick + ident if a corpus
+#     surfaces them (need to add `` ` `` as operator).
+#   - Numeric underscores (`1_000_000`) — number scanner stops
+#     at `_`; cosmetic.
+
+[grammar]
+name = "ocaml"
+extensions = [".ml", ".mli"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+ident_start = "A-Za-z_"
+ident_cont  = "A-Za-z0-9_"
+
+number_decimal = true
+number_0x      = true
+number_0b      = true
+number_0o      = true
+
+special_vars = false
+unicode_ident = true
+char_literal  = true
+
+# Operators in longest-match order. OCaml-specific: `|>` (pipe),
+# `<-` (mutable record-field assignment), `:=` (ref assignment),
+# `->` (function arrow), `;;` (REPL terminator), `**` (power),
+# `@@` (function application without precedence), `@` (list
+# concat). `<>` is structural inequality (not equal).
+operators = [
+    "<<=", ">>=",
+    "<<", ">>",
+    "&&", "||",
+    "==", "!=", "<=", ">=", "<>",
+    "->", "<-", ":=", "|>", "@@", "**",
+    "+=", "-=", "*=", "/=",
+    "=", "+", "-", "*", "/", "%",
+    "!", "~", "&", "|", "^",
+    "<", ">",
+    "?", "@", "#",
+    # `'` is the type-variable prefix (`'a`, `'b`, `'_weak`).
+    # The char_literal helper yields when there's no closing
+    # quote at the right offset, so the leading `'` falls
+    # through here as a 1-byte operator and the body
+    # tokenizes as a regular ident on the next iteration —
+    # same fall-through pattern as Rust lifetimes (ADR 0010).
+    "'",
+]
+
+# Punctuation. `;` is statement separator; `;;` (REPL terminator)
+# is matched as 2-byte operator above. `::` not used in OCaml.
+punctuation = [
+    "(", ")", "{", "}", "[", "]",
+    ";", ",", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+# `(* … *)` block comments. Non-nestable in this implementation;
+# the spec allows nesting but the pair-rule scanner closes at the
+# first `*)`. Same gap as Rust.
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "(*"
+end = "*)"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # Module / definition
+    "module", "open", "include", "struct", "sig",
+    "functor", "begin", "end",
+    # Type-related
+    "type", "of", "and",
+    # Declaration heads
+    "let", "rec", "in", "fun", "function",
+    # Pattern matching / control flow
+    "match", "with", "when",
+    "if", "then", "else",
+    "while", "do", "done", "for", "to", "downto",
+    # Exception handling
+    "try", "raise", "exception",
+    # Boolean / comparison words
+    "true", "false",
+    "as", "or", "not",
+    # Object-oriented
+    "class", "object", "method", "inherit",
+    "initializer", "val", "mutable", "private",
+    "virtual", "constraint",
+    # Misc
+    "lazy", "assert", "external", "ref",
+    "land", "lor", "lxor", "lnot", "lsl", "lsr", "asr",
+    "mod",
+]

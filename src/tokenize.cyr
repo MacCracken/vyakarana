@@ -85,6 +85,12 @@ fn bootstrap_grammars() {
     if (glua != 0) { registry_add(glua); }
     var gswift = grammar_load("grammars/swift.cyml");
     if (gswift != 0) { registry_add(gswift); }
+    var gex = grammar_load("grammars/elixir.cyml");
+    if (gex != 0) { registry_add(gex); }
+    var gml = grammar_load("grammars/ocaml.cyml");
+    if (gml != 0) { registry_add(gml); }
+    var ghs = grammar_load("grammars/haskell.cyml");
+    if (ghs != 0) { registry_add(ghs); }
     return 0;
 }
 

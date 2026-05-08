@@ -1,0 +1,161 @@
+# haskell — Haskell tokenizer grammar
+#
+# Rule scheme per ADR 0005. Haskell's surface mixes:
+#   - `--` line comments (no prefix collision with any pair rule
+#     in this grammar, so the standard line-rule shape works —
+#     unlike Lua where `--[[` shared the prefix; see
+#     [architecture note 003](../docs/architecture/003-pair-rule-ordering.md)).
+#   - `{- … -}` block comments. Nestable per spec; the pair-rule
+#     scanner closes at the first `-}` — same documented gap as
+#     Rust and OCaml.
+#   - Rich symbol-operator surface (`>>=`, `<$>`, `<*>`, `<>`,
+#     `<-`, `->`, `=>`, `::`, `..`, `++`, `:`, `\`, `||`, `&&`,
+#     and arbitrary user-defined operators using punctuation
+#     chars). The standard set covers everything in
+#     `tests/corpus/concept.hs`; user-defined exotic operators
+#     would surface as multi-byte token runs in a real corpus.
+#   - Char literals `'a'`, `'\n'` (handled by `char_literal`,
+#     ADR 0010). Haskell does NOT use leading-`'` for type
+#     variables (those are lowercase idents like `a`, `b`), so
+#     the lifetime-preservation logic is unnecessary — every
+#     `'…'` in real Haskell is a char literal.
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# vidya doesn't ship a Haskell reference sample yet. The local
+# `tests/corpus/concept.hs` mirrors the lexer+parser theme used
+# elsewhere, exercising `data` algebraic-data-type declarations,
+# `deriving` clauses, type-class constraints, `do`-notation in
+# `IO ()`, guards, the `where` clause, and the Haskell keyword
+# set. Replace with a vidya snapshot when one ships.
+#
+# Known gaps (not triggered by the stand-in):
+#   - Layout-sensitive parsing (where/let/do off-side rule).
+#     Tokenization is unaffected — the layout rule is a parser-
+#     level concern that consumers handle.
+#   - Pragmas `{-# LANGUAGE … #-}`. Treated as block comments
+#     today (the `{-` opener wins). Themes that want to colour
+#     pragmas distinctly can post-process by token text.
+#   - Multi-line strings `"""…"""` (not Haskell syntax).
+#   - User-defined operators with arbitrary punctuation chars
+#     (e.g. `<|>`, `>=>`). Most common ones (`<$>`, `<*>`,
+#     `<>`, `<|>`, `>=>`, `>>=`, `>>`, `<<`) are in the operator
+#     list below; rarer ones may fragment.
+
+[grammar]
+name = "haskell"
+extensions = [".hs", ".lhs"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+ident_start = "A-Za-z_"
+# `'` is in `ident_cont` (but NOT `ident_start`) so prime-
+# suffixed names like `rest'`, `x'`, `f''` tokenize as a single
+# ident. Standalone `'` at a cursor position still routes to
+# step 7b (char_literal) since char_literal runs before
+# operator. Char literals like `'a'` work uniformly.
+ident_cont  = "A-Za-z0-9_'"
+
+number_decimal = true
+number_0x      = true
+number_0b      = false
+number_0o      = true
+
+special_vars = false
+unicode_ident = true
+char_literal  = true
+
+# Operators in longest-match order. Haskell-specific: `>>=` /
+# `>>` / `=<<` / `>=>` / `<=<` (monadic bind / sequence /
+# fish), `<$>` / `<*>` / `<|>` (Functor / Applicative /
+# Alternative), `<>` (Monoid append), `<-` (do-bind), `->`
+# (function arrow), `=>` (type-class constraint), `::` (type
+# annotation), `..` (range), `++` (list append), `:` (list
+# cons), `\` (lambda head — `\x -> …`), `@` (as-pattern),
+# `|` (guard / case alt).
+operators = [
+    "=<<", ">=>", "<=<",
+    "<<=", ">>=",
+    "<<", ">>",
+    "<$>", "<*>", "<|>", "<>",
+    "&&", "||",
+    "==", "/=", "<=", ">=",
+    "->", "<-", "=>", "::", "..",
+    "++", "**",
+    "+=", "-=", "*=", "/=",
+    "=", "+", "-", "*", "/", "%",
+    "!", "~", "&", "|", "^",
+    "<", ">",
+    "?", "@", "#", ":",
+    # `\` heads lambdas (`\x -> x + 1`). Without this it would
+    # fall to error; the string-pair `escape = "\\"` consumes
+    # `\<C>` inside string spans, so `\` outside strings is
+    # safely an operator.
+    "\\",
+    # `` ` `` is Haskell's infix-function marker
+    # (`` a `div` b ``, `` xs `elem` ys ``). Treated as a 1-byte
+    # operator. Themes can re-pair adjacent backticks if they
+    # want to colour the wrapped name distinctly.
+    "`",
+]
+
+# Punctuation. `,` for tuples, `;` for explicit semis,
+# `( ) [ ]` for grouping, `{ }` for explicit-layout blocks.
+punctuation = [
+    "(", ")", "{", "}", "[", "]",
+    ";", ",", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+# `{- … -}` block comments. Pair rule. Nestable in spec — closes
+# at first `-}` per architecture note 003 (same gap as Rust).
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "{-"
+end = "-}"
+
+
+# `--` line comment. No prefix collision with any pair rule
+# (unlike Lua), so the line-rule shape is fine.
+[[rules]]
+kind = "comment"
+match = "line"
+start = "--"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # Module / declaration heads
+    "module", "import", "where",
+    "data", "type", "newtype", "class", "instance",
+    "deriving",
+    # Definition / scope
+    "let", "in",
+    # Pattern matching / control flow
+    "case", "of",
+    "if", "then", "else",
+    # Do-notation
+    "do",
+    # Reserved
+    "default",
+    "infix", "infixl", "infixr",
+    "foreign",
+    # Boolean (not strictly reserved but conventional)
+    "True", "False",
+    # Bottom
+    "undefined", "error",
+]

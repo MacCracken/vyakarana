@@ -1246,6 +1246,148 @@ fn main() {
     }
     assert_eq(saw_halfopen, 1, "..< half-open range op");
 
+    test_group("1.5.0 elixir grammar — loads and tokenizes cleanly");
+    var gex = grammar_load("grammars/elixir.cyml");
+    assert_neq(gex, 0, "grammar_load elixir returned non-null");
+    assert_eq(streq(grammar_name(gex), "elixir"), 1, "name is 'elixir'");
+
+    # `defmodule` is a keyword.
+    var tb_ex1 = tokenbuf_new();
+    var src_ex1 = "defmodule Foo do end";
+    tokenize_with_grammar(gex, src_ex1, strlen(src_ex1), tb_ex1);
+    assert_eq(tokenbuf_kind(tb_ex1, 0), TK_KEYWORD, "defmodule keyword");
+
+    # `|>` pipe op (2-byte).
+    var tb_ex2 = tokenbuf_new();
+    var src_ex2 = "x |> y";
+    tokenize_with_grammar(gex, src_ex2, strlen(src_ex2), tb_ex2);
+    var saw_pipe = 0;
+    var ex2i = 0;
+    while (ex2i < tokenbuf_count(tb_ex2)) {
+        if (tokenbuf_kind(tb_ex2, ex2i) == TK_OPERATOR) {
+            if (tokenbuf_len(tb_ex2, ex2i) == 2) {
+                var sex = tokenbuf_start(tb_ex2, ex2i);
+                if (memeq(src_ex2 + sex, "|>", 2) == 1) { saw_pipe = 1; }
+            }
+        }
+        ex2i = ex2i + 1;
+    }
+    assert_eq(saw_pipe, 1, "|> pipe op");
+
+    # `%` for struct/map literal prefix is an operator (NOT
+    # modulo — Elixir uses rem/2).
+    var tb_ex3 = tokenbuf_new();
+    var src_ex3 = "%Foo{bar: 1}";
+    tokenize_with_grammar(gex, src_ex3, strlen(src_ex3), tb_ex3);
+    var saw_pct = 0;
+    var ex3i = 0;
+    while (ex3i < tokenbuf_count(tb_ex3)) {
+        if (tokenbuf_kind(tb_ex3, ex3i) == TK_OPERATOR) {
+            if (tokenbuf_len(tb_ex3, ex3i) == 1) {
+                if (load8(src_ex3 + tokenbuf_start(tb_ex3, ex3i)) == 37) {
+                    saw_pct = 1;
+                }
+            }
+        }
+        ex3i = ex3i + 1;
+    }
+    assert_eq(saw_pct, 1, "% struct/map literal prefix");
+
+    test_group("1.5.0 ocaml grammar — loads and tokenizes cleanly");
+    var gml = grammar_load("grammars/ocaml.cyml");
+    assert_neq(gml, 0, "grammar_load ocaml returned non-null");
+    assert_eq(streq(grammar_name(gml), "ocaml"), 1, "name is 'ocaml'");
+
+    # `let rec` keywords.
+    var tb_ml1 = tokenbuf_new();
+    var src_ml1 = "let rec foo = ()";
+    tokenize_with_grammar(gml, src_ml1, strlen(src_ml1), tb_ml1);
+    assert_eq(tokenbuf_kind(tb_ml1, 0), TK_KEYWORD, "let keyword");
+    assert_eq(tokenbuf_kind(tb_ml1, 2), TK_KEYWORD, "rec keyword");
+
+    # `(* ... *)` block comment as one TK_COMMENT.
+    var tb_ml2 = tokenbuf_new();
+    var src_ml2 = "(* hi *)x";
+    tokenize_with_grammar(gml, src_ml2, strlen(src_ml2), tb_ml2);
+    assert_eq(tokenbuf_kind(tb_ml2, 0), TK_COMMENT, "(* ... *) comment");
+    assert_eq(tokenbuf_len(tb_ml2, 0),  8,          "comment len 8");
+
+    # `'a` type variable: `'` + ident, NOT a char literal
+    # (no closing quote at offset 2). ADR 0010 lifetime
+    # preservation logic in action.
+    var tb_ml3 = tokenbuf_new();
+    var src_ml3 = "'a list";
+    tokenize_with_grammar(gml, src_ml3, strlen(src_ml3), tb_ml3);
+    assert_eq(tokenbuf_kind(tb_ml3, 0), TK_OPERATOR, "'a type var: ' is operator");
+    assert_eq(tokenbuf_kind(tb_ml3, 1), TK_IDENT,    "'a type var: a is ident");
+
+    # `'a'` char literal: `'` + body + `'` collapses to TK_STRING.
+    var tb_ml4 = tokenbuf_new();
+    var src_ml4 = "let c = 'a'";
+    tokenize_with_grammar(gml, src_ml4, strlen(src_ml4), tb_ml4);
+    var saw_charlit_ml = 0;
+    var ml4i = 0;
+    while (ml4i < tokenbuf_count(tb_ml4)) {
+        if (tokenbuf_kind(tb_ml4, ml4i) == TK_STRING) {
+            if (tokenbuf_len(tb_ml4, ml4i) == 3) { saw_charlit_ml = 1; }
+        }
+        ml4i = ml4i + 1;
+    }
+    assert_eq(saw_charlit_ml, 1, "'a' char literal as 3-byte TK_STRING");
+
+    test_group("1.5.0 haskell grammar — loads and tokenizes cleanly");
+    var ghs = grammar_load("grammars/haskell.cyml");
+    assert_neq(ghs, 0, "grammar_load haskell returned non-null");
+    assert_eq(streq(grammar_name(ghs), "haskell"), 1, "name is 'haskell'");
+
+    # `module` is a keyword.
+    var tb_hs1 = tokenbuf_new();
+    var src_hs1 = "module Foo where";
+    tokenize_with_grammar(ghs, src_hs1, strlen(src_hs1), tb_hs1);
+    assert_eq(tokenbuf_kind(tb_hs1, 0), TK_KEYWORD, "module keyword");
+    assert_eq(tokenbuf_kind(tb_hs1, 4), TK_KEYWORD, "where keyword");
+
+    # `{- ... -}` block comment as one TK_COMMENT.
+    var tb_hs2 = tokenbuf_new();
+    var src_hs2 = "{- block -}x";
+    tokenize_with_grammar(ghs, src_hs2, strlen(src_hs2), tb_hs2);
+    assert_eq(tokenbuf_kind(tb_hs2, 0), TK_COMMENT, "{- ... -} comment");
+    assert_eq(tokenbuf_len(tb_hs2, 0),  11,         "comment len 11");
+
+    # Prime-suffixed identifier `rest'` is one TK_IDENT (length 5).
+    var tb_hs3 = tokenbuf_new();
+    var src_hs3 = "let rest' = []";
+    tokenize_with_grammar(ghs, src_hs3, strlen(src_hs3), tb_hs3);
+    var saw_prime = 0;
+    var hs3i = 0;
+    while (hs3i < tokenbuf_count(tb_hs3)) {
+        if (tokenbuf_kind(tb_hs3, hs3i) == TK_IDENT) {
+            if (tokenbuf_len(tb_hs3, hs3i) == 5) {
+                var shs = tokenbuf_start(tb_hs3, hs3i);
+                if (memeq(src_hs3 + shs, "rest'", 5) == 1) { saw_prime = 1; }
+            }
+        }
+        hs3i = hs3i + 1;
+    }
+    assert_eq(saw_prime, 1, "rest' is one ident (prime in ident_cont)");
+
+    # `>>=` monadic bind as one 3-byte operator.
+    var tb_hs4 = tokenbuf_new();
+    var src_hs4 = "x >>= f";
+    tokenize_with_grammar(ghs, src_hs4, strlen(src_hs4), tb_hs4);
+    var saw_bind = 0;
+    var hs4i = 0;
+    while (hs4i < tokenbuf_count(tb_hs4)) {
+        if (tokenbuf_kind(tb_hs4, hs4i) == TK_OPERATOR) {
+            if (tokenbuf_len(tb_hs4, hs4i) == 3) {
+                var shs4 = tokenbuf_start(tb_hs4, hs4i);
+                if (memeq(src_hs4 + shs4, ">>=", 3) == 1) { saw_bind = 1; }
+            }
+        }
+        hs4i = hs4i + 1;
+    }
+    assert_eq(saw_bind, 1, ">>= monadic bind op");
+
     test_group("version string shape");
     # VYK_VERSION lives in src/version_str.cyr (auto-generated by
     # scripts/version-bump.sh). Asserting shape, not value, so the

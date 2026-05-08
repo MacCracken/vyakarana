@@ -4,16 +4,16 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–1.4.0 are
+> **Read this file before doing anything.** 1.0.0–1.5.0 are
 > shipped. As of 2026-05-08 the toolchain pin is `cyrius = "5.9.36"`.
-> 1.3.0 added Java, Kotlin, C++, C# (JVM + C-family batch);
-> **1.4.0 adds PHP, Ruby, Lua, Swift (scripting + mobile
-> batch)** — both via ADR 0006 stand-in corpora since vidya
-> doesn't yet ship reference samples. **23 grammars bundled
-> now, 495/495 tests passing.** No new scanner extensions
-> needed; one architectural finding (pair-vs-line-rule prefix
-> collision in Lua) documented in architecture note 003. Next:
-> 1.5.0 — functional tier (elixir/ocaml/haskell) — see §Next up.
+> 1.3.0 added Java/Kotlin/C++/C#; 1.4.0 added PHP/Ruby/Lua/Swift;
+> **1.5.0 adds Elixir/OCaml/Haskell (functional tier)** — all
+> via ADR 0006 stand-ins. **26 grammars bundled now, 517/517
+> tests passing.** No new scanner extensions needed; OCaml's
+> `'a` type variables fall through the existing char_literal
+> yield path (same pattern as Rust lifetimes since 1.2.1).
+> Next: 1.6.0 — data/query/IDL (sql/graphql/protobuf) — see
+> §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -33,38 +33,38 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `1.4.0` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `1.5.0` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`. Full 1.x tag history in the CHANGELOG.
-- **What 1.4.0 added:** four scripting + mobile grammars in one
-  cut — **PHP, Ruby, Lua, Swift**. All four ship with hand-
+- **What 1.5.0 added:** three functional-tier grammars in one
+  cut — **Elixir, OCaml, Haskell**. All three ship with hand-
   rolled stand-in corpora per
   [ADR 0006](../adr/0006-standin-corpus-policy.md). Token
-  counts: php 1604, ruby 1111, lua 1713, swift 1380 — zero
-  errors on canonical samples. **No new scanner extensions
-  needed.**
-- **Notable architectural finding (1.4.0):** Lua surfaced a
-  **pair-vs-line-rule prefix collision** that's now documented
-  in [architecture note 003](../architecture/003-pair-rule-ordering.md).
-  Line rules run at pipeline step 2 BEFORE pair rules at step
-  3, so when a grammar has both a `--` line comment and a
-  `--[[…]]` long comment, the line rule wins regardless of
-  grammar-file declaration order. Workaround: express both
-  forms as pair rules with the longer prefix first. The
-  scanner pipeline order itself stays normative.
-- **Test count:** 495/495 (was 463 at 1.3.0; added 32
-  assertions across 4 new grammars).
-- **Grammars:** 23 bundled (shell, toml, json, cyrius, rust,
+  counts: elixir 1646, ocaml 1463, haskell 1357 — zero errors
+  on canonical samples. **No new scanner extensions needed.**
+- **Three grammar-author findings worth recording (1.5.0):**
+  - Elixir uses `%` as a struct/map literal prefix, NOT modulo.
+  - Haskell uses `'` as ident-continuation (prime suffix:
+    `rest'`); putting it in `ident_cont` (not `ident_start`)
+    works without disturbing `'a'` char literals (step 7b
+    runs first for cursors starting with `'`).
+  - OCaml needs `'` in operators so the char_literal-yield
+    path (no closing quote at offset 2) can fall through to
+    `'`-as-operator + ident — same pattern Rust has used
+    since 1.2.1 for lifetimes.
+- **Test count:** 517/517 (was 495 at 1.4.0; added 22
+  assertions across 3 new grammars).
+- **Grammars:** 26 bundled (shell, toml, json, cyrius, rust,
   yaml, markdown, c, typescript, javascript, python, go, zig,
-  asm_x86_64, asm_aarch64, java, kotlin, cpp, csharp,
-  **php, ruby, lua, swift**).
+  asm_x86_64, asm_aarch64, java, kotlin, cpp, csharp, php,
+  ruby, lua, swift, **elixir, ocaml, haskell**).
 - **Toolchain pin:** `cyrius = "5.9.36"` in `cyrius.cyml`
   (unchanged since 1.0.3).
 - **Build state: GREEN on cyrius 5.9.36.** `cyrius build`
-  clean; `cyrius test tests/vyakarana.tcyr` 495/495;
+  clean; `cyrius test tests/vyakarana.tcyr` 517/517;
   `sh scripts/smoke.sh build/vyk` reports M0+M1+M2+M3 passing
-  at v1.4.0. `dist/vyakarana.cyr` regenerated.
+  at v1.5.0. `dist/vyakarana.cyr` regenerated.
 - **Consumer pressure:** unchanged. Public `tokenize_source` /
-  `tokenbuf` API is unchanged across 1.0.0 → 1.4.0. Grammar
+  `tokenbuf` API is unchanged across 1.0.0 → 1.5.0. Grammar
   record stayed at 152 bytes since 1.2.1.
 
 ### Stand-in corpora — replace when vidya ships
@@ -141,31 +141,35 @@ additions land).
 
 ---
 
-## Next up — 1.5.0 (Functional tier)
+## Next up — 1.6.0 (Data / query / IDL)
 
 Per the [roadmap](./roadmap.md), the next batch is
-**1.5.0 — functional tier**: `elixir`, `ocaml`, `haskell`. ADR
-0006 stand-ins likely (no vidya reference samples).
+**1.6.0 — data / query / IDL**: `sql`, `graphql`, `protobuf`.
+`capnp` tracked post-1.6 if demand emerges. ADR 0006 stand-ins
+likely (no vidya reference samples expected).
 
 Surfaces to watch:
-- **Elixir** has `do … end` blocks, `~r/.../` sigils for
-  regex, atoms (`:foo`), pipe `|>`, pattern guards, and
-  `defmodule`/`def`/`defp` declaration heads.
-- **OCaml** has `(* … *)` block comments (nestable per spec
-  — same gap as Rust), `let rec`, `type` algebraic-data-type
-  declarations, and `match … with` pattern syntax. The `'a`
-  type-variable shape is similar to Rust lifetimes — char-
-  literal-vs-type-var ambiguity needs the same fall-through
-  pattern that ADR 0010 already implements.
-- **Haskell** has `--` line comments, `{- … -}` block
-  comments (also nestable in spec), layout-sensitive syntax
-  (do/where/let blocks), and rich operator surface (`>>=`,
-  `<$>`, `<*>`, `<>`, `:`, `++`, etc.).
+- **SQL** is keyword-heavy and case-insensitive (`SELECT`,
+  `select`, `Select` are all the same word). The keyword-list
+  approach is case-sensitive today — themes that want SQL
+  case-folding will have to do it post-tokenization, OR we
+  add a `case_insensitive_keywords` default. Also: `--` line
+  comments AND `/* */` block comments AND single-quoted string
+  literals; double-quoted forms are dialect-specific
+  (identifiers in standard SQL, strings in MySQL/SQLite).
+- **GraphQL** has `#` line comments, `"""…"""` block strings
+  (same shape as TOML ADR 0008), `$variable` references in
+  queries (similar to PHP/Ruby), and a fixed keyword set
+  (`type`, `interface`, `union`, `enum`, `scalar`, `query`,
+  `mutation`, `subscription`, `fragment`). Mostly mechanical.
+- **Protobuf** has `//` and `/* */` comments, `string`/`int32`
+  /`int64`/etc. as type names (keywords), `proto3`/`proto2`
+  as syntax declaration values, `package`/`import`/`message`/
+  `service`/`rpc` heads. Probably the easiest of the three.
 
-After 1.5.0, the roadmap continues with 1.6.0 (data/query/IDL),
-1.7.0 (markup), 1.8.0 (devops), 1.9.0 (AGNOS-native), then the
-pre-2.0 prep waves (1.10–1.13). 2.0.0 is the streaming-
-tokenizer break and the only release scheduled in the 2.x line.
+After 1.6.0, the roadmap continues with 1.7.0 (markup),
+1.8.0 (devops), 1.9.0 (AGNOS-native), then the pre-2.0 prep
+waves (1.10–1.13). 2.0.0 is the streaming-tokenizer break.
 
 Each new grammar is a `grammars/<name>.cyml` plus a
 `tests/corpus/<name>.<ext>` (vidya snapshot per

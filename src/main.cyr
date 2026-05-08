@@ -142,6 +142,7 @@ fn detect_language(path) {
         if (memeq(path + n - 2, ".S", 2) == 1) { return "asm_x86_64"; }
     }
     if (n >= 3) {
+        if (memeq(path + n - 3, ".hs", 3) == 1) { return "haskell"; }
         if (memeq(path + n - 3, ".rs", 3) == 1) { return "rust"; }
         if (memeq(path + n - 3, ".md", 3) == 1) { return "markdown"; }
         if (memeq(path + n - 3, ".ts", 3) == 1) { return "typescript"; }
@@ -152,6 +153,13 @@ fn detect_language(path) {
         if (memeq(path + n - 3, ".cs", 3) == 1) { return "csharp"; }
         if (memeq(path + n - 3, ".cc", 3) == 1) { return "cpp"; }
         if (memeq(path + n - 3, ".rb", 3) == 1) { return "ruby"; }
+        if (memeq(path + n - 3, ".ex", 3) == 1) { return "elixir"; }
+        if (memeq(path + n - 3, ".ml", 3) == 1) { return "ocaml"; }
+    }
+    if (n >= 4) {
+        if (memeq(path + n - 4, ".exs", 4) == 1) { return "elixir"; }
+        if (memeq(path + n - 4, ".mli", 4) == 1) { return "ocaml"; }
+        if (memeq(path + n - 4, ".lhs", 4) == 1) { return "haskell"; }
     }
     if (n >= 4) {
         if (memeq(path + n - 4, ".mjs", 4) == 1) { return "javascript"; }

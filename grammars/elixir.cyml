@@ -1,0 +1,144 @@
+# elixir — Elixir tokenizer grammar
+#
+# Rule scheme per ADR 0005. Elixir's token surface differs from
+# the C-family: `do … end` keyword bookends instead of `{ }`,
+# atoms `:foo`, sigils `~r/.../` for regex, the pipe operator
+# `|>`, and module attributes `@moduledoc` / `@doc`. No char
+# literals — Elixir uses `?a` for character codes (tokenizes as
+# `?` operator + ident; cosmetic).
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# vidya doesn't ship an Elixir reference sample yet. The local
+# `tests/corpus/concept.ex` mirrors the lexer+parser theme used
+# elsewhere, exercising `defmodule`, `@moduledoc` heredocs,
+# pattern-matching function clauses with `when` guards, the
+# pipe `|>`, and the Elixir keyword set. Replace with a vidya
+# snapshot when one ships.
+#
+# `@` in ident_start so `@moduledoc`, `@doc`, `@kinds`, etc.
+# tokenize as a single ident — same call as Java/Kotlin
+# annotations and Zig's `@`-builtins.
+#
+# Known gaps (not triggered by the stand-in):
+#   - Sigils `~r/.../`, `~w()`, `~s"…"`. The `~` is currently
+#     in operators; sigil bodies tokenize as op + ident +
+#     pair-string + ident-flags. Cosmetic; coverage holds.
+#   - Heredoc strings `"""…"""` would benefit from a pair rule
+#     ahead of `"…"` (same shape as TOML
+#     [ADR 0008](../docs/adr/0008-toml-triple-quoted-strings.md)).
+#     Added below.
+#   - String interpolation `#{expr}` stays inside the string-
+#     pair span per [ADR 0003](../docs/adr/0003-string-expansion-not-retokenized.md).
+#   - Atoms `:foo` tokenize as `:` punctuation + `foo` ident.
+#     Cosmetic; theme can post-process.
+#   - Numeric underscores (`1_000_000`) — number scanner stops
+#     at `_`, yielding `number + ident`. Cosmetic.
+
+[grammar]
+name = "elixir"
+extensions = [".ex", ".exs"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+# `@` for module attributes.
+ident_start = "A-Za-z_@"
+ident_cont  = "A-Za-z0-9_"
+
+number_decimal = true
+number_0x      = true
+number_0b      = true
+number_0o      = true
+
+special_vars = false
+unicode_ident = true
+char_literal  = false
+
+# Operators in longest-match order. Elixir-specific: `|>` (pipe),
+# `<-` (generator / receive), `->` (anonymous fn / case clause),
+# `=>` (map key/value), `::` (type spec), `<>` (string concat),
+# `++` / `--` (list concat / subtract), `..` (range), `|` (cons /
+# alternative), `&&` / `||` / `!` (short-circuit), `&&&` / `|||`
+# (bitwise), `===` / `!==` (strict equality), `=~` (regex
+# match), plus the standard set. `~` for sigils.
+operators = [
+    "<<<", ">>>",
+    "===", "!==",
+    "<<=", ">>=",
+    "&&&", "|||",
+    "<<", ">>",
+    "&&", "||",
+    "==", "!=", "<=", ">=",
+    "->", "<-", "=>", "::", "<>",
+    "++", "--", "..",
+    "=~",
+    "|>",
+    "+=", "-=", "*=", "/=",
+    # `%` is Elixir's map / struct literal prefix (`%{key: v}`,
+    # `%Token{kind: …}`). It is NOT a modulo operator — Elixir
+    # uses `rem/2` and `Integer.mod/2`. Listed here so the byte
+    # is classified as an operator rather than falling to the
+    # error fallback.
+    "=", "+", "-", "*", "/", "%",
+    "!", "~", "&", "|", "^",
+    "<", ">",
+    "?", "@",
+]
+
+# Punctuation. `|` shows up in pattern matching (`[h | t]`,
+# `case … |`) — but it's an operator above for `||` precedence.
+# Single `|` falls out naturally.
+punctuation = [
+    "(", ")", "{", "}", "[", "]",
+    ";", ",", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+[[rules]]
+kind = "comment"
+match = "line"
+start = "#"
+
+
+# Heredoc strings `"""…"""` (Elixir module/doc strings). Ordered
+# before `"…"` so the longer prefix wins.
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\"\"\""
+end = "\"\"\""
+escape = "\\"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # Module / definition heads
+    "defmodule", "defprotocol", "defimpl", "defstruct",
+    "defexception", "defguard", "defmacro", "defmacrop",
+    "def", "defp",
+    "alias", "import", "use", "require",
+    # Block heads
+    "do", "end", "fn", "after", "rescue",
+    "catch", "else", "raise", "throw",
+    # Control flow / pattern
+    "if", "unless", "case", "cond", "when",
+    "with", "for", "receive",
+    "true", "false", "nil",
+    # Logical-as-words (Elixir spells these too)
+    "and", "or", "not", "in",
+    # Misc
+    "quote", "unquote", "unquote_splicing",
+]

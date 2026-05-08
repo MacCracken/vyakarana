@@ -6,6 +6,80 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [1.5.0] — 2026-05-08
+
+Functional tier language batch. Three new grammars in one cut:
+Elixir, OCaml, Haskell. All three ship with stand-in corpora per
+[ADR 0006](docs/adr/0006-standin-corpus-policy.md). **No new
+scanner extensions were needed**; OCaml's `'a` type variables
+fall through the existing char_literal helper's lifetime-
+preservation logic ([ADR 0010](docs/adr/0010-char-literal-default.md))
+exactly the way Rust's lifetimes do. Three grammar-author
+findings worth recording:
+- **Elixir uses `%` as a struct/map literal prefix** (NOT
+  modulo). Adding it to operators avoids the error fallback;
+  themes can secondary-palette by token-text.
+- **Haskell allows `'` as ident-continuation** (prime suffix:
+  `rest'`, `f''`). Putting `'` in `ident_cont` (not
+  `ident_start`) is enough; char literals still route through
+  step 7b first since `char_literal` runs before ident scan
+  for cursor positions starting with `'`.
+- **OCaml needs `'` in operators** so its char_literal yield
+  path (no closing quote at the right offset) can fall through
+  to the `'a`-as-`'`-plus-ident shape — same pattern Rust has
+  used since 1.2.1.
+
+### Added
+
+- **Elixir grammar.** New `grammars/elixir.cyml` +
+  `tests/corpus/concept.ex` (1646 tokens, zero errors). `@` in
+  `ident_start` (module attributes). Operators include `|>`
+  (pipe), `<-` (generator/receive), `->` (anonymous fn / case
+  clause), `=>` (map key/value), `::` (type spec), `<>` (string
+  concat), `++`/`--` (list concat/subtract), `..` (range), `=~`
+  (regex match), `&&&`/`|||` (bitwise), `===`/`!==` (strict
+  equality). **`%` in operators** (struct/map literal prefix).
+  `"""…"""` heredoc strings via pair rule ahead of `"…"`.
+- **OCaml grammar.** New `grammars/ocaml.cyml` +
+  `tests/corpus/concept.ml` (1463 tokens, zero errors).
+  `(* … *)` block comments via pair rule (nestable per spec —
+  same simple-greedy gap as Rust). `'a` type variables work
+  via the char_literal yield path: the helper returns 0 when
+  no closing quote at offset 2, leaving `'` to tokenize as
+  operator on the next pass and `a` as ident. **`'` added to
+  operators** to complete that fall-through. Operators
+  otherwise include `|>`, `<-`, `:=`, `->`, `@@`, `<>`, `**`.
+- **Haskell grammar.** New `grammars/haskell.cyml` +
+  `tests/corpus/concept.hs` (1357 tokens, zero errors). `--`
+  line comments + `{- … -}` block comments via pair rule
+  (nestable in spec — same Rust-shared gap). **`'` in
+  `ident_cont`** so prime-suffixed names like `rest'`,
+  `f''`, `xs'` tokenize as a single ident; standalone `'` for
+  char literals still routes through step 7b first since the
+  scanner pipeline runs char_literal before checking ident.
+  Operators include the monadic / applicative surface
+  (`>>=`, `>>`, `=<<`, `>=>`, `<=<`, `<$>`, `<*>`, `<|>`,
+  `<>`), `::` type ascription, `\` lambda head, and `` ` ``
+  for infix-function syntax.
+
+### Wiring
+
+- `src/tokenize.cyr` — all three added to `bootstrap_grammars()`
+  (now loads 26 grammars).
+- `src/main.cyr` — extension dispatch: `.ex`/`.exs`,
+  `.ml`/`.mli`, `.hs`/`.lhs`.
+- `scripts/smoke.sh` — all three added to `--list-languages`
+  check (now 26 grammars) and the corpus round-trip loop.
+- `tests/vyakarana.tcyr` — three or four probe assertions per
+  grammar covering load + name + grammar-specific shapes
+  (`|>` pipe, `%` struct literal, `(* *)` block comment, `'a`
+  type-var-as-operator, `'a'` char-literal-as-string,
+  `{- -}` block comment, prime-suffixed ident, `>>=` bind).
+  495 → 517 passing. One probe miss caught during the cut:
+  OCaml's `'a` test originally returned `TK_ERROR` because `'`
+  wasn't in the operators list — fixed by adding it, with a
+  comment explaining the lifetime-preservation fall-through.
+
 ## [1.4.0] — 2026-05-08
 
 Scripting + mobile language batch. Four new grammars in one cut:
