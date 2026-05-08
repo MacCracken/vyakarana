@@ -1,0 +1,113 @@
+// vyakarana stand-in -- not from vidya. See docs/adr/0006-standin-corpus-policy.md.
+// Re-sync when vidya adds a Protobuf reference sample.
+//
+// Demonstrates proto3 SDL: messages, enums, oneofs, maps,
+// nested types, services, and rpc methods.
+
+syntax = "proto3";
+
+package vyakarana.concept;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+option java_package        = "com.example.vyakarana";
+option java_multiple_files = true;
+option go_package          = "github.com/example/vyakarana/concept;conceptpb";
+
+/* Top-level message exercising scalar fields, the
+ * google.protobuf.Timestamp well-known type, default values
+ * (proto3 implicit), and field-level options. */
+message User {
+    int64                       id            = 1;
+    string                      email         = 2;
+    string                      display_name  = 3;
+    google.protobuf.Timestamp   created_at    = 4;
+    bool                        is_active     = 5;
+
+    // Repeated fields are slices in Go / lists in most languages.
+    repeated string             tags          = 6;
+
+    // Maps are syntactic sugar for repeated message{key, value}.
+    map<string, string>         attributes    = 7;
+}
+
+enum PostStatus {
+    POST_STATUS_UNSPECIFIED = 0;
+    POST_STATUS_DRAFT       = 1;
+    POST_STATUS_PUBLISHED   = 2;
+    POST_STATUS_ARCHIVED    = 3;
+}
+
+message Post {
+    int64      id           = 1;
+    int64      author_id    = 2;
+    string     title        = 3;
+    string     body         = 4;
+    PostStatus status       = 5;
+    google.protobuf.Timestamp published_at = 6;
+
+    // Nested message scope. Common in real .proto files.
+    message Edit {
+        google.protobuf.Timestamp at  = 1;
+        string                    by  = 2;
+        string                    note = 3;
+    }
+    repeated Edit edits = 7;
+
+    // oneof block. Mutually exclusive fields with separate
+    // wire identities.
+    oneof outcome {
+        string archived_reason = 10;
+        bool   featured        = 11;
+        int32  spam_score      = 12;
+    }
+}
+
+message Comment {
+    int64                     id         = 1;
+    int64                     author_id  = 2;
+    int64                     post_id    = 3;
+    string                    body       = 4;
+    google.protobuf.Timestamp created_at = 5;
+}
+
+// ── Service definitions ────────────────────────────────────────────
+
+service ContentService {
+    rpc GetUser(GetUserRequest) returns (User);
+    rpc ListPosts(ListPostsRequest) returns (ListPostsResponse);
+    rpc CreatePost(CreatePostRequest) returns (Post);
+    rpc DeletePost(DeletePostRequest) returns (google.protobuf.Empty);
+
+    // Server streaming for live feeds.
+    rpc StreamComments(StreamCommentsRequest) returns (stream Comment);
+}
+
+message GetUserRequest {
+    int64 id = 1;
+}
+
+message ListPostsRequest {
+    int32  page_size  = 1;
+    string page_token = 2;
+    int64  author_id  = 3;
+}
+
+message ListPostsResponse {
+    repeated Post posts           = 1;
+    string        next_page_token = 2;
+    int32         total_count     = 3;
+}
+
+message CreatePostRequest {
+    Post post = 1;
+}
+
+message DeletePostRequest {
+    int64 id = 1;
+}
+
+message StreamCommentsRequest {
+    int64 post_id = 1;
+}

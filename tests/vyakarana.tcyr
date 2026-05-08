@@ -1388,6 +1388,113 @@ fn main() {
     }
     assert_eq(saw_bind, 1, ">>= monadic bind op");
 
+    test_group("1.6.0 sql grammar — loads, case-insensitive keywords (ADR 0011)");
+    var gsql = grammar_load("grammars/sql.cyml");
+    assert_neq(gsql, 0, "grammar_load sql returned non-null");
+    assert_eq(streq(grammar_name(gsql), "sql"), 1, "name is 'sql'");
+
+    # Upper-case `SELECT` is keyword.
+    var tb_sql1 = tokenbuf_new();
+    var src_sql1 = "SELECT id FROM users";
+    tokenize_with_grammar(gsql, src_sql1, strlen(src_sql1), tb_sql1);
+    assert_eq(tokenbuf_kind(tb_sql1, 0), TK_KEYWORD, "SELECT keyword");
+    assert_eq(tokenbuf_kind(tb_sql1, 4), TK_KEYWORD, "FROM keyword");
+
+    # Lower-case `select` is also keyword (ADR 0011 case fold).
+    var tb_sql2 = tokenbuf_new();
+    var src_sql2 = "select id from users";
+    tokenize_with_grammar(gsql, src_sql2, strlen(src_sql2), tb_sql2);
+    assert_eq(tokenbuf_kind(tb_sql2, 0), TK_KEYWORD, "select keyword (lower)");
+    assert_eq(tokenbuf_kind(tb_sql2, 4), TK_KEYWORD, "from keyword (lower)");
+
+    # Mixed-case `Select` is also keyword.
+    var tb_sql3 = tokenbuf_new();
+    var src_sql3 = "Select id From users";
+    tokenize_with_grammar(gsql, src_sql3, strlen(src_sql3), tb_sql3);
+    assert_eq(tokenbuf_kind(tb_sql3, 0), TK_KEYWORD, "Select keyword (mixed)");
+    assert_eq(tokenbuf_kind(tb_sql3, 4), TK_KEYWORD, "From keyword (mixed)");
+
+    # Non-keyword ident still tokenizes as ident regardless of case.
+    var tb_sql4 = tokenbuf_new();
+    var src_sql4 = "MyTable";
+    tokenize_with_grammar(gsql, src_sql4, strlen(src_sql4), tb_sql4);
+    assert_eq(tokenbuf_kind(tb_sql4, 0), TK_IDENT, "MyTable is ident");
+
+    # `<>` not-equal as 2-byte op.
+    var tb_sql5 = tokenbuf_new();
+    var src_sql5 = "a <> b";
+    tokenize_with_grammar(gsql, src_sql5, strlen(src_sql5), tb_sql5);
+    var saw_neq = 0;
+    var sql5i = 0;
+    while (sql5i < tokenbuf_count(tb_sql5)) {
+        if (tokenbuf_kind(tb_sql5, sql5i) == TK_OPERATOR) {
+            if (tokenbuf_len(tb_sql5, sql5i) == 2) {
+                var ssql5 = tokenbuf_start(tb_sql5, sql5i);
+                if (memeq(src_sql5 + ssql5, "<>", 2) == 1) { saw_neq = 1; }
+            }
+        }
+        sql5i = sql5i + 1;
+    }
+    assert_eq(saw_neq, 1, "<> not-equal op");
+
+    test_group("1.6.0 graphql grammar — loads and tokenizes cleanly");
+    var ggql = grammar_load("grammars/graphql.cyml");
+    assert_neq(ggql, 0, "grammar_load graphql returned non-null");
+    assert_eq(streq(grammar_name(ggql), "graphql"), 1, "name is 'graphql'");
+
+    # `type` is a keyword.
+    var tb_gql1 = tokenbuf_new();
+    var src_gql1 = "type Foo {}";
+    tokenize_with_grammar(ggql, src_gql1, strlen(src_gql1), tb_gql1);
+    assert_eq(tokenbuf_kind(tb_gql1, 0), TK_KEYWORD, "type keyword");
+
+    # `$variable` tokenizes as one ident (`$` in ident_start).
+    var tb_gql2 = tokenbuf_new();
+    var src_gql2 = "$id";
+    tokenize_with_grammar(ggql, src_gql2, strlen(src_gql2), tb_gql2);
+    assert_eq(tokenbuf_count(tb_gql2), 1,          "$id one token");
+    assert_eq(tokenbuf_kind(tb_gql2, 0), TK_IDENT, "$id ident");
+    assert_eq(tokenbuf_len(tb_gql2, 0),  3,        "$id len 3");
+
+    # `@directive` tokenizes as one ident (`@` in ident_start).
+    var tb_gql3 = tokenbuf_new();
+    var src_gql3 = "@deprecated";
+    tokenize_with_grammar(ggql, src_gql3, strlen(src_gql3), tb_gql3);
+    assert_eq(tokenbuf_count(tb_gql3), 1,          "@deprecated one token");
+    assert_eq(tokenbuf_kind(tb_gql3, 0), TK_IDENT, "@deprecated ident");
+
+    # `"""…"""` block string as one TK_STRING.
+    var tb_gql4 = tokenbuf_new();
+    var src_gql4 = "\"\"\"docstring\"\"\"";
+    tokenize_with_grammar(ggql, src_gql4, strlen(src_gql4), tb_gql4);
+    assert_eq(tokenbuf_count(tb_gql4), 1,          "block string one token");
+    assert_eq(tokenbuf_kind(tb_gql4, 0), TK_STRING, "block string is string");
+    assert_eq(tokenbuf_len(tb_gql4, 0), strlen(src_gql4), "covers whole input");
+
+    test_group("1.6.0 protobuf grammar — loads and tokenizes cleanly");
+    var gpb = grammar_load("grammars/protobuf.cyml");
+    assert_neq(gpb, 0, "grammar_load protobuf returned non-null");
+    assert_eq(streq(grammar_name(gpb), "protobuf"), 1, "name is 'protobuf'");
+
+    # `message` keyword.
+    var tb_pb1 = tokenbuf_new();
+    var src_pb1 = "message Foo {}";
+    tokenize_with_grammar(gpb, src_pb1, strlen(src_pb1), tb_pb1);
+    assert_eq(tokenbuf_kind(tb_pb1, 0), TK_KEYWORD, "message keyword");
+
+    # `repeated` field label keyword.
+    var tb_pb2 = tokenbuf_new();
+    var src_pb2 = "repeated string tags = 6;";
+    tokenize_with_grammar(gpb, src_pb2, strlen(src_pb2), tb_pb2);
+    assert_eq(tokenbuf_kind(tb_pb2, 0), TK_KEYWORD, "repeated keyword");
+    assert_eq(tokenbuf_kind(tb_pb2, 2), TK_KEYWORD, "string keyword (type)");
+
+    # `int32` primitive type keyword.
+    var tb_pb3 = tokenbuf_new();
+    var src_pb3 = "int32 id = 1;";
+    tokenize_with_grammar(gpb, src_pb3, strlen(src_pb3), tb_pb3);
+    assert_eq(tokenbuf_kind(tb_pb3, 0), TK_KEYWORD, "int32 keyword");
+
     test_group("version string shape");
     # VYK_VERSION lives in src/version_str.cyr (auto-generated by
     # scripts/version-bump.sh). Asserting shape, not value, so the

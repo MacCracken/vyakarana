@@ -1,0 +1,181 @@
+# sql — SQL tokenizer grammar (dialect-neutral)
+#
+# Rule scheme per ADR 0005. SQL is the first bundled grammar to
+# enable `case_insensitive_keywords = true` (see
+# [ADR 0011](../docs/adr/0011-case-insensitive-keywords-default.md)).
+# `SELECT`, `select`, `Select`, `sElEcT` all match the canonical
+# (upper-case) keyword list — same byte-equality cost as the
+# other 25 grammars when the flag is on, just with an A–Z to a–z
+# fold on each comparison.
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# vidya doesn't ship a SQL reference sample yet. The local
+# `tests/corpus/concept.sql` is dialect-neutral (ANSI SQL:1992
+# core surface) — no PostgreSQL/MySQL/SQLite-specific extensions
+# beyond what's necessary to exercise CTEs, window functions,
+# CASE expressions, and the case-insensitive keyword path.
+#
+# Dialect notes (not exhaustive):
+#   - PostgreSQL adds `RETURNING`, `LATERAL`, dollar-quoted
+#     strings (`$tag$ … $tag$`), and a wider type vocabulary.
+#     Could be a fork (`grammars/postgresql.cyml`) if real PG
+#     corpora surface enough delta.
+#   - MySQL accepts backtick-quoted identifiers (`` `id` ``)
+#     and `#` line comments alongside `--`. Add to a
+#     `grammars/mysql.cyml` fork if needed.
+#   - SQLite is closest to ANSI but adds `PRAGMA` directives;
+#     fork as needed.
+#   - T-SQL has `BEGIN`/`END` blocks and `GO` batch separators
+#     plus `[]`-quoted identifiers; fork as needed.
+#
+# Known gaps (not triggered by the stand-in):
+#   - Dollar-quoted strings (PostgreSQL `$$ … $$`, `$tag$ … $tag$`).
+#     Variable-length-delimiter form — same scanner-shape gap
+#     as Lua's `[==[…]==]`, Ruby/PHP heredocs, Swift raw strings.
+#   - Backtick identifiers (MySQL): not in the ANSI baseline.
+#   - Numeric literal suffixes / scientific notation
+#     (`1.5e3`): same number-scanner limitation as java.cyml.
+
+[grammar]
+name = "sql"
+extensions = [".sql"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+ident_start = "A-Za-z_"
+ident_cont  = "A-Za-z0-9_"
+
+number_decimal = true
+number_0x      = true
+number_0b      = false
+number_0o      = false
+
+special_vars = false
+unicode_ident = true
+char_literal  = false
+
+# ADR 0011: SQL keywords are case-insensitive per spec.
+case_insensitive_keywords = true
+
+# Operators in longest-match order. SQL-specific: `<>` (not
+# equal, ANSI-preferred over `!=`), `||` (string concat), `::`
+# (PostgreSQL cast), plus the standard comparison and
+# arithmetic set.
+operators = [
+    "<<=", ">>=",
+    "<<", ">>",
+    "&&", "||",
+    "==", "!=", "<=", ">=", "<>",
+    "::",
+    "+=", "-=", "*=", "/=",
+    "=", "+", "-", "*", "/", "%",
+    "&", "|", "^",
+    "<", ">",
+    "?", "@",
+]
+
+punctuation = [
+    "(", ")", "{", "}", "[", "]",
+    ";", ",", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+[[rules]]
+kind = "comment"
+match = "line"
+start = "--"
+
+
+# `/* … */` block comments. Non-nestable in ANSI; same simple
+# greedy match as ADR 0009's C grammar.
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "/*"
+end = "*/"
+
+
+# Single-quoted string literals. SQL escape for embedded quote
+# is doubling (`'it''s'`), not backslash; the pair-rule scanner
+# closes at the first `'`, so `'it''s'` tokenizes as
+# `'it'` + `'s'` (two strings). Cosmetic gap; coverage holds.
+# A future ADR could add a `paired_escape` rule shape for the
+# doubling form.
+[[rules]]
+kind = "string"
+match = "pair"
+start = "'"
+end = "'"
+
+
+# Double-quoted identifiers (ANSI SQL:1992). The body is an
+# identifier per spec, but at the token level we tokenize the
+# whole `"…"` span as a `TK_STRING` — themes that want to
+# colour it as ident can do so via token-text inspection.
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # DDL
+    "CREATE", "ALTER", "DROP", "TRUNCATE", "RENAME",
+    "TABLE", "VIEW", "INDEX", "TRIGGER", "FUNCTION",
+    "PROCEDURE", "DATABASE", "SCHEMA", "SEQUENCE",
+    "DOMAIN", "TYPE",
+    # DML
+    "SELECT", "INSERT", "UPDATE", "DELETE", "MERGE",
+    "VALUES", "INTO", "FROM", "WHERE", "GROUP", "BY",
+    "HAVING", "ORDER", "ASC", "DESC", "NULLS", "FIRST",
+    "LAST", "LIMIT", "OFFSET", "FETCH", "ROWS", "ROW",
+    "ONLY",
+    # Set ops
+    "UNION", "INTERSECT", "EXCEPT", "ALL", "DISTINCT",
+    # Joins
+    "JOIN", "INNER", "LEFT", "RIGHT", "FULL", "OUTER",
+    "CROSS", "NATURAL", "ON", "USING",
+    # CTE / window
+    "WITH", "RECURSIVE", "OVER", "PARTITION", "WINDOW",
+    "RANGE", "UNBOUNDED", "PRECEDING", "FOLLOWING",
+    "CURRENT",
+    # Constraints
+    "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "UNIQUE",
+    "CHECK", "DEFAULT", "CONSTRAINT", "CASCADE", "RESTRICT",
+    "NO", "ACTION", "SET", "NULL", "MATCH",
+    # CASE
+    "CASE", "WHEN", "THEN", "ELSE", "END",
+    # Boolean / set membership
+    "AND", "OR", "NOT", "IN", "EXISTS", "BETWEEN",
+    "LIKE", "ILIKE", "IS", "ANY", "SOME",
+    # Transactions
+    "BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT",
+    "TRANSACTION", "ISOLATION", "LEVEL", "READ", "WRITE",
+    "DEFERRABLE", "INITIALLY", "DEFERRED", "IMMEDIATE",
+    # Privileges
+    "GRANT", "REVOKE", "PRIVILEGES", "TO", "PUBLIC",
+    # Expressions
+    "AS", "CAST", "COALESCE", "NULLIF", "GREATEST", "LEAST",
+    # Types (case-insensitive — same path)
+    "INT", "INTEGER", "SMALLINT", "BIGINT", "DECIMAL",
+    "NUMERIC", "REAL", "DOUBLE", "PRECISION", "FLOAT",
+    "BOOLEAN", "BIT", "BYTE",
+    "CHAR", "CHARACTER", "VARCHAR", "TEXT", "BLOB", "CLOB",
+    "DATE", "TIME", "TIMESTAMP", "INTERVAL",
+    # Boolean / null literals (case-insensitive)
+    "TRUE", "FALSE", "UNKNOWN",
+    # Pseudo-functions / current
+    "CURRENT_DATE", "CURRENT_TIME", "CURRENT_TIMESTAMP",
+    "CURRENT_USER", "SESSION_USER",
+    # Misc reserved
+    "IF", "ELSEIF", "WHILE", "LOOP", "RETURN", "RETURNS",
+    "DECLARE", "EXECUTE",
+]

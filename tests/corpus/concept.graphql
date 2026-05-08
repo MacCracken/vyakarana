@@ -1,0 +1,142 @@
+# vyakarana stand-in -- not from vidya. See docs/adr/0006-standin-corpus-policy.md.
+# Re-sync when vidya adds a GraphQL reference sample.
+#
+# Schema definition language (SDL) + executable operations.
+
+"""
+Schema for a small content site. Demonstrates type / interface /
+union / enum / scalar declarations, field arguments, directives,
+and the block-string `\"\"\"…\"\"\"` documentation form.
+"""
+
+scalar DateTime
+scalar URL
+
+"User of the platform."
+type User implements Node {
+    id:           ID!
+    email:        String!
+    displayName:  String
+    createdAt:    DateTime!
+    isActive:     Boolean!
+    posts(
+        first:  Int = 10
+        after:  String
+        status: PostStatus = PUBLISHED
+    ): PostConnection!
+}
+
+interface Node {
+    id: ID!
+}
+
+"Status of a post in the publishing pipeline."
+enum PostStatus {
+    DRAFT
+    PUBLISHED
+    ARCHIVED
+}
+
+type Post implements Node {
+    id:          ID!
+    author:      User!
+    title:       String!
+    body:        String
+    publishedAt: DateTime
+    score:       Float! @deprecated(reason: "Use ratings instead.")
+}
+
+type Comment implements Node {
+    id:        ID!
+    author:    User!
+    body:      String!
+    createdAt: DateTime!
+}
+
+union SearchResult = User | Post | Comment
+
+# ── Connection / pagination ───────────────────────────────────────
+
+type PageInfo {
+    hasNextPage:     Boolean!
+    hasPreviousPage: Boolean!
+    startCursor:     String
+    endCursor:       String
+}
+
+type PostConnection {
+    edges:    [PostEdge!]!
+    pageInfo: PageInfo!
+    nodes:    [Post!]!
+}
+
+type PostEdge {
+    cursor: String!
+    node:   Post!
+}
+
+# ── Root types ───────────────────────────────────────────────────
+
+type Query {
+    "Look up a user by ID. Returns null if not found."
+    user(id: ID!): User
+    posts(first: Int = 20, after: String): PostConnection!
+    search(query: String!, limit: Int = 10): [SearchResult!]!
+    me: User
+}
+
+type Mutation {
+    createPost(input: CreatePostInput!): Post!
+    publishPost(id: ID!): Post!
+    archivePost(id: ID!): Post!
+}
+
+type Subscription {
+    postPublished: Post!
+    commentAdded(postId: ID!): Comment!
+}
+
+input CreatePostInput {
+    title: String!
+    body:  String
+}
+
+# ── Executable operations ─────────────────────────────────────────
+
+query GetUser($id: ID!) {
+    user(id: $id) {
+        id
+        email
+        displayName
+        posts(first: 5, status: PUBLISHED) {
+            edges {
+                cursor
+                node {
+                    id
+                    title
+                    publishedAt
+                }
+            }
+            pageInfo {
+                hasNextPage
+                endCursor
+            }
+        }
+    }
+}
+
+mutation CreatePost($input: CreatePostInput!) {
+    createPost(input: $input) {
+        id
+        title
+        author {
+            displayName
+        }
+    }
+}
+
+fragment UserBasics on User {
+    id
+    email
+    displayName
+}

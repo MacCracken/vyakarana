@@ -6,6 +6,71 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [1.6.0] — 2026-05-08
+
+Data / query / IDL language batch. Three new grammars + one new
+scanner default in one cut: SQL, GraphQL, Protobuf, plus
+`case_insensitive_keywords` ([ADR 0011](docs/adr/0011-case-insensitive-keywords-default.md))
+to make the SQL grammar work without doubling its keyword list.
+
+### Added
+
+- **`case_insensitive_keywords` default flag.** New
+  `[defaults] case_insensitive_keywords = true|false`, wired
+  through `Grammar` at offset 152 (`GRAMMAR_SIZE` 152 → 160),
+  CYML loader, and `_ds_lookup_keyword` in the default
+  scanner. When on, the words-rule lookup folds A–Z to a–z on
+  both sides of the comparison so `SELECT` / `select` /
+  `Select` all match the canonical (upper-case) keyword list.
+  ASCII-only fold by design — UTF-8 case folding is out of
+  scope. Defaults off; enabled in `grammars/sql.cyml`. Two new
+  helpers in `src/grammars/default_scanner.cyr`:
+  `_ds_to_lower(b)` and `_ds_word_match(src, start, w, wlen,
+  fold)` — the latter delegates to `memeq` when fold=0 so
+  existing 25 grammars hit zero new hot-path cost. See [ADR
+  0011](docs/adr/0011-case-insensitive-keywords-default.md).
+- **SQL grammar.** New `grammars/sql.cyml` +
+  `tests/corpus/concept.sql` (599 tokens, zero errors).
+  Dialect-neutral baseline (ANSI SQL:1992 core surface);
+  PostgreSQL / MySQL / SQLite / T-SQL extensions documented as
+  fork candidates in the grammar header. `--` line + `/* */`
+  block comments. Single-quoted strings; double-quoted strings
+  (which are technically identifiers in standard SQL) tokenize
+  as `TK_STRING` — themes can re-classify by token text.
+  Operators include `<>` (ANSI not-equal), `||` (string
+  concat), `::` (PostgreSQL cast). Keyword list covers DDL,
+  DML, joins, CTE/window, set-op, constraints, CASE, types,
+  transaction, and reserved literals.
+- **GraphQL grammar.** New `grammars/graphql.cyml` +
+  `tests/corpus/concept.graphql` (623 tokens, zero errors).
+  `$` and `@` in `ident_start` (operation variables /
+  directives — `$id`, `@deprecated` tokenize as one ident).
+  `"""…"""` block strings via pair rule ahead of `"…"`. `#`
+  line comments. Minimal operator set (`!`, `=`, `|`, `&`,
+  `...`). Keywords cover schema-definition (`type`/`enum`/
+  `union`/`scalar`/`input`/`interface`/`directive`), operation
+  heads (`query`/`mutation`/`subscription`/`fragment`),
+  modifiers (`implements`/`extend`/`repeatable`).
+- **Protobuf grammar.** New `grammars/protobuf.cyml` +
+  `tests/corpus/concept.proto` (628 tokens, zero errors).
+  Mechanical C-family at the token level. Primitive types
+  (`int32`/`int64`/`uint32`/`string`/`bytes`/etc.) and SDL
+  heads (`message`/`enum`/`service`/`rpc`/`oneof`/`map`/
+  `repeated`/`reserved`) as keywords. Both proto2 and proto3
+  surface covered.
+
+### Wiring
+
+- `src/tokenize.cyr` — all three added to `bootstrap_grammars()`
+  (now loads 29 grammars).
+- `src/main.cyr` — extension dispatch: `.sql`, `.graphql`/`.gql`,
+  `.proto`.
+- `scripts/smoke.sh` — all three added to `--list-languages`
+  check (now 29 grammars) and the corpus round-trip loop.
+- `tests/vyakarana.tcyr` — five SQL probes (mixing UPPER /
+  lower / Mixed case to exercise ADR 0011), four GraphQL
+  probes, three Protobuf probes. 517 → 544 passing.
+
 ## [1.5.0] — 2026-05-08
 
 Functional tier language batch. Three new grammars in one cut:

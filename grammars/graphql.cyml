@@ -1,0 +1,114 @@
+# graphql — GraphQL tokenizer grammar (SDL + queries)
+#
+# Rule scheme per ADR 0005. GraphQL's surface is small:
+#   - `#` line comments.
+#   - `"""…"""` block strings (description docstrings); fall
+#     back to `"…"` for inline strings.
+#   - `$variable` references in operations and field arguments.
+#   - Directives `@deprecated`, `@include`, etc.
+#   - Reserved words (case-sensitive in GraphQL): `type`,
+#     `interface`, `union`, `enum`, `scalar`, `input`,
+#     `query`, `mutation`, `subscription`, `fragment`, `on`,
+#     `implements`, `extend`, `directive`, `schema`,
+#     `repeatable`, `true`/`false`/`null`.
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# vidya doesn't ship a GraphQL reference sample yet. The local
+# `tests/corpus/concept.graphql` is a small SDL schema (User /
+# Post / Comment) plus a few executable operations exercising
+# directives, default args, list/non-null types, and the
+# `"""…"""` docstring shape. Replace with a vidya snapshot
+# when one ships.
+#
+# `$` in `ident_start` so `$id`, `$input`, `$first` etc.
+# tokenize as a single ident. Same call as PHP / Ruby / Swift.
+#
+# `@` in `ident_start` so `@deprecated`, `@include`,
+# `@skip`, `@requires(fields: …)` etc. tokenize as a single
+# ident. Same call as Java / Kotlin / Zig.
+#
+# Known gaps (not triggered by the stand-in):
+#   - Float / scientific notation (`3.14`, `1.5e3`). Not in the
+#     stand-in.
+#   - Custom directive bodies are tokenized as ident + arg
+#     list; renderers can re-pair the directive form by token
+#     text.
+
+[grammar]
+name = "graphql"
+extensions = [".graphql", ".gql"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+ident_start = "A-Za-z_$@"
+ident_cont  = "A-Za-z0-9_"
+
+number_decimal = true
+number_0x      = false
+number_0b      = false
+number_0o      = false
+
+special_vars = false
+unicode_ident = true
+char_literal  = false
+
+# Operators in longest-match order. GraphQL has very few:
+# `=` for default values, `!` for non-null type marker, `|` for
+# union members, `&` for interface intersection (rare),
+# `...` for spread/fragment.
+operators = [
+    "...",
+    "=",
+    "!", "|", "&",
+]
+
+punctuation = [
+    "(", ")", "{", "}", "[", "]",
+    ",", ":",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+[[rules]]
+kind = "comment"
+match = "line"
+start = "#"
+
+
+# Block strings `"""…"""` (descriptions). Ordered before the
+# regular `"…"` rule so the longer prefix wins (architecture
+# note 003).
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\"\"\""
+end = "\"\"\""
+escape = "\\"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # Type-system declarations
+    "schema", "scalar", "type", "interface", "union",
+    "enum", "input", "directive",
+    # Modifiers
+    "implements", "extend", "repeatable",
+    # Operation heads
+    "query", "mutation", "subscription", "fragment",
+    "on",
+    # Reserved literals
+    "true", "false", "null",
+]

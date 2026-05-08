@@ -91,6 +91,12 @@ fn bootstrap_grammars() {
     if (gml != 0) { registry_add(gml); }
     var ghs = grammar_load("grammars/haskell.cyml");
     if (ghs != 0) { registry_add(ghs); }
+    var gsql = grammar_load("grammars/sql.cyml");
+    if (gsql != 0) { registry_add(gsql); }
+    var ggql = grammar_load("grammars/graphql.cyml");
+    if (ggql != 0) { registry_add(ggql); }
+    var gpb = grammar_load("grammars/protobuf.cyml");
+    if (gpb != 0) { registry_add(gpb); }
     return 0;
 }
 

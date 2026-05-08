@@ -1,0 +1,119 @@
+# protobuf — Protocol Buffers tokenizer grammar (proto3 + proto2)
+#
+# Rule scheme per ADR 0005. Mechanical C-family at the token
+# level: `//` and `/* */` comments, double-quoted strings,
+# decimal numbers, semicolons as statement terminators, and a
+# fixed keyword set covering proto2/proto3 declarations.
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# vidya doesn't ship a Protobuf reference sample yet. The local
+# `tests/corpus/concept.proto` exercises proto3 SDL: messages
+# (with nested types and `oneof` blocks), enums, services,
+# rpc methods (including server streaming), maps, repeated
+# fields, and the standard `import` / `option` / `package` /
+# `syntax` heads.
+#
+# Known gaps (not triggered by the stand-in):
+#   - Custom options bodies `option (foo) = { … };` parse
+#     mostly fine — `(`, `)`, `{`, `}` all in punctuation; the
+#     option body is just nested key/value pairs that tokenize
+#     as ident + `=` + value.
+#   - Numeric literal suffixes (`1.5e3`). Same number-scanner
+#     limitation as java.cyml; cosmetic.
+#   - Reserved field tag ranges `reserved 100 to 199;` — the
+#     `reserved` keyword is in the keyword list; `to` is not
+#     (it's an Elixir/SQL keyword but not Protobuf). Adding to
+#     the keyword set if a real corpus needs it.
+
+[grammar]
+name = "protobuf"
+extensions = [".proto"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+ident_start = "A-Za-z_"
+ident_cont  = "A-Za-z0-9_"
+
+number_decimal = true
+number_0x      = true
+number_0b      = false
+number_0o      = false
+
+special_vars = false
+unicode_ident = true
+char_literal  = false
+
+# Operators in longest-match order. Protobuf has very few:
+# `=` for field-tag assignment, `<` / `>` for map<K,V> /
+# message-set syntax, `[` / `]` for option attachments
+# (handled as punctuation), `.` for fully-qualified names
+# (`google.protobuf.Timestamp`).
+operators = [
+    "=", "+", "-",
+    "<", ">",
+    "?",
+]
+
+punctuation = [
+    "(", ")", "{", "}", "[", "]",
+    ";", ",", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+[[rules]]
+kind = "comment"
+match = "line"
+start = "//"
+
+
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "/*"
+end = "*/"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "'"
+end = "'"
+escape = "\\"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # File-level declarations
+    "syntax", "package", "import", "option", "weak", "public",
+    # Type-system heads
+    "message", "enum", "service", "rpc", "extend",
+    "oneof", "map", "reserved", "extensions",
+    "stream", "returns",
+    # Field labels (proto2 explicit; proto3 keeps a few)
+    "optional", "required", "repeated",
+    "group",
+    # Primitive types
+    "double", "float",
+    "int32", "int64", "uint32", "uint64",
+    "sint32", "sint64", "fixed32", "fixed64",
+    "sfixed32", "sfixed64",
+    "bool", "string", "bytes",
+    # Reserved literals
+    "true", "false",
+    # Misc
+    "to", "max",
+]

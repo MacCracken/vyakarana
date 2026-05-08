@@ -253,13 +253,48 @@ fn _ds_scan_ident(g, src, src_len, i) {
     return src_len - i;
 }
 
+# Case-fold A-Z (0x41–0x5A) to a-z (0x61–0x7A). Other bytes
+# pass through unchanged. Used by `_ds_lookup_keyword` when
+# `[defaults] case_insensitive_keywords = true`. See ADR 0011.
+fn _ds_to_lower(b) {
+    if (b >= 65) {
+        if (b <= 90) {
+            return b + 32;
+        }
+    }
+    return b;
+}
+
+# Compare an ident span against a keyword string with optional
+# case folding. Returns 1 on match, 0 otherwise. Same byte-by-
+# byte cost as `memeq` plus one branch per byte; no allocation.
+fn _ds_word_match(src, start, w, wlen, fold) {
+    if (fold == 0) {
+        return memeq(src + start, w, wlen);
+    }
+    var i = 0;
+    while (i < wlen) {
+        var a = _ds_to_lower(load8(src + start + i));
+        var b = _ds_to_lower(load8(w + i));
+        if (a != b) { return 0; }
+        i = i + 1;
+    }
+    return 1;
+}
+
 # If the byte span [start, start+len) matches a word in any words
 # rule, returns that rule's kind (an i64). Returns -1 when no match.
 # No out-param, no per-call allocation — this runs once per ident
 # in the hot path and ADR 0002 forbids per-token allocation.
+#
+# When `[defaults] case_insensitive_keywords = true`, the match
+# folds A-Z to a-z on both sides. ADR 0011 — needed by SQL
+# (and PostgreSQL/Oracle/T-SQL dialects) where `SELECT` /
+# `select` / `Select` are the same reserved word.
 fn _ds_lookup_keyword(g, src, start, len) {
     var rules = grammar_words_rules(g);
     var n = vec_len(rules);
+    var fold = grammar_case_insensitive_kw(g);
     var r_i = 0;
     while (r_i < n) {
         var r = vec_get(rules, r_i);
@@ -270,7 +305,7 @@ fn _ds_lookup_keyword(g, src, start, len) {
             var w = vec_get(words, w_i);
             var wlen = strlen(w);
             if (wlen == len) {
-                if (memeq(src + start, w, wlen) == 1) {
+                if (_ds_word_match(src, start, w, wlen, fold) == 1) {
                     return words_rule_kind(r);
                 }
             }

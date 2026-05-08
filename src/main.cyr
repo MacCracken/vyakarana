@@ -162,6 +162,8 @@ fn detect_language(path) {
         if (memeq(path + n - 4, ".lhs", 4) == 1) { return "haskell"; }
     }
     if (n >= 4) {
+        if (memeq(path + n - 4, ".sql", 4) == 1) { return "sql"; }
+        if (memeq(path + n - 4, ".gql", 4) == 1) { return "graphql"; }
         if (memeq(path + n - 4, ".mjs", 4) == 1) { return "javascript"; }
         if (memeq(path + n - 4, ".cjs", 4) == 1) { return "javascript"; }
         if (memeq(path + n - 4, ".cpp", 4) == 1) { return "cpp"; }
@@ -174,6 +176,9 @@ fn detect_language(path) {
     }
     if (n >= 4) {
         if (memeq(path + n - 4, ".yml", 4) == 1) { return "yaml"; }
+    }
+    if (n >= 8) {
+        if (memeq(path + n - 8, ".graphql", 8) == 1) { return "graphql"; }
     }
     if (n >= 9) {
         if (memeq(path + n - 9, ".markdown", 9) == 1) { return "markdown"; }
@@ -197,6 +202,7 @@ fn detect_language(path) {
     }
     if (n >= 6) {
         if (memeq(path + n - 6, ".swift", 6) == 1) { return "swift"; }
+        if (memeq(path + n - 6, ".proto", 6) == 1) { return "protobuf"; }
     }
     return 0;
 }
