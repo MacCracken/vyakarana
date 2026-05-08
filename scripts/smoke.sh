@@ -92,6 +92,35 @@ rc=$?
 set -e
 [ "$rc" = "2" ] || fail "--theme=nope exit: got $rc, expected 2"
 
+# --export-theme=<format> (1.11.1+) emits a theme file for the
+# named editor format and exits. Probe: vscode JSON has the
+# expected shape and dark theme differs from default.
+set +e
+"$BIN" --export-theme=vscode > "$TMPDIR/vscode.json" 2> "$TMPDIR/err"
+rc=$?
+set -e
+[ "$rc" = "0" ] || fail "--export-theme=vscode exit: got $rc, expected 0"
+grep -q '"name": "vyakarana-default"' "$TMPDIR/vscode.json" \
+    || fail "--export-theme=vscode missing name"
+grep -q '"type": "light"' "$TMPDIR/vscode.json" \
+    || fail "--export-theme=vscode missing light type"
+grep -q '"scope": "keyword"' "$TMPDIR/vscode.json" \
+    || fail "--export-theme=vscode missing keyword scope"
+
+set +e
+"$BIN" --theme=dark --export-theme=vscode > "$TMPDIR/vscode-dark.json" 2> "$TMPDIR/err"
+rc=$?
+set -e
+[ "$rc" = "0" ] || fail "--export-theme=vscode (dark) exit: got $rc"
+grep -q '"type": "dark"' "$TMPDIR/vscode-dark.json" \
+    || fail "--theme=dark --export-theme=vscode missing dark type"
+
+set +e
+"$BIN" --export-theme=helix > /dev/null 2>"$TMPDIR/err"
+rc=$?
+set -e
+[ "$rc" = "2" ] || fail "--export-theme=helix exit: got $rc, expected 2"
+
 # Stderr sanitizer (FINDING-006 fix, shipped 1.0.1): control bytes
 # in echoed user args must not reach the terminal. A path carrying
 # ANSI-escape bytes should round-trip to stderr with the ESC replaced

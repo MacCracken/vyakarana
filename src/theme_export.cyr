@@ -1,0 +1,144 @@
+# vyakarana — theme export to external editor formats
+#
+# Emits theme files for external editors based on vyakarana's
+# bundled themes (`src/theme.cyr`). Lets a user grab a starting
+# point for a personal theme without writing one from scratch.
+#
+# 1.11.1 ships **VS Code** (`theme.json`) export. Other formats
+# (Helix `theme.toml`, iTerm `.itermcolors`) are deferred until
+# a real consumer asks for them — the JSON output is the most
+# universal target since several other editors (Cursor,
+# Codium, the broader VS Code fork ecosystem) consume the same
+# format directly.
+#
+# The vyakarana → VS Code scope mapping is hardcoded here:
+#
+#   TK_IDENT         → "variable"                    (low-key default)
+#   TK_KEYWORD       → "keyword"
+#   TK_STRING        → "string"
+#   TK_NUMBER        → "constant.numeric"
+#   TK_COMMENT       → "comment"
+#   TK_OPERATOR      → "keyword.operator"
+#   TK_PUNCTUATION   → "punctuation"
+#   TK_WHITESPACE    → (omitted; no theme should style whitespace)
+#   TK_PREPROCESSOR  → "keyword.control.directive"
+#   TK_ERROR         → "invalid"
+#
+# These are TextMate-style scopes that VS Code (and friends)
+# understand. They're a strict subset of the much larger TM
+# scope vocabulary; consumers are free to extend the resulting
+# JSON with finer-grained scopes if they want.
+
+include "src/token.cyr"
+include "src/theme.cyr"
+
+# Print one `tokenColors` entry. Skips when `color_hex` is the
+# empty string (the kind has no colour in this theme; we don't
+# emit an empty `foreground`).
+fn _te_emit_entry(scope, color_hex, is_first) {
+    if (strlen(color_hex) == 0) { return is_first; }
+    if (is_first == 0) {
+        var c1 = ",\n";
+        print(c1, strlen(c1));
+    }
+    var open_brace = "    { \"scope\": \"";
+    print(open_brace, strlen(open_brace));
+    print(scope, strlen(scope));
+    var middle = "\", \"settings\": { \"foreground\": \"";
+    print(middle, strlen(middle));
+    print(color_hex, strlen(color_hex));
+    var close_brace = "\" } }";
+    print(close_brace, strlen(close_brace));
+    return 0;
+}
+
+# Default-theme palette as 6-digit hex strings. Returns "" for
+# unstyled kinds (the rendering theme uses ANSI 8-color codes;
+# we map those to canonical hex equivalents).
+fn _te_default_hex(kind) {
+    if (kind == TK_KEYWORD)      { return "#cd00cd"; }   # magenta
+    if (kind == TK_STRING)       { return "#00cd00"; }   # green
+    if (kind == TK_NUMBER)       { return "#00cdcd"; }   # cyan
+    if (kind == TK_COMMENT)      { return "#7f7f7f"; }   # bright black (grey)
+    if (kind == TK_PREPROCESSOR) { return "#cdcd00"; }   # yellow
+    if (kind == TK_ERROR)        { return "#cd0000"; }   # red
+    return "";
+}
+
+# Dark-theme palette. Mirrors `theme_dark_color` from
+# src/theme.cyr — bright variants of the default set.
+fn _te_dark_hex(kind) {
+    if (kind == TK_KEYWORD)      { return "#ff00ff"; }   # bright magenta
+    if (kind == TK_STRING)       { return "#00ff00"; }   # bright green
+    if (kind == TK_NUMBER)       { return "#00ffff"; }   # bright cyan
+    if (kind == TK_COMMENT)      { return "#a8a8a8"; }   # light grey
+    if (kind == TK_PREPROCESSOR) { return "#ffff00"; }   # bright yellow
+    if (kind == TK_ERROR)        { return "#ff5555"; }   # bright red
+    if (kind == TK_OPERATOR)     { return "#e0e0e0"; }   # bright white
+    if (kind == TK_PUNCTUATION)  { return "#e0e0e0"; }   # bright white
+    return "";
+}
+
+# Look up the hex for `kind` under `theme`. Returns "" for
+# unstyled kinds (THEME_NONE always returns "").
+fn _te_hex(theme, kind) {
+    if (theme == THEME_DEFAULT) { return _te_default_hex(kind); }
+    if (theme == THEME_DARK)    { return _te_dark_hex(kind); }
+    return "";
+}
+
+# Emit a VS Code `theme.json` to stdout for the given theme tag.
+# `theme` is the integer tag from `theme_resolve()` (THEME_DEFAULT
+# / THEME_DARK / THEME_NONE).
+fn theme_export_vscode(theme) {
+    var name_str = "default";
+    var type_str = "light";
+    if (theme == THEME_DARK) {
+        name_str = "dark";
+        type_str = "dark";
+    }
+    if (theme == THEME_NONE) {
+        name_str = "none";
+        type_str = "light";
+    }
+
+    # Header.
+    var l1 = "{\n";
+    print(l1, strlen(l1));
+    var l2 = "    \"name\": \"vyakarana-";
+    print(l2, strlen(l2));
+    print(name_str, strlen(name_str));
+    var l3 = "\",\n";
+    print(l3, strlen(l3));
+    var l4 = "    \"type\": \"";
+    print(l4, strlen(l4));
+    print(type_str, strlen(type_str));
+    var l5 = "\",\n";
+    print(l5, strlen(l5));
+    var l6 = "    \"tokenColors\": [\n";
+    print(l6, strlen(l6));
+
+    # Per-kind entries. Order matches src/token.cyr's TK_*
+    # listing for readability; whitespace and ident are omitted
+    # when their hex is "" (the common case for default theme).
+    var first = 1;
+    first = _te_emit_entry("variable",                  _te_hex(theme, TK_IDENT),        first);
+    first = _te_emit_entry("keyword",                   _te_hex(theme, TK_KEYWORD),      first);
+    first = _te_emit_entry("string",                    _te_hex(theme, TK_STRING),       first);
+    first = _te_emit_entry("constant.numeric",          _te_hex(theme, TK_NUMBER),       first);
+    first = _te_emit_entry("comment",                   _te_hex(theme, TK_COMMENT),      first);
+    first = _te_emit_entry("keyword.operator",          _te_hex(theme, TK_OPERATOR),     first);
+    first = _te_emit_entry("punctuation",               _te_hex(theme, TK_PUNCTUATION),  first);
+    first = _te_emit_entry("keyword.control.directive", _te_hex(theme, TK_PREPROCESSOR), first);
+    first = _te_emit_entry("invalid",                   _te_hex(theme, TK_ERROR),        first);
+
+    # Trailer.
+    var nl = "\n";
+    print(nl, strlen(nl));
+    var l7 = "    ]\n";
+    print(l7, strlen(l7));
+    var l8 = "}\n";
+    print(l8, strlen(l8));
+
+    return 0;
+}

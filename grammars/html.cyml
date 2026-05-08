@@ -85,6 +85,39 @@ punctuation = [
 
 # ── Rules ──────────────────────────────────────────────────────────
 
+# `<style>` and `<script>` blocks route their bodies through
+# the css and javascript grammars respectively (ADR 0013 —
+# grammar composition, 1.11.1+). Compose rules MUST be
+# declared first; they run at scanner pipeline step 0, ahead
+# of every other rule type, so the outer HTML scanner doesn't
+# eat the start markers byte-by-byte.
+#
+# Markers themselves emit as `TK_PUNCTUATION` (single tokens
+# the length of the start/end string). Themes that want to
+# render `<style>` as a multi-token shape can post-process by
+# token text.
+#
+# Note: this matches the literal `<style>` / `<script>`
+# strings without attributes. A real HTML page often has
+# `<script type="module">` etc.; the compose rule's start is
+# a fixed prefix, so attribute-bearing forms fall back to
+# normal HTML tokenization (the body is structural, not
+# routed). A future extension could add a regex-y attribute
+# tolerance — until then, this is a documented limitation.
+[[rules]]
+match = "compose"
+start = "<style>"
+end = "</style>"
+inner = "css"
+
+
+[[rules]]
+match = "compose"
+start = "<script>"
+end = "</script>"
+inner = "javascript"
+
+
 # `<!-- … -->` block comment. 4-byte start, 3-byte end —
 # multi-byte pair shape, no scanner code needed.
 [[rules]]

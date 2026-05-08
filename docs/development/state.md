@@ -4,15 +4,16 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–1.11.0 are
+> **Read this file before doing anything.** 1.0.0–1.11.1 are
 > shipped. As of 2026-05-08 the toolchain pin is `cyrius = "5.9.36"`.
 > 1.10.0 opened the pre-2.0 prep sequence with the theme-palette
-> contract and consumer guide; **1.11.0 ships the LSP semantic-
-> tokens bridge** (first sub-cut of the external-integrations
-> wave). 38 grammars bundled (unchanged), 674/674 tests passing.
-> The 1.11.x window splits into three sub-cuts:
-> 1.11.0 LSP bridge (this cut), 1.11.1 grammar composition +
-> theme export, 1.11.2 content-based detection — see §Next up.
+> contract and consumer guide; **1.11.1 ships grammar composition
+> (embedded blocks routed to inner grammars) and theme export to
+> external editor formats** (second sub-cut of the external-
+> integrations wave). 38 grammars bundled (unchanged), 682/682
+> tests passing. The 1.11.x window splits into three sub-cuts:
+> 1.11.0 LSP bridge, 1.11.1 grammar composition + theme export
+> (this cut), 1.11.2 content-based detection — see §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -32,25 +33,34 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `1.11.0` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `1.11.1` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`. Full 1.x tag history in the CHANGELOG.
-- **What 1.11.0 added (first sub-cut of the external-integrations
+- **What 1.11.1 added (second sub-cut of the external-integrations
   wave):**
-  - **LSP semantic-tokens bridge** (`src/lsp.cyr` + ADR 0012).
-    Two pure functions: `lsp_kind_from_token_type(name)` and
-    `lsp_kind_from_standard_index(idx)`. Map LSP's 23-entry
-    standard token-type taxonomy onto vyakarana's 10 TK_*
-    kinds. Lets editor consumers present a unified palette
-    regardless of whether vyakarana or an LSP server (rust-
-    analyzer, gopls, pyright, clangd, …) classified the
-    bytes. Same `kind_name` keys as the theme contract from
-    1.10.0 — one theme file works for both classifiers.
-  - **`src/lsp.cyr` is in `[lib] modules`** so the bridge
-    ships in `dist/vyakarana.cyr` automatically. Distlib
-    grew slightly; consumers get the bridge for free.
-- **Test count:** 674/674 (was 636 at 1.10.0; 38 new LSP
-  probes covering every standard LSP token type by name,
-  the index-based path, and unknown-name fallback).
+  - **Grammar composition** (`match = "compose"` rule type +
+    ADR 0013). New scanner pipeline step 0 — runs before
+    everything else so outer-grammar tokenization doesn't eat
+    the start markers. Routes the body bytes between `start`
+    and `end` markers through a different grammar named in
+    the new `inner` field. Markers emit as `TK_PUNCTUATION`;
+    body tokens are recursively produced via the inner
+    grammar with offsets shifted into the outer source's
+    coordinate system. Graceful degradation when the inner
+    grammar isn't loaded (body becomes one `TK_STRING`).
+  - **HTML uses compose rules** for `<style>` → `css` and
+    `<script>` → `javascript` — closes the 1.7.0 "embedded
+    blocks tokenize as plain HTML" gap.
+  - **Theme export** (`vyk --export-theme=<format>` flag +
+    `src/theme_export.cyr`). VS Code `theme.json` is shipped
+    (universal target — VS Code, Cursor, Codium and other
+    forks). Pair with `--theme=<name>` to pick the source
+    palette. Helix / iTerm formats deferred until a real
+    consumer asks.
+- **Test count:** 682/682 (was 674 at 1.11.0; 8 new compose
+  probes — CSS body tokenization through `<style>`, JS body
+  tokenization through `<script>`, marker emission as
+  `TK_PUNCTUATION`, coverage invariant). 4 new theme-export
+  smoke probes.
 - **No new grammars** — 38 bundled, unchanged.
 
 ### 1.10.0 deliverables (recap)
@@ -214,19 +224,16 @@ additions land).
 
 The 1.11.x window covers three sub-cuts:
 
-- **1.11.0 — LSP semantic-tokens bridge.** Shipped (this cut).
-- **1.11.1 — Grammar composition + theme export.** Two
-  pieces:
-  - Grammar composition. Route the body of an HTML `<style>`
-    block to the CSS grammar, a `<script>` block to
-    JavaScript, a markdown `` ```rust `` fence to Rust. New
-    rule shape that re-tokenizes a span under a different
-    grammar. Closes the 1.7.0 HTML "embedded blocks tokenize
-    as plain HTML" gap. Likely needs an ADR.
-  - Theme export. Emit theme files in external formats
-    (iTerm, VS Code, Helix `theme.toml`) from vyakarana's
-    bundled themes. CLI subcommand or sibling tool — design
-    call during the cut.
+- **1.11.0 — LSP semantic-tokens bridge.** Shipped.
+- **1.11.1 — Grammar composition + theme export.** Shipped
+  (this cut). ADR 0013 for compose rules; HTML now routes
+  `<style>` → CSS and `<script>` → JS. `--export-theme=vscode`
+  ships; Helix / iTerm formats deferred until a real consumer
+  asks. Markdown fence routing (`` ```rust ``) is still on
+  the table for a follow-up — current literal-prefix matcher
+  can't bind a captured language tag, would need a new
+  `match = "compose_fenced"` shape. See ADR 0013 §When to
+  revisit.
 - **1.11.2 — Content-based language detection.** Fallback in
   `detect_language` for extensionless / ambiguous files.
   Heuristics: shebang sniff, BOM detect, signature peek,

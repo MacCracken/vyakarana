@@ -3,6 +3,8 @@
 # Consumes a loaded grammar record (see src/grammar.cyr) and tokenizes
 # source bytes into a tokenbuf. Scanner dispatch follows ADR 0005:
 #
+#   0. [[rules]] match="compose" (ADR 0013)           → recursive
+#      (start marker + inner-grammar body + end marker)
 #   1. shebang (#! on line 0, column 0)              → preprocessor
 #   2. [[rules]] match="line"                         → kind
 #   3. [[rules]] match="pair"                         → kind
@@ -110,6 +112,88 @@ fn _ds_try_line_rules(g, src, src_len, i) {
             }
             var len = j - i;
             return (line_rule_kind(r) << 56) | len;
+        }
+        r_i = r_i + 1;
+    }
+    return 0;
+}
+
+# Try each [[rules]] match="compose" at the cursor.
+#
+# A compose rule routes the body between `start` and `end`
+# markers through a *different* grammar (looked up by name in
+# the registry). When matched:
+#   - emits `start` bytes as one TK_PUNCTUATION token,
+#   - tokenizes the body via the inner grammar (recursively),
+#     adjusting offsets so they're absolute in the outer src,
+#   - emits `end` bytes as one TK_PUNCTUATION token,
+#   - returns the total bytes consumed.
+#
+# When the inner grammar isn't found in the registry (e.g.
+# bootstrap order, or the embedded language was never bundled),
+# the body falls back to one TK_STRING token — coverage holds.
+#
+# Unlike the pair / line / words rule helpers, this one writes
+# directly to `tb` and returns the advance length. Returns 0
+# when no compose rule matched at this cursor.
+#
+# Recursion: `tokenize_with_grammar` itself runs compose-rule
+# step (step 0 below), so embedded grammars that themselves
+# have compose rules nest correctly. Real-world depth is ≤2
+# (HTML <script> with a JS template literal containing CSS, say).
+#
+# See ADR 0013 for the design.
+fn _ds_try_compose_rules(g, src, src_len, i, tb) {
+    var rules = grammar_compose_rules(g);
+    if (rules == 0) { return 0; }
+    var n = vec_len(rules);
+    var r_i = 0;
+    while (r_i < n) {
+        var r = vec_get(rules, r_i);
+        var start = compose_rule_start(r);
+        var slen = strlen(start);
+        if ((i + slen <= src_len) && (memeq(src + i, start, slen) == 1)) {
+            var endp = compose_rule_end(r);
+            var elen = strlen(endp);
+            var body_start = i + slen;
+            var j = body_start;
+            while (j < src_len) {
+                if ((j + elen <= src_len) && (memeq(src + j, endp, elen) == 1)) {
+                    # Found end marker. Emit start, body, end.
+                    tokenbuf_push(tb, TK_PUNCTUATION, i, slen);
+                    var body_len = j - body_start;
+                    if (body_len > 0) {
+                        var inner_name = compose_rule_inner(r);
+                        var inner_g = registry_find_by_name(inner_name);
+                        if (inner_g != 0) {
+                            # Inner grammar found — tokenize body
+                            # in a fresh buf, copy with shifted
+                            # offsets.
+                            var inner_tb = tokenbuf_new();
+                            tokenize_with_grammar(inner_g, src + body_start, body_len, inner_tb);
+                            var k = 0;
+                            var nk = tokenbuf_count(inner_tb);
+                            while (k < nk) {
+                                var ik = tokenbuf_kind(inner_tb, k);
+                                var is = tokenbuf_start(inner_tb, k);
+                                var il = tokenbuf_len(inner_tb, k);
+                                tokenbuf_push(tb, ik, is + body_start, il);
+                                k = k + 1;
+                            }
+                        } else {
+                            # Inner grammar missing — graceful
+                            # degrade: body is one string span.
+                            tokenbuf_push(tb, TK_STRING, body_start, body_len);
+                        }
+                    }
+                    tokenbuf_push(tb, TK_PUNCTUATION, j, elen);
+                    return slen + body_len + elen;
+                }
+                j = j + 1;
+            }
+            # End marker not found — fall through (next compose
+            # rule, or normal pipeline). Don't half-consume.
+            return 0;
         }
         r_i = r_i + 1;
     }
@@ -375,6 +459,19 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
         var b = load8(src + i);
         var kind = TK_ERROR;
         var len  = 0;
+
+        # 0. Compose rules (ADR 0013). Push their own tokens
+        # (start marker + recursively-tokenized body + end
+        # marker) and advance the cursor by the matched length.
+        # Runs before any other step because compose markers
+        # like `<style>` would otherwise be eaten by the outer
+        # grammar's normal `<` op + `style` ident + `>` op
+        # tokenization.
+        var clen = _ds_try_compose_rules(g, src, src_len, i, tb);
+        if (clen > 0) {
+            i = i + clen;
+            continue;
+        }
 
         # 1. Shebang
         if (len == 0) {

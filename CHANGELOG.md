@@ -6,6 +6,79 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [1.11.1] — 2026-05-08
+
+Second sub-cut of the 1.11.x window. **Grammar composition**
+(embedded-block routing through inner grammars) and **theme
+export** (emit external editor theme files from the bundled
+themes). One new ADR (0013) and one new public CLI flag.
+
+### Added
+
+- **`match = "compose"` rule type ([ADR 0013](docs/adr/0013-grammar-composition-rule.md)).**
+  Routes the body bytes between `start` and `end` markers
+  through a *different* grammar named in the new `inner`
+  field. New `Grammar` field `compose_rules` at offset 160
+  (`GRAMMAR_SIZE` 160 → 168). New scanner step **0** in
+  `tokenize_with_grammar` — runs before every other step
+  because outer-grammar tokenization would eat the start
+  markers byte-by-byte. New helper `_ds_try_compose_rules`
+  in `src/grammars/default_scanner.cyr`. Markers emit as
+  `TK_PUNCTUATION`; body tokens are recursively produced via
+  the inner grammar with offsets shifted into the outer
+  source's coordinate system. Graceful degradation when the
+  inner grammar isn't loaded — body becomes one
+  `TK_STRING`.
+- **HTML grammar uses compose rules** for `<style>` → `css`
+  and `<script>` → `javascript`. Closes the 1.7.0 "embedded
+  blocks tokenize as plain HTML" gap. Verified: `#FF6600`
+  inside a `<style>` block now tokenizes as a single
+  `TK_IDENT` (CSS grammar's `#`-in-`ident_start` shape) and
+  `const` / `function` / `return` inside `<script>` tokenize
+  as `TK_KEYWORD` (JS grammar). Literal-prefix start match
+  doesn't cover attribute-bearing forms like
+  `<style type="module">`; documented limitation with a
+  "when to revisit" note in the ADR.
+- **`vyk --export-theme=<format>` flag.** Emits a theme file
+  for the named editor format and exits. **`vscode`** is
+  shipped (the most universal target — VS Code, Cursor,
+  Codium, and other forks consume the same `theme.json`
+  format). `helix` and `iterm` deferred until a real consumer
+  asks. Pair with `--theme=<name>` to pick the source palette
+  (default: `default`). New module `src/theme_export.cyr`
+  holds the kind → TextMate-scope mapping plus the canonical
+  hex equivalents of the ANSI codes used by the bundled
+  themes.
+
+### Changed
+
+- **`grammars/html.cyml`** — added two compose rules ahead of
+  the existing pair / line / words entries. Token count for
+  `tests/corpus/concept.html` shifts 249 → 243 because the
+  `<style>` block previously tokenized as several HTML tokens
+  and now wraps as compose markers + inner CSS tokens.
+- **Architecture note 002** — pipeline-priority table extends
+  with the new step 0; "Why this order is normative" gains a
+  bullet for compose-before-everything-else.
+- **`src/main.cyr` --help** updated with `--export-theme=`.
+
+### Wiring
+
+- `src/grammar.cyr` — `compose_rules` field, `compose_rule_*`
+  accessors, CYML loader handles `match = "compose"` +
+  `inner` field.
+- `src/grammars/default_scanner.cyr` — `_ds_try_compose_rules`
+  helper, step 0 in main loop.
+- `src/theme_export.cyr` — new module, only wired through
+  `src/main.cyr`'s `--export-theme=` flag (CLI-only; not in
+  `[lib] modules`).
+- `tests/vyakarana.tcyr` — 8 new compose probes
+  (CSS body keyword detection, JS body keyword detection,
+  marker tokens, coverage invariant). 674 → 682 passing.
+- `scripts/smoke.sh` — 4 new theme-export probes
+  (`--export-theme=vscode`, dark variant, unknown format
+  rejection).
+
 ## [1.11.0] — 2026-05-08
 
 Second pre-2.0 prep wave, first sub-cut. The 1.11.x window

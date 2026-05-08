@@ -14,6 +14,7 @@ the steps below in order. The first step that returns a non-zero
 
 | #  | Step                                         | Source                                              |
 |----|----------------------------------------------|-----------------------------------------------------|
+| 0  | Compose rules (recursive — push start marker, inner-grammar body, end marker) | `[[rules]] match = "compose"` (HTML → CSS / JS) |
 | 1  | Shebang (`#!…\n` at file start)              | `[defaults] shebang = true`                         |
 | 2  | Line rules                                   | `[[rules]] match = "line"` (e.g. `#`, `//`)         |
 | 3  | Pair rules                                   | `[[rules]] match = "pair"` (strings, block comments)|
@@ -32,6 +33,12 @@ the steps below in order. The first step that returns a non-zero
 The numbering matters because step priorities resolve real
 ambiguities:
 
+- **Compose rules before everything else.** A compose rule's
+  `start` marker (e.g. `<style>` for HTML → CSS) would
+  otherwise be tokenized byte-by-byte by the outer grammar's
+  normal pipeline (`<` op + `style` ident + `>` op). The
+  compose rule needs to claim those bytes first to switch
+  grammars on the body. See [ADR 0013](../adr/0013-grammar-composition-rule.md).
 - **Line and pair rules before ident.** `// foo` in a C grammar
   has to be recognised as a comment-start pair *before* `f` is
   consumed as an ident-start byte. Same for `"hello"` — without
