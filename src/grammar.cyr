@@ -152,7 +152,6 @@ fn char_class_match(tbl, byte) {
     return load8(tbl + byte);
 }
 
-
 # ── CYML parser ─────────────────────────────
 # Grammar files are a deliberately small TOML dialect:
 #   - `[section]` header
