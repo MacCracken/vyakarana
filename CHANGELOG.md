@@ -6,6 +6,57 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [1.13.3] — 2026-05-08
+
+Final 1.13.x sub-cut and the **last release before 2.0.0**.
+Documents the actual distribution paths (after confirming
+`cyrius package` is still upstream-stubware) and ships the
+post-1.12 + 1.13.x security audit. No code changes — pure
+RC-polish housekeeping.
+
+### Added
+
+- **`docs/development/distribution.md`** — describes the two
+  distribution paths in current use:
+  1. `dist/vyakarana.cyr` (the single-file source bundle for
+     `cyrius deps` consumers; ADR 0014).
+  2. The GitHub release tarball
+     (`vyakarana-<VERSION>-x86_64-linux.tar.gz`) built by
+     `release.yml` on every semver tag push.
+  Includes a chooser table for downstream consumers, the
+  release procedure for the operator, and a `cyrius package
+  status` section noting the upstream stub. Verified locally:
+  walked through the `release.yml` package step against the
+  built `vyk` 1.13.2 binary, extracted the tarball, ran
+  `vyk --version` from the extracted location.
+- **`docs/audit/2026-05-09-1.13-closeout-audit.md`** — covers
+  every surface added in 1.12.0 / 1.12.1 / 1.13.0 / 1.13.1 /
+  1.13.2. **0 CRITICAL / 0 HIGH / 0 MEDIUM / 0 LOW (no new
+  findings).** Carryover table from the 2026-04-23 pre-1.0
+  audit + 2026-05-09 1.11-closeout audit. Per-surface review:
+  Helix + iTerm theme emitters; bench artifact; CLI error-
+  message split; man page; `match = "compose_fenced"` with
+  detailed bounds analysis; toolchain pin bump.
+  Recommendation: dedicated audit when 2.0.0's streaming
+  tokenizer lands (changes the buffer-bound semantics that
+  the existing FINDING-002/003/004 mitigations are designed
+  for).
+
+### Changed
+
+- **state.md `## Past audits`** — adds the 1.13-closeout
+  audit. Next scheduled audit moves to 2.0.0 first cut.
+
+### Status
+
+- `cyrius package` remains stubware upstream — produces a
+  binary that SIGILLs at runtime due to unresolved stdlib
+  symbols. No `.ark` format spec yet. Documented in
+  `distribution.md` §`cyrius package` status; revisit when
+  upstream lands the ark work.
+- 731/731 tests passing, 3/3 fuzz harnesses passing, all six
+  gates green from clean rebuild. **Ready for 2.0.0.**
+
 ## [1.13.2] — 2026-05-08
 
 Third sub-cut of the 1.13.x RC-polish window. **Markdown

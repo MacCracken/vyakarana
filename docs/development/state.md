@@ -4,19 +4,16 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–1.13.2 are
-> shipped. As of 2026-05-08 the toolchain pin is `cyrius = "5.10.0"`.
-> 1.11.x closed the external-integrations wave; 1.12.x added
-> hardening + theme-export polish; 1.13.0 set the pre-2.0
-> performance baseline; 1.13.1 polished the CLI surface.
-> **1.13.2 ships markdown fence routing** — `match =
-> "compose_fenced"` rule type captures the language tag
-> from `` ```rust `` / `` ```python `` style fences and
-> routes the body through the named inner grammar.
-> 38 grammars bundled (unchanged), 731/731 tests passing,
-> 3/3 fuzz harnesses passing. Next is 1.13.3 (packaging +
-> 1.13.x security audit) — last cut before 2.0. See §Next
-> up.
+> **Read this file before doing anything.** 1.0.0–1.13.3 are
+> shipped — **the entire 1.x line is in the bag**. As of
+> 2026-05-08 the toolchain pin is `cyrius = "5.10.0"`.
+> 1.13.3 closes the RC-polish window with a distribution-paths
+> doc (`docs/development/distribution.md`) and the post-1.12
+> + 1.13.x security audit (`docs/audit/2026-05-09-1.13-
+> closeout-audit.md` — **0 findings**). 38 grammars bundled
+> (unchanged), 731/731 tests passing, 3/3 fuzz harnesses
+> passing. **Ready for 2.0.0** — streaming tokenizer, the
+> only scheduled break in the public API. See §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -36,8 +33,25 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `1.13.2` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `1.13.3` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`. Full 1.x tag history in the CHANGELOG.
+  **Final 1.x cut.**
+- **What 1.13.3 added (RC closeout):**
+  - **`docs/development/distribution.md`** — the two
+    distribution paths in current use (the
+    `dist/vyakarana.cyr` source bundle for `cyrius deps`
+    consumers, and the GitHub release tarball). Chooser
+    table for consumers, release-procedure walkthrough for
+    the operator, and a `cyrius package` status note
+    (still upstream-stubware; revisit when ark work
+    lands).
+  - **`docs/audit/2026-05-09-1.13-closeout-audit.md`** —
+    covers every surface added in 1.12.0–1.13.2. **0
+    CRITICAL / 0 HIGH / 0 MEDIUM / 0 LOW.** Per-surface
+    review with detailed bounds analysis on the
+    `compose_fenced` step. Recommendation: dedicated audit
+    when 2.0.0 streaming lands.
+  - No code changes.
 - **What 1.13.2 added (markdown fence routing):**
   - **`match = "compose_fenced"` rule type
     ([ADR 0016](../adr/0016-compose-fenced-rule.md)).**
@@ -327,9 +341,17 @@ Still cosmetic-only and waiting on a future ADR:
   detection). 0 CRITICAL / 0 HIGH / 0 MEDIUM / 1 LOW
   (FINDING-007, fixed in-pass). Fuzz + stress coverage
   established.
+- [2026-05-09 — 1.13.x closeout](../audit/2026-05-09-1.13-closeout-audit.md):
+  surfaces added in 1.12.0–1.13.2 (fuzz harnesses,
+  Helix/iTerm theme emitters, bench suite, error-message
+  split, man page, compose_fenced rule + scanner step 0b,
+  toolchain pin bump). 0 CRITICAL / 0 HIGH / 0 MEDIUM / 0
+  LOW. **No new findings.**
 
 See `SECURITY.md` for the living state of the audit findings.
-Next scheduled audit: 1.13.x (RC polish) before tagging 1.13.0.
+Next scheduled audit: 2.0.0 first cut (streaming tokenizer
+changes the buffer-bound semantics that the existing
+FINDING-002/003/004 mitigations are designed for).
 
 ---
 
@@ -345,25 +367,21 @@ Closed waves:
   stress harness + post-1.11 audit (1.12.0); Helix + iTerm
   theme export (1.12.1).
 
-1.13.x progress (sub-cut by area, like 1.11.x):
+1.13.x is shipped:
 
 - **1.13.0 — Binary size + startup benchmarks.** Shipped.
 - **1.13.1 — Error messages + man page / --help audit.**
   Shipped.
-- **1.13.2 — Markdown fence routing.** Shipped (this cut).
-  ADR 0016. `match = "compose_fenced"` captures the
-  language tag and routes the body through the named inner
-  grammar. Markdown adopts it. Toolchain pin bumped to
-  `5.10.0`.
-
-Now in flight:
-
-- **1.13.3 — Packaging + 1.13.x security audit.** AGNOS /
-  Cyrius packaging via `cyrius package` — `.ark`
-  distributable builds and runs. Post-1.12 audit doc
-  covering surfaces added in 1.12.x and 1.13.x (LSP +
-  compose + theme export + content detect + bench harness
-  + error UX + compose_fenced). Last release before 2.0.
+- **1.13.2 — Markdown fence routing.** Shipped. ADR 0016.
+  `match = "compose_fenced"` captures the language tag and
+  routes the body through the named inner grammar.
+- **1.13.3 — Distribution paths + security audit.**
+  Shipped (this cut). `docs/development/distribution.md`
+  documents the two real distribution paths;
+  `docs/audit/2026-05-09-1.13-closeout-audit.md` reviews
+  every surface added in 1.12.0–1.13.2 with **0 findings**.
+  No code changes. (`cyrius package` skipped — still
+  upstream-stubware.)
 
 After 1.13.x:
 
