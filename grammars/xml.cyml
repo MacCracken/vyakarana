@@ -1,0 +1,117 @@
+# xml — XML tokenizer grammar
+#
+# Rule scheme per ADR 0005. XML at the token level is a
+# stricter cousin of HTML, with three additional shapes:
+#   - `<?xml … ?>` and other processing instructions (`<?…?>`).
+#   - `<![CDATA[ … ]]>` data sections — body is uninterpreted.
+#   - `<!DOCTYPE …>` declarations.
+#
+# The pair-rule scanner handles each via a `match = "pair"`
+# entry. Element tags, attributes, entity references, and
+# strings are all the same shape as html.cyml.
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# vidya doesn't ship an XML reference sample yet. The local
+# `tests/corpus/concept.xml` exercises the prolog, namespaces
+# (with `:` separator and `xmlns:` attribute prefix), CDATA
+# sections, processing instructions, self-closing elements,
+# and entity references. Replace with a vidya snapshot when
+# one ships.
+#
+# Namespace separator `:`: tokenizes as punctuation. `xmlns:meta`
+# becomes `xmlns` + `:` + `meta`. Coverage holds; theme can
+# re-pair if needed.
+#
+# Known gaps (not triggered by the stand-in):
+#   - DTDs (`<!ELEMENT …>`, `<!ATTLIST …>`). Rare in modern
+#     XML; would need a few more pair rules. Defer.
+#   - XML Schema / XSLT specific keywords. The grammar treats
+#     them as plain idents. Themes can secondary-palette by
+#     token text.
+
+[grammar]
+name = "xml"
+extensions = [".xml", ".xsl", ".xsd", ".svg"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+# `-` and `:` permitted in identifiers. `:` is the namespace
+# separator (`xmlns:meta`); putting it in `ident_cont` would
+# coalesce `xmlns:meta` into one ident, which is fine for
+# tokenization but loses the namespace boundary for themes.
+# Keeping `:` as punctuation; `-` in `ident_cont` for the
+# common attribute / element naming style (e.g.
+# `<some-element>`, `data-x` attribute analog).
+ident_start = "A-Za-z_"
+ident_cont  = "A-Za-z0-9_-"
+
+number_decimal = true
+number_0x      = false
+number_0b      = false
+number_0o      = false
+
+special_vars = false
+unicode_ident = true
+char_literal  = false
+
+operators = [
+    "<", ">", "=", "/",
+    "&", "!", "?",
+    "#",
+    # `-` shows up inside element/attribute text (dates,
+    # ISO-8601 timestamps `2026-05-08T09:00:00Z`, hyphenated
+    # IDs). It IS in `ident_cont` so mid-ident hyphens stay
+    # part of the ident; bare `-` between numbers falls
+    # through here.
+    "-",
+]
+
+punctuation = [
+    "(", ")", "[", "]", "{", "}",
+    ";", ",", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+# Comments. 4-byte / 3-byte pair, same shape as HTML.
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "<!--"
+end = "-->"
+
+
+# CDATA sections — body is uninterpreted (no tag parsing, no
+# entity references). Standard XML literal-text shape. The
+# closing token is `]]>` (3 bytes).
+[[rules]]
+kind = "string"
+match = "pair"
+start = "<![CDATA["
+end = "]]>"
+
+
+# Processing instructions (`<?xml …?>`, `<?xml-stylesheet …?>`,
+# user-defined PIs). Body is also uninterpreted at this layer.
+[[rules]]
+kind = "preprocessor"
+match = "pair"
+start = "<?"
+end = "?>"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "'"
+end = "'"

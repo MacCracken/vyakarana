@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  vyakarana stand-in -- not from vidya. See docs/adr/0006-standin-corpus-policy.md.
+  Re-sync when vidya adds an XML reference sample.
+
+  Demonstrates XML 1.0: prolog, namespaces, attributes,
+  CDATA sections, processing instructions, entity references,
+  and self-closing tags.
+-->
+<?xml-stylesheet type="text/xsl" href="concept.xsl"?>
+
+<concept xmlns="https://vyakarana.example/ns"
+         xmlns:meta="https://vyakarana.example/ns/meta"
+         version="1.6"
+         meta:revision="42">
+
+    <metadata>
+        <title>Vyakarana &mdash; Concept</title>
+        <created>2026-05-08T09:00:00Z</created>
+        <author email="agent@example.com">Tokenizer Agent</author>
+        <tags>
+            <tag>tokenizer</tag>
+            <tag>cyrius</tag>
+            <tag>data-driven</tag>
+        </tags>
+    </metadata>
+
+    <body>
+        <section id="intro">
+            <heading>What it does</heading>
+            <para>
+                vyakarana reads source bytes and yields
+                <code>(kind, start, len)</code> spans.
+            </para>
+        </section>
+
+        <section id="features">
+            <heading>Features</heading>
+            <list count="3">
+                <item priority="1">29 bundled grammars at v1.6.0.</item>
+                <item priority="2">Zero-copy tokens.</item>
+                <item priority="3">Coverage invariant.</item>
+            </list>
+        </section>
+
+        <section id="example">
+            <heading>Example</heading>
+            <code-block language="rust"><![CDATA[
+fn tokenize(src: &str) -> Tokenbuf {
+    // The body of a CDATA section is uninterpreted —
+    // `<`, `>`, `&` here are literal characters, not
+    // markup. The closing `]]` followed by `>` ends it.
+}
+            ]]></code-block>
+        </section>
+
+        <empty-element />
+        <self-closing attr="value"/>
+    </body>
+
+    <!-- Entity references in text: &lt; &gt; &amp; &quot; &apos; -->
+    <encoded>5 &lt; 10 &amp;&amp; 10 &gt; 5</encoded>
+
+</concept>

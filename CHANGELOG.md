@@ -6,6 +6,75 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [1.7.0] — 2026-05-08
+
+Markup + styling language batch. Four new grammars in one cut:
+HTML, XML, CSS, SCSS. All four ship with stand-in corpora per
+[ADR 0006](docs/adr/0006-standin-corpus-policy.md). No new
+scanner extensions; the multi-byte-pair-rule shape introduced
+for TOML triple-quoted strings ([ADR 0008](docs/adr/0008-toml-triple-quoted-strings.md))
+handled HTML's `<!-- … -->` (4-byte / 3-byte) and XML's
+`<![CDATA[ … ]]>` (10-byte / 3-byte) without further work.
+LESS deferred — declining adoption, and most LESS files
+tokenize OK with the css.cyml grammar anyway.
+
+### Added
+
+- **HTML grammar.** New `grammars/html.cyml` +
+  `tests/corpus/concept.html` (249 tokens, zero errors).
+  `<!-- … -->` block comments via 4-byte / 3-byte pair rule;
+  single + double-quoted attribute strings; `<` / `>` / `=` /
+  `/` / `&` / `!` / `?` / `#` as operators. Tag names
+  tokenize as plain ident (HTML5's open element set + custom
+  elements is too large for a keyword list). Embedded
+  `<style>` and `<script>` blocks tokenize as plain HTML at
+  this layer; grammar composition for routing them to CSS / JS
+  is on the **1.11.0** roadmap.
+- **XML grammar.** New `grammars/xml.cyml` +
+  `tests/corpus/concept.xml` (380 tokens, zero errors). Same
+  shape as HTML plus `<![CDATA[ … ]]>` data sections (kind =
+  string; body uninterpreted) and `<?xml … ?>` processing
+  instructions (kind = preprocessor). `-` added to operators
+  so ISO-8601 date components (`2026-05-08T09:00:00Z`)
+  tokenize cleanly. Default extension for `.xml` / `.xsl` /
+  `.xsd` / `.svg`.
+- **CSS grammar.** New `grammars/css.cyml` +
+  `tests/corpus/concept.css` (689 tokens, zero errors).
+  `/* */` only (no line-comment form). `@`/`#`/`-` in
+  `ident_start` so `@media`, `#hero`, and `--color-bg`
+  (CSS custom properties) all tokenize as a single ident; the
+  words rule then promotes the standard CSS at-rules
+  (`@charset`/`@import`/`@media`/`@supports`/`@keyframes`/
+  `@layer`/`@container`/`@scope`/etc.) to keyword. `::`
+  pseudo-element op; attribute matchers `^=`/`$=`/`*=`/`~=`/
+  `|=`. Float literals (`1.5rem`) deferred — the number
+  scanner stops at `.` (same gap as java.cyml; would benefit
+  multiple grammars).
+- **SCSS grammar.** New `grammars/scss.cyml` +
+  `tests/corpus/concept.scss` (526 tokens, zero errors). CSS
+  superset: `//` line comments, `$variable` syntax (`$` joins
+  `@`/`#`/`-` in `ident_start`), and SCSS-specific at-rules
+  (`@mixin`/`@include`/`@function`/`@return`/`@if`/`@else`/
+  `@each`/`@for`/`@while`/`@use`/`@forward`/`@extend`/
+  `@error`/`@warn`/`@debug`/`@content`/`@at-root`) added to
+  the keyword list. Modern Sass `@use` / `@forward` module
+  syntax exercised in the stand-in.
+
+### Wiring
+
+- `src/tokenize.cyr` — all four added to `bootstrap_grammars()`
+  (now loads 33 grammars).
+- `src/main.cyr` — extension dispatch: `.html`/`.htm`,
+  `.xml`/`.xsl`/`.xsd`/`.svg`, `.css`, `.scss`/`.sass`.
+- `scripts/smoke.sh` — all four added to `--list-languages`
+  check (now 33 grammars) and the corpus round-trip loop.
+- `tests/vyakarana.tcyr` — two HTML probes (block comment +
+  self-closing tag), two XML probes (CDATA + processing
+  instruction), four CSS probes (`@media` keyword, `#hero`
+  ident, `--color-bg` ident, `::` pseudo-element op), three
+  SCSS probes (`$var` ident, `@mixin` keyword, `//` line
+  comment). 544 → 577 passing.
+
 ## [1.6.0] — 2026-05-08
 
 Data / query / IDL language batch. Three new grammars + one new

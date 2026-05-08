@@ -1,0 +1,108 @@
+# html — HTML tokenizer grammar
+#
+# Rule scheme per ADR 0005. HTML at the token level is fairly
+# small:
+#   - `<!-- … -->` block comments (4-byte / 3-byte pair).
+#   - `"…"` and `'…'` strings (attribute values).
+#   - `<` / `>` / `=` / `/` as operators (tag delimiters,
+#     attribute assignment, self-closing slash).
+#   - Tag names tokenize as plain `ident` — no keyword list,
+#     because HTML5 has hundreds of valid element names plus
+#     custom elements (`<my-component>`). Themes can colour
+#     tags by token text. Same call as ADR 0004 for shell
+#     built-ins.
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# vidya doesn't ship an HTML reference sample yet. The local
+# `tests/corpus/concept.html` exercises HTML5 doctype, semantic
+# elements (`<header>`, `<main>`, `<article>`, `<aside>`,
+# `<footer>`), boolean attributes (`disabled`, `checked`),
+# entity references (`&mdash;`, `&lt;`, `&gt;`, `&amp;`,
+# `&copy;`), `data-*` attributes, embedded `<style>` and
+# `<script>` blocks, and the `<!-- … -->` comment shape.
+# Replace with a vidya snapshot when one ships.
+#
+# Embedded `<script>` and `<style>` blocks tokenize as plain
+# HTML — body content is just a sequence of idents, operators,
+# strings, etc. **Grammar composition** for routing inner
+# content through JS / CSS grammars is scheduled for 1.11.0.
+#
+# Known gaps (not triggered by the stand-in):
+#   - DOCTYPE declarations (`<!DOCTYPE …>`). The stand-in
+#     uses lowercase `<!doctype html>`; both tokenize as
+#     `<` op + `!` op + ident + ident + `>` op. Coverage
+#     holds; theme can re-pair.
+#   - Conditional comments (`<!--[if IE]>…<![endif]-->`,
+#     IE-specific). Not in the stand-in.
+#   - Numeric character references (`&#8212;`). Tokenize as
+#     `&` op + `#` op + number + `;` punct. Coverage holds.
+
+[grammar]
+name = "html"
+extensions = [".html", ".htm"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+# Tag names and attribute names use ASCII letters plus `-`
+# (custom-element style, `data-*`, `aria-*`). We keep `-` in
+# `ident_cont` only — `-` at the start of an attribute would
+# be a syntax error anyway.
+ident_start = "A-Za-z_"
+ident_cont  = "A-Za-z0-9_-"
+
+number_decimal = true
+number_0x      = false
+number_0b      = false
+number_0o      = false
+
+special_vars = false
+unicode_ident = true
+char_literal  = false
+
+# Operators in longest-match order. HTML uses very few:
+# `<` / `>` for tag delimiters, `=` for attribute assignment,
+# `/` for self-closing slash, `&` and `;` for entity references
+# (handled with `&` operator + ident + `;` punctuation),
+# `!` for `<!doctype` / `<!--`.
+operators = [
+    "<", ">", "=", "/",
+    "&", "!", "?",
+    # `#` shows up in embedded CSS hex colors (`#FF6600`),
+    # numeric character references (`&#8212;`), and `id`-style
+    # URL fragments. Listed as a 1-byte op so embedded content
+    # tokenizes cleanly until grammar composition (1.11.0) routes
+    # `<style>` / `<script>` bodies to their own grammars.
+    "#",
+]
+
+punctuation = [
+    "(", ")", "[", "]", "{", "}",
+    ";", ",", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+# `<!-- … -->` block comment. 4-byte start, 3-byte end —
+# multi-byte pair shape, no scanner code needed.
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "<!--"
+end = "-->"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "'"
+end = "'"

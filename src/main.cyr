@@ -162,6 +162,12 @@ fn detect_language(path) {
         if (memeq(path + n - 4, ".lhs", 4) == 1) { return "haskell"; }
     }
     if (n >= 4) {
+        if (memeq(path + n - 4, ".htm", 4) == 1) { return "html"; }
+        if (memeq(path + n - 4, ".css", 4) == 1) { return "css"; }
+        if (memeq(path + n - 4, ".xml", 4) == 1) { return "xml"; }
+        if (memeq(path + n - 4, ".xsl", 4) == 1) { return "xml"; }
+        if (memeq(path + n - 4, ".xsd", 4) == 1) { return "xml"; }
+        if (memeq(path + n - 4, ".svg", 4) == 1) { return "xml"; }
         if (memeq(path + n - 4, ".sql", 4) == 1) { return "sql"; }
         if (memeq(path + n - 4, ".gql", 4) == 1) { return "graphql"; }
         if (memeq(path + n - 4, ".mjs", 4) == 1) { return "javascript"; }
@@ -191,6 +197,9 @@ fn detect_language(path) {
         if (memeq(path + n - 4, ".zig", 4) == 1) { return "zig"; }
     }
     if (n >= 5) {
+        if (memeq(path + n - 5, ".html", 5) == 1) { return "html"; }
+        if (memeq(path + n - 5, ".scss", 5) == 1) { return "scss"; }
+        if (memeq(path + n - 5, ".sass", 5) == 1) { return "scss"; }
         if (memeq(path + n - 5, ".bash", 5) == 1) { return "shell"; }
         if (memeq(path + n - 5, ".toml", 5) == 1) { return "toml"; }
         if (memeq(path + n - 5, ".json", 5) == 1) { return "json"; }

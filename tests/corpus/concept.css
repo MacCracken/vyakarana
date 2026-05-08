@@ -1,0 +1,127 @@
+/*
+ * vyakarana stand-in -- not from vidya. See docs/adr/0006-standin-corpus-policy.md.
+ * Re-sync when vidya adds a CSS reference sample.
+ *
+ * Demonstrates CSS3+: at-rules, custom properties (CSS
+ * variables), nested calc() expressions, media queries,
+ * pseudo-classes / pseudo-elements, attribute selectors,
+ * and modern color syntax.
+ */
+
+@charset "UTF-8";
+
+@import url("/styles/reset.css");
+
+:root {
+    --color-bg:        #ffffff;
+    --color-fg:        #1a1a1a;
+    --color-accent:    #ff6600;
+    --space-unit:      0.25rem;
+    --max-content-w:   72ch;
+    --font-mono:       ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --color-bg: #1a1a1a;
+        --color-fg: #fafafa;
+    }
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    font-size: 16px;
+    line-height: 1.5;
+    color: var(--color-fg);
+    background: var(--color-bg);
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                 Roboto, Helvetica, Arial, sans-serif;
+    max-width: var(--max-content-w);
+    margin: 0 auto;
+    padding: calc(var(--space-unit) * 4);
+}
+
+/* Selectors with combinators, pseudo-classes, attribute matchers. */
+
+.site-header h1#hero {
+    font-size: clamp(1.5rem, 4vw, 3rem);
+    font-weight: 700;
+    color: var(--color-accent);
+}
+
+a:hover,
+a:focus-visible {
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+}
+
+a[href^="https://"]::after {
+    content: " ↗";
+    font-size: 0.8em;
+}
+
+input[type="checkbox"]:checked + label {
+    font-weight: 600;
+}
+
+article > p:first-of-type::first-line {
+    font-variant: small-caps;
+    letter-spacing: 0.05em;
+}
+
+ul.features li:nth-child(odd) {
+    background: rgba(255, 102, 0, 0.05);
+}
+
+/* @keyframes + animation shorthand. */
+
+@keyframes fade-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0);   }
+}
+
+.fade-in {
+    animation: fade-in 200ms ease-out forwards;
+}
+
+/* Grid + flexbox + custom-media. */
+
+@supports (display: grid) {
+    .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+        gap: calc(var(--space-unit) * 4);
+    }
+}
+
+@media (min-width: 768px) {
+    .features {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+
+    .features > li {
+        flex: 1 1 320px;
+    }
+}
+
+/* Logical properties + container queries. */
+
+.card {
+    padding-block: 1rem;
+    padding-inline: 1.5rem;
+    border-inline-start: 4px solid var(--color-accent);
+}
+
+@container (min-width: 480px) {
+    .card { padding-block: 1.5rem; }
+}

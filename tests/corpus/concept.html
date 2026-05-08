@@ -1,0 +1,76 @@
+<!doctype html>
+<!--
+  vyakarana stand-in -- not from vidya. See docs/adr/0006-standin-corpus-policy.md.
+  Re-sync when vidya adds an HTML reference sample.
+
+  Demonstrates HTML5: doctype, semantic elements, attributes
+  (single + double quoted), boolean attributes, entity
+  references, embedded <style> + <script> blocks (which are
+  tokenized as plain HTML at this layer; grammar composition
+  for routing them through CSS / JS grammars is on the 1.11.0
+  roadmap), and meta tags.
+-->
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Vyakarana &mdash; Concept Page</title>
+    <link rel="stylesheet" href="/styles/main.css">
+    <style>
+        body { font-family: system-ui, sans-serif; }
+        .accent { color: #FF6600; }
+    </style>
+</head>
+<body>
+    <header class="site-header">
+        <h1 id="hero">A &lt;tokenizer&gt; for AGNOS</h1>
+        <p>vyakarana takes source bytes and yields
+           <code>(kind, start, len)</code> spans.</p>
+    </header>
+
+    <main>
+        <article data-id="42" data-published="2026-05-08">
+            <h2>What it does</h2>
+            <p>
+                Reads bytes, classifies them, emits tokens.
+                That's the entire job &mdash; no rendering,
+                no parsing past the lexical layer.
+            </p>
+
+            <ul class="features">
+                <li>29 bundled grammars at v1.6.0.</li>
+                <li>Zero-copy tokens: <em>(kind, start, len)</em>.</li>
+                <li>Coverage invariant: every byte accounted for.</li>
+            </ul>
+
+            <pre><code class="language-rust">
+fn tokenize(src: &amp;str) -&gt; Tokenbuf {
+    // ...
+}
+            </code></pre>
+
+            <button type="button" disabled>Compile</button>
+            <input type="checkbox" id="auto" name="auto" checked>
+            <label for="auto">Auto-rebuild on save</label>
+        </article>
+
+        <aside class="sidebar">
+            <p>See &amp; learn:</p>
+            <ul>
+                <li><a href="https://example.com/grammars">Bundled grammars</a></li>
+                <li><a href='/docs/adr' title="ADRs">ADRs</a></li>
+            </ul>
+        </aside>
+    </main>
+
+    <footer>
+        <small>&copy; 2026 vyakarana</small>
+    </footer>
+
+    <script type="module">
+        // Tokenized as HTML text at this layer.
+        const x = 1 + 2;
+        console.log(x);
+    </script>
+</body>
+</html>

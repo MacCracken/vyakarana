@@ -1495,6 +1495,117 @@ fn main() {
     tokenize_with_grammar(gpb, src_pb3, strlen(src_pb3), tb_pb3);
     assert_eq(tokenbuf_kind(tb_pb3, 0), TK_KEYWORD, "int32 keyword");
 
+    test_group("1.7.0 html grammar — loads and tokenizes cleanly");
+    var ghtml = grammar_load("grammars/html.cyml");
+    assert_neq(ghtml, 0, "grammar_load html returned non-null");
+    assert_eq(streq(grammar_name(ghtml), "html"), 1, "name is 'html'");
+
+    # `<!-- ... -->` block comment as one TK_COMMENT.
+    var tb_h1 = tokenbuf_new();
+    var src_h1 = "<!-- hi -->x";
+    tokenize_with_grammar(ghtml, src_h1, strlen(src_h1), tb_h1);
+    assert_eq(tokenbuf_kind(tb_h1, 0), TK_COMMENT, "<!-- ... --> comment");
+    assert_eq(tokenbuf_len(tb_h1, 0),  11,         "comment len 11");
+
+    # Self-closing tag `<br/>` tokenizes structurally.
+    var tb_h2 = tokenbuf_new();
+    var src_h2 = "<br/>";
+    tokenize_with_grammar(ghtml, src_h2, strlen(src_h2), tb_h2);
+    assert_eq(tokenbuf_kind(tb_h2, 0), TK_OPERATOR, "< open op");
+    assert_eq(tokenbuf_kind(tb_h2, 1), TK_IDENT,    "br ident");
+    assert_eq(tokenbuf_kind(tb_h2, 2), TK_OPERATOR, "/ close op");
+    assert_eq(tokenbuf_kind(tb_h2, 3), TK_OPERATOR, "> close op");
+
+    test_group("1.7.0 xml grammar — loads and tokenizes cleanly");
+    var gxml = grammar_load("grammars/xml.cyml");
+    assert_neq(gxml, 0, "grammar_load xml returned non-null");
+    assert_eq(streq(grammar_name(gxml), "xml"), 1, "name is 'xml'");
+
+    # `<![CDATA[ ... ]]>` is one token (the body is uninterpreted).
+    var tb_x1 = tokenbuf_new();
+    var src_x1 = "<![CDATA[<raw>&]]>";
+    tokenize_with_grammar(gxml, src_x1, strlen(src_x1), tb_x1);
+    assert_eq(tokenbuf_count(tb_x1), 1,           "CDATA one token");
+    assert_eq(tokenbuf_kind(tb_x1, 0), TK_STRING, "CDATA is string");
+    assert_eq(tokenbuf_len(tb_x1, 0), strlen(src_x1), "covers whole input");
+
+    # Processing instruction `<?xml … ?>` is one token (preprocessor).
+    var tb_x2 = tokenbuf_new();
+    var src_x2 = "<?xml version=\"1.0\"?>";
+    tokenize_with_grammar(gxml, src_x2, strlen(src_x2), tb_x2);
+    assert_eq(tokenbuf_count(tb_x2), 1, "PI one token");
+    assert_eq(tokenbuf_kind(tb_x2, 0), TK_PREPROCESSOR, "PI is preprocessor");
+
+    test_group("1.7.0 css grammar — loads and tokenizes cleanly");
+    var gcss = grammar_load("grammars/css.cyml");
+    assert_neq(gcss, 0, "grammar_load css returned non-null");
+    assert_eq(streq(grammar_name(gcss), "css"), 1, "name is 'css'");
+
+    # `@media` is a keyword (via @ in ident_start + words rule).
+    var tb_c1 = tokenbuf_new();
+    var src_c1 = "@media (min-width: 768px) {}";
+    tokenize_with_grammar(gcss, src_c1, strlen(src_c1), tb_c1);
+    assert_eq(tokenbuf_kind(tb_c1, 0), TK_KEYWORD, "@media keyword");
+    assert_eq(tokenbuf_len(tb_c1, 0),  6,          "@media len 6");
+
+    # `#hero` id selector is one ident (`#` in ident_start).
+    var tb_c2 = tokenbuf_new();
+    var src_c2 = "#hero";
+    tokenize_with_grammar(gcss, src_c2, strlen(src_c2), tb_c2);
+    assert_eq(tokenbuf_count(tb_c2), 1,           "#hero one token");
+    assert_eq(tokenbuf_kind(tb_c2, 0), TK_IDENT,  "#hero ident");
+
+    # `--color-bg` custom property is one ident (`-` in ident_start).
+    var tb_c3 = tokenbuf_new();
+    var src_c3 = "--color-bg";
+    tokenize_with_grammar(gcss, src_c3, strlen(src_c3), tb_c3);
+    assert_eq(tokenbuf_count(tb_c3), 1,           "--color-bg one token");
+    assert_eq(tokenbuf_kind(tb_c3, 0), TK_IDENT,  "--color-bg ident");
+    assert_eq(tokenbuf_len(tb_c3, 0),  10,        "--color-bg len 10");
+
+    # `::after` pseudo-element: `::` is a 2-byte op.
+    var tb_c4 = tokenbuf_new();
+    var src_c4 = "a::after";
+    tokenize_with_grammar(gcss, src_c4, strlen(src_c4), tb_c4);
+    var saw_pseudo = 0;
+    var c4i = 0;
+    while (c4i < tokenbuf_count(tb_c4)) {
+        if (tokenbuf_kind(tb_c4, c4i) == TK_OPERATOR) {
+            if (tokenbuf_len(tb_c4, c4i) == 2) {
+                var sc4 = tokenbuf_start(tb_c4, c4i);
+                if (memeq(src_c4 + sc4, "::", 2) == 1) { saw_pseudo = 1; }
+            }
+        }
+        c4i = c4i + 1;
+    }
+    assert_eq(saw_pseudo, 1, ":: pseudo-element op");
+
+    test_group("1.7.0 scss grammar — loads and tokenizes cleanly");
+    var gscss = grammar_load("grammars/scss.cyml");
+    assert_neq(gscss, 0, "grammar_load scss returned non-null");
+    assert_eq(streq(grammar_name(gscss), "scss"), 1, "name is 'scss'");
+
+    # `$variable` is one ident (`$` in ident_start).
+    var tb_s1 = tokenbuf_new();
+    var src_s1 = "$color-bg";
+    tokenize_with_grammar(gscss, src_s1, strlen(src_s1), tb_s1);
+    assert_eq(tokenbuf_count(tb_s1), 1,           "$color-bg one token");
+    assert_eq(tokenbuf_kind(tb_s1, 0), TK_IDENT,  "$color-bg ident");
+    assert_eq(tokenbuf_len(tb_s1, 0),  9,         "$color-bg len 9");
+
+    # `@mixin` is keyword (SCSS-specific at-rule).
+    var tb_s2 = tokenbuf_new();
+    var src_s2 = "@mixin foo() {}";
+    tokenize_with_grammar(gscss, src_s2, strlen(src_s2), tb_s2);
+    assert_eq(tokenbuf_kind(tb_s2, 0), TK_KEYWORD, "@mixin keyword");
+    assert_eq(tokenbuf_len(tb_s2, 0),  6,          "@mixin len 6");
+
+    # `//` line comment (SCSS-specific, not in CSS).
+    var tb_s3 = tokenbuf_new();
+    var src_s3 = "// comment\nx";
+    tokenize_with_grammar(gscss, src_s3, strlen(src_s3), tb_s3);
+    assert_eq(tokenbuf_kind(tb_s3, 0), TK_COMMENT, "// is comment");
+
     test_group("version string shape");
     # VYK_VERSION lives in src/version_str.cyr (auto-generated by
     # scripts/version-bump.sh). Asserting shape, not value, so the

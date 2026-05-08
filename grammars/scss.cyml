@@ -1,0 +1,129 @@
+# scss — SCSS / Sass tokenizer grammar
+#
+# Rule scheme per ADR 0005. SCSS is a strict superset of CSS:
+# everything css.cyml does, plus four additions:
+#   - `//` line comments (CSS itself has only `/* */`).
+#   - `$variable` syntax — `$` in `ident_start`.
+#   - More at-rules (`@mixin`, `@include`, `@function`,
+#     `@return`, `@if`, `@else`, `@each`, `@for`, `@while`,
+#     `@use`, `@forward`, `@extend`, `@error`, `@warn`,
+#     `@debug`, `@content`).
+#   - String interpolation `#{…}` stays inside the string-pair
+#     span per [ADR 0003](../docs/adr/0003-string-expansion-not-retokenized.md).
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# vidya doesn't ship an SCSS reference sample yet. The local
+# `tests/corpus/concept.scss` exercises variables, mixins,
+# functions, the `&` parent selector, nested rules, `@each`
+# loops with interpolation, and the modern `@use` / `@forward`
+# module system. Replace with a vidya snapshot when one
+# ships.
+#
+# LESS deferred. LESS uses `@variable` (collides with CSS
+# at-rules at the token level) and has declining adoption;
+# most LESS files tokenize OK with the css.cyml grammar
+# anyway. If a real LESS corpus surfaces, fork from this
+# grammar with `@`-as-variable and adjusted at-rule keywords.
+#
+# Known gaps (not triggered by the stand-in):
+#   - Float numbers (same gap as css.cyml).
+#   - Sass placeholder selectors `%placeholder`. The `%`
+#     would need to be in `ident_start` or operators. Cosmetic;
+#     not in the stand-in.
+
+[grammar]
+name = "scss"
+extensions = [".scss", ".sass"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+# `@` for at-rules, `#` for ids / hex colors / interpolation
+# (`#{…}`), `$` for variables, `-` for custom properties.
+ident_start = "A-Za-z_@#$-"
+ident_cont  = "A-Za-z0-9_-"
+
+number_decimal = true
+number_0x      = false
+number_0b      = false
+number_0o      = false
+
+special_vars = false
+unicode_ident = true
+char_literal  = false
+
+operators = [
+    "^=", "$=", "*=", "~=", "|=",
+    "::",
+    "+", "-", "*", "/",
+    "<", ">",
+    "&", "|", "~",
+    "!", "?",
+    "=",
+]
+
+punctuation = [
+    "(", ")", "{", "}", "[", "]",
+    ";", ",", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+# `//` line comment (SCSS-only, NOT in CSS proper).
+[[rules]]
+kind = "comment"
+match = "line"
+start = "//"
+
+
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "/*"
+end = "*/"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "'"
+end = "'"
+escape = "\\"
+
+
+# CSS at-rules + SCSS additions. The at-rule (`@whatever`)
+# tokenizes as one ident via `ident_start` containing `@`,
+# then this list promotes the known names to `TK_KEYWORD`.
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # CSS at-rules (shared with css.cyml)
+    "@charset", "@import", "@namespace",
+    "@media", "@supports", "@document", "@page",
+    "@font-face", "@keyframes", "@viewport",
+    "@counter-style", "@font-feature-values", "@property",
+    "@layer", "@container", "@scope", "@starting-style",
+    # SCSS / Sass-specific at-rules
+    "@mixin", "@include", "@function", "@return",
+    "@if", "@else", "@each", "@for", "@while",
+    "@use", "@forward", "@extend",
+    "@error", "@warn", "@debug",
+    "@content", "@at-root",
+    # Common values
+    "from", "to",
+    "important", "inherit", "initial", "unset", "revert",
+    # SCSS pseudo-keywords (control-flow words)
+    "in", "through", "not", "and", "or",
+    "true", "false", "null",
+]

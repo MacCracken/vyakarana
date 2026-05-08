@@ -1,0 +1,147 @@
+# css — CSS tokenizer grammar (CSS3+)
+#
+# Rule scheme per ADR 0005. CSS at the token level:
+#   - `/* … */` block comments only (CSS has no line-comment
+#     form; SCSS/Sass adds `//`).
+#   - `"…"` and `'…'` strings (string values, font names,
+#     attribute selectors).
+#   - `#` for id selectors and hex colors (`#ff6600`).
+#   - `.` for class selectors (`.title`).
+#   - `@` for at-rules (`@media`, `@import`, `@keyframes`).
+#   - `:` for pseudo-classes (`:hover`) and `::` for pseudo-
+#     elements (`::after`).
+#   - Numeric units (`16px`, `1.5rem`, `0.05em`) tokenize as
+#     `number` + `ident` — cosmetic; coverage holds.
+#   - Hyphenated property names (`text-underline-offset`,
+#     `padding-block`) — `-` in `ident_cont` so the whole name
+#     is one ident.
+#   - CSS custom properties `--color-bg`. Need `-` in
+#     `ident_start` AND `ident_cont` so `--color-bg` (which
+#     starts with `-`) tokenizes as one ident.
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# vidya doesn't ship a CSS reference sample yet. The local
+# `tests/corpus/concept.css` exercises CSS3+: at-rules,
+# custom properties, nested `calc()`, media queries,
+# pseudo-classes and pseudo-elements, attribute selectors with
+# match operators, `@keyframes` blocks, grid/flex, and
+# logical properties. Replace with a vidya snapshot when one
+# ships.
+#
+# `@` and `#` in `ident_start` so at-rules (`@media`,
+# `@keyframes`, `@supports`, `@container`) tokenize as a
+# single ident, then promoted to keyword via the words rule.
+# Hex colors (`#ff6600`) and id selectors (`#hero`) also
+# become single idents — themes can secondary-palette by
+# token-text shape if they want different colours.
+#
+# Known gaps (not triggered by the stand-in):
+#   - Float numbers (`1.5`, `0.25`). The number scanner stops
+#     at `.`; `1.5rem` becomes `number(1) + .(punct) +
+#     number(5) + ident(rem)`. Cosmetic; very common in CSS.
+#     Same gap as java.cyml. A future `number_float` default
+#     would close this across all C-family grammars.
+#   - URL functions `url(...)` body parsing. `url` is just an
+#     ident; the `(...)` body tokenizes as nested
+#     punctuation + string.
+
+[grammar]
+name = "css"
+extensions = [".css"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+# `@` for at-rules, `#` for id selectors / hex colors,
+# `-` for custom properties (`--color-bg`).
+ident_start = "A-Za-z_@#-"
+ident_cont  = "A-Za-z0-9_-"
+
+number_decimal = true
+number_0x      = false
+number_0b      = false
+number_0o      = false
+
+special_vars = false
+unicode_ident = true
+char_literal  = false
+
+# Operators in longest-match order. CSS-specific: `::` for
+# pseudo-elements (declared before `:` ... wait, `:` is
+# punctuation; `::` is in operators because it's a multi-byte
+# token), `>`/`+`/`~` for combinators, `^=` / `$=` / `*=` /
+# `~=` / `|=` for attribute matchers, `*` for universal
+# selector / multiply.
+operators = [
+    "^=", "$=", "*=", "~=", "|=",
+    "::",
+    "+", "-", "*", "/",
+    "<", ">",
+    "&", "|", "~",
+    "!", "?",
+    "=",
+]
+
+punctuation = [
+    "(", ")", "{", "}", "[", "]",
+    ";", ",", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+# `/* … */` block comments. CSS has no line-comment form
+# (SCSS adds `//`; that's a separate grammar).
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "/*"
+end = "*/"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "'"
+end = "'"
+escape = "\\"
+
+
+# At-rules tokenize as ident (because `@` is in `ident_start`),
+# then promoted to keyword via this words list. The set covers
+# the standard at-rule vocabulary.
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    "@charset",
+    "@import",
+    "@namespace",
+    "@media",
+    "@supports",
+    "@document",
+    "@page",
+    "@font-face",
+    "@keyframes",
+    "@viewport",
+    "@counter-style",
+    "@font-feature-values",
+    "@property",
+    "@layer",
+    "@container",
+    "@scope",
+    "@starting-style",
+    # Logical / conditional combinators
+    "from", "to",
+    # Common values that act keyword-y
+    "important", "inherit", "initial", "unset", "revert",
+]

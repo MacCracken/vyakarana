@@ -4,15 +4,15 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–1.6.0 are
+> **Read this file before doing anything.** 1.0.0–1.7.0 are
 > shipped. As of 2026-05-08 the toolchain pin is `cyrius = "5.9.36"`.
-> 1.5.0 added Elixir/OCaml/Haskell; **1.6.0 adds SQL/GraphQL/
-> Protobuf (data + query + IDL batch) plus a new
-> `case_insensitive_keywords` scanner default ([ADR 0011](../adr/0011-case-insensitive-keywords-default.md))
-> needed by SQL.** **29 grammars bundled now, 544/544 tests
-> passing.** Grammar record grew 152 → 160 bytes (new
-> `case_insensitive_kw` field at offset 152). Next: 1.7.0 —
-> markup + styling (html/xml/css/scss) — see §Next up.
+> 1.6.0 added SQL/GraphQL/Protobuf + ADR 0011; **1.7.0 adds
+> HTML/XML/CSS/SCSS (markup + styling batch).** No new scanner
+> extensions; the multi-byte-pair-rule shape from ADR 0008
+> handled HTML's `<!-- -->` and XML's `<![CDATA[…]]>` cleanly.
+> **33 grammars bundled now, 577/577 tests passing.** LESS
+> deferred. Next: 1.8.0 — devops + infrastructure (dockerfile,
+> makefile, ini, nginx) — see §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -32,44 +32,50 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `1.6.0` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `1.7.0` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`. Full 1.x tag history in the CHANGELOG.
-- **What 1.6.0 added:**
-  - **`case_insensitive_keywords` scanner default
-    ([ADR 0011](../adr/0011-case-insensitive-keywords-default.md)).**
-    `Grammar` record at offset 152, `GRAMMAR_SIZE` 152 → 160.
-    `_ds_lookup_keyword` does case-folded comparison when on;
-    grammars that leave the flag off pay zero new hot-path
-    cost (delegates to `memeq` as before). ASCII-only fold by
-    design.
-  - **SQL grammar** (599 tokens, zero errors). First grammar
-    to enable `case_insensitive_keywords` — `SELECT` /
-    `select` / `Select` all match the canonical keyword list.
-    Dialect-neutral baseline.
-  - **GraphQL grammar** (623 tokens, zero errors). `$` and
-    `@` in `ident_start`; `"""…"""` block strings.
-  - **Protobuf grammar** (628 tokens, zero errors). Mechanical
-    C-family. Primitive types as keywords.
-- **Test count:** 544/544 (was 517 at 1.5.0; added 27
-  assertions, including 5 SQL case-mixing probes that exercise
-  ADR 0011).
-- **Grammars:** 29 bundled (shell, toml, json, cyrius, rust,
+- **What 1.7.0 added:** four markup + styling grammars in one
+  cut — **HTML, XML, CSS, SCSS**. All four ship with hand-
+  rolled stand-in corpora per
+  [ADR 0006](../adr/0006-standin-corpus-policy.md). Token
+  counts: html 249, xml 380, css 689, scss 526 — zero errors
+  on canonical samples. **No new scanner extensions needed**;
+  HTML's `<!-- -->` (4-byte / 3-byte) and XML's
+  `<![CDATA[ … ]]>` (10-byte / 3-byte) are just multi-byte
+  pair rules of the kind ADR 0008 introduced for TOML.
+- **Three grammar-author findings worth recording (1.7.0):**
+  - HTML doesn't keyword-list element names. HTML5 has hundreds
+    of valid elements plus arbitrary custom-element names
+    (`<my-component>`); a static keyword list would constantly
+    drift. Same call as ADR 0004 for shell built-ins — themes
+    handle the colouring by token text.
+  - CSS custom properties (`--color-bg`) need `-` in
+    `ident_start`, not just `ident_cont`. Without that, the
+    leading `--` would tokenize as two operator hyphens.
+  - HTML embedded `<style>` and `<script>` blocks tokenize
+    as plain HTML at this layer. **Grammar composition** —
+    routing inner content through CSS / JS grammars — is
+    scheduled for 1.11.0 in the restructured roadmap. Until
+    then, `body { color: #FF6600; }` inside a `<style>` block
+    just produces structural HTML tokens, which is correct
+    coverage but loses semantic colouring of the embedded
+    content.
+- **Test count:** 577/577 (was 544 at 1.6.0; added 33
+  assertions across 4 new grammars).
+- **Grammars:** 33 bundled (shell, toml, json, cyrius, rust,
   yaml, markdown, c, typescript, javascript, python, go, zig,
   asm_x86_64, asm_aarch64, java, kotlin, cpp, csharp, php,
-  ruby, lua, swift, elixir, ocaml, haskell, **sql, graphql,
-  protobuf**).
+  ruby, lua, swift, elixir, ocaml, haskell, sql, graphql,
+  protobuf, **html, xml, css, scss**).
 - **Toolchain pin:** `cyrius = "5.9.36"` in `cyrius.cyml`
   (unchanged since 1.0.3).
 - **Build state: GREEN on cyrius 5.9.36.** `cyrius build`
-  clean; `cyrius test tests/vyakarana.tcyr` 544/544;
+  clean; `cyrius test tests/vyakarana.tcyr` 577/577;
   `sh scripts/smoke.sh build/vyk` reports M0+M1+M2+M3 passing
-  at v1.6.0. `dist/vyakarana.cyr` regenerated.
+  at v1.7.0. `dist/vyakarana.cyr` regenerated.
 - **Consumer pressure:** unchanged. Public `tokenize_source` /
-  `tokenbuf` API is unchanged across 1.0.0 → 1.6.0.
-  **Grammar record grew 152 → 160 bytes** (new
-  `case_insensitive_kw` field) — same private-ABI bump as
-  1.1.0 (`unicode_ident`) and 1.2.1 (`char_literal`), no
-  consumer reads the in-memory `Grammar` directly.
+  `tokenbuf` API is unchanged across 1.0.0 → 1.7.0. Grammar
+  record stayed at 160 bytes since 1.6.0.
 
 ### Stand-in corpora — replace when vidya ships
 
@@ -145,37 +151,31 @@ additions land).
 
 ---
 
-## Next up — 1.7.0 (Markup + styling)
+## Next up — 1.8.0 (DevOps + infrastructure)
 
 Per the [roadmap](./roadmap.md), the next batch is
-**1.7.0 — markup + styling**: `html`, `xml`, `css`,
-`scss` / `less`. ADR 0006 stand-ins likely (no vidya reference
-samples).
+**1.8.0 — DevOps + infrastructure formats**: `dockerfile`,
+`makefile`, `ini` / `.conf`. `nginx` tracked post-1.8 if demand
+emerges. ADR 0006 stand-ins likely.
 
 Surfaces to watch:
-- **HTML** has `<!-- … -->` comments (4-byte / 3-byte pair),
-  `<tag attr="val">` markup, attribute values that may use
-  single or double quotes, and embedded `<script>` / `<style>`
-  blocks that ideally route to JavaScript / CSS grammars (a
-  grammar-composition feature on the roadmap for 1.11.0). For
-  1.7.0 they tokenize as plain `<` op + ident + `>` op, with
-  inner content as ident / string / etc.
-- **XML** is HTML's stricter cousin — `<?xml ?>` declarations,
-  `<![CDATA[…]]>` blocks, namespaces. Expect mostly the same
-  shape as HTML.
-- **CSS** has `/* */` comments only (no line form), property:
-  value declarations, `@media`/`@import`/`@keyframes` at-rules,
-  `#id` and `.class` selectors, hex color literals. The `#`
-  for selectors and `@` for at-rules will need either
-  `ident_start` extension or operator treatment.
-- **SCSS / LESS** are CSS supersets — variables (`$var` SCSS,
-  `@var` LESS), nesting, `&` parent selector, mixins. SCSS
-  also adds `//` line comments. SCSS most likely shares CSS's
-  grammar with extra keywords / operators; LESS less so.
+- **Dockerfile** is line-oriented with reserved instruction
+  heads (`FROM`, `RUN`, `COPY`, `WORKDIR`, `ENV`, `EXPOSE`,
+  `CMD`, `ENTRYPOINT`, `HEALTHCHECK`, `ARG`, `LABEL`, `USER`,
+  `VOLUME`, `STOPSIGNAL`, `ONBUILD`, `SHELL`). Case-insensitive
+  per spec (`FROM` and `from` both work) — same flag SQL uses
+  in 1.6.0 (ADR 0011).
+- **Makefile** is **tab-sensitive** — recipe lines must start
+  with a tab, not spaces. Tokenization at the byte level
+  doesn't care about that, but worth flagging in the grammar
+  header.
+- **INI / .conf** is the simplest of the three: `;` or `#`
+  line comments, `[section]` headers, `key = value` lines.
+  Mostly mechanical.
 
-After 1.7.0, the roadmap continues with 1.8.0 (devops),
-1.9.0 (AGNOS-native), then the pre-2.0 prep waves (1.10–1.13).
-2.0.0 is the streaming-tokenizer break.
+After 1.8.0, the roadmap continues with 1.9.0 (AGNOS-native:
+`cyml` proper-grammar, `llvm-ir`), then the pre-2.0 prep
+waves (1.10–1.13). 2.0.0 is the streaming-tokenizer break.
 
 Each new grammar is a `grammars/<name>.cyml` plus a
 `tests/corpus/<name>.<ext>` (vidya snapshot per

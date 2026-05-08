@@ -1,0 +1,110 @@
+// vyakarana stand-in -- not from vidya. See docs/adr/0006-standin-corpus-policy.md.
+// Re-sync when vidya adds a SCSS reference sample.
+//
+// Demonstrates SCSS over CSS: $variables, @-rules with bodies
+// (@mixin / @include / @function / @return / @if / @each),
+// & parent selector, nesting, and the // line-comment form.
+
+/* ── Variables ───────────────────────────────────────────── */
+
+$color-bg:      #ffffff;
+$color-fg:      #1a1a1a;
+$color-accent:  #ff6600;
+
+$space-unit:    0.25rem;
+$breakpoints: (
+    sm: 480px,
+    md: 768px,
+    lg: 1024px,
+    xl: 1280px,
+);
+
+// ── Mixins + functions ───────────────────────────────────────
+
+@mixin respond-to($name) {
+    $bp: map-get($breakpoints, $name);
+    @if $bp == null {
+        @error "Unknown breakpoint #{$name}";
+    } @else {
+        @media (min-width: $bp) {
+            @content;
+        }
+    }
+}
+
+@function spacing($n) {
+    @return $space-unit * $n;
+}
+
+@mixin focus-ring($color: $color-accent) {
+    outline: 2px solid $color;
+    outline-offset: 2px;
+}
+
+// ── Nested selectors with & parent reference ─────────────────
+
+.site-header {
+    background: $color-bg;
+    color: $color-fg;
+
+    h1 {
+        font-size: clamp(1.5rem, 4vw, 3rem);
+        color: $color-accent;
+
+        &:hover {
+            text-decoration: underline;
+        }
+
+        &::before {
+            content: "▸ ";
+        }
+    }
+
+    nav {
+        display: flex;
+        gap: spacing(4);
+
+        a {
+            color: inherit;
+            padding: spacing(1) spacing(2);
+
+            &:focus-visible {
+                @include focus-ring;
+            }
+
+            &.active {
+                color: $color-accent;
+                font-weight: 600;
+            }
+        }
+    }
+
+    @include respond-to(md) {
+        padding: spacing(6) spacing(8);
+    }
+}
+
+// ── @each loop + interpolation ───────────────────────────────
+
+$themes: (
+    light: (bg: #ffffff, fg: #1a1a1a),
+    dark:  (bg: #1a1a1a, fg: #fafafa),
+);
+
+@each $name, $palette in $themes {
+    [data-theme="#{$name}"] {
+        background: map-get($palette, bg);
+        color:      map-get($palette, fg);
+    }
+}
+
+// ── @use / @forward (modern Sass module system) ──────────────
+
+@use "sass:math";
+@use "./tokens" as t;
+@forward "./mixins";
+
+.card {
+    border-radius: math.div(spacing(4), 2);
+    border-color:  t.$border-color;
+}
