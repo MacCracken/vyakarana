@@ -4,7 +4,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Changed
+
+- **Roadmap restructure.** `docs/development/roadmap.md` rewritten
+  to reflect the rule that **2.x.x is reserved for breaking
+  changes only**. The original "M4–M7 → 2.x" mapping moves into
+  pre-2.0 1.x.x cuts: theme-palette contract + vidya reverse
+  consumption land in 1.10.0, external integrations (LSP bridge,
+  theme export, content-based detection, grammar composition) in
+  1.11.0, fuzz/stress harness in 1.12.0, RC polish in 1.13.0.
+  **2.0.0 is now the streaming-tokenizer return-type change
+  alone** — the one scheduled break in the public API. The old
+  "Released" forecast lines for 1.0.1 / 1.1.0 / 1.2.0 (which
+  predicted plans that didn't quite happen) are pruned in favour
+  of a terse retrospective list of what actually shipped.
 
 ## [1.2.2] — 2026-05-08
 

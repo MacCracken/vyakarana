@@ -175,136 +175,174 @@ at least three languages.
 
 ## Post-1.0 release batches
 
-The 1.x.x minor-version lineup — each release is a coherent,
-user-visible batch. Ordered so scanner extensions land before the
-languages that need them.
+**Versioning rule.** 2.x.x is reserved for **breaking changes
+only**. Anything that doesn't change a public contract — new
+languages, new scanner defaults, new ADRs, performance work,
+documentation contracts, fuzz harnesses, packaging — lands in
+the 1.x.x line. Today that means the **only thing scheduled for
+2.0.0 is the streaming-tokenizer return-type change** (M5);
+everything else from the original "M4–M7 → 2.x" mapping moves
+into 1.x.x cuts that lead up to 2.0.
 
-### 1.0.1 — Audit follow-ups (patch)
+### Released
 
-Triggered by findings in `docs/audit/2026-04-23-audit.md`. Small,
-non-behavior-changing fixes.
+Authoritative list of what's actually shipped. Forecasts that
+predicted otherwise have been pruned.
 
-- **FINDING-006** — `_sanitize_for_stderr` helper over
-  `io_error` / `no_grammar_error` / `usage_error` in `src/main.cyr`
-  to strip control bytes from echoed user args.
-- Any emergent bugs observed post-1.0 that don't warrant a minor.
+- **1.0.0** (2026-04-23) — First stable release. Eleven starter
+  grammars (shell, toml, json, cyrius, rust, yaml, markdown, c,
+  typescript, javascript, python), data-driven scanner, public
+  `tokenize_source(src, lang)` → `tokenbuf` API.
+- **1.0.1** (2026-04-23) — Audit follow-up. FINDING-006
+  ANSI-escape sanitizer over CLI stderr (`_sanitize_for_stderr`
+  in `src/main.cyr`).
+- **1.0.2** (2026-04-23) — distlib bundle. `cyrius distlib` →
+  `dist/vyakarana.cyr` for downstream consumers.
+- **1.0.3** (2026-05-08) — Toolchain pin bump to cyrius `5.9.36`
+  after the upstream `include`-graph regression resolved.
+  No source changes.
+- **1.1.0** (2026-05-08) — Modernization fixes from the vidya
+  corpus survey. Three ADRs landed: Rust `$`-macro metavariables
+  (ADR 0007), TOML triple-quoted strings (ADR 0008), and the
+  `unicode_ident` default + a `match = "pair"` block-comment
+  rule for C (ADR 0009 — replaces what was originally pencilled
+  in as a separate "block rule type"). Plus a single-source-of-
+  truth refactor for `vyk --version` (`src/version_str.cyr` +
+  `scripts/version-bump.sh`).
+- **1.2.0** (2026-05-08) — Go and Zig grammars.
+- **1.2.1** (2026-05-08) — `char_literal` default flag (ADR
+  0010). Closes the `'\n'` byte-char-literal-with-escape gap
+  for C / Rust / Go / Zig in one cut.
+- **1.2.2** (2026-05-08) — `asm_x86_64` grammar (Intel syntax).
 
-### 1.1.0 — Scanner extensions
+### Forward plan — finishing 1.2.x
 
-Three scanner capabilities flagged during M3 as cosmetic gaps.
-Each ships with its own ADR. Land before the language waves that
-need them.
+- **1.2.3 — `asm_aarch64`.** Same grammar shape as `asm_x86_64`
+  with ARM opcodes / registers (`x0`–`x30`, `w0`–`w30`,
+  `sp`/`pc`/`lr`); ARM-specific directives (`.arch`, `.cpu`,
+  `.fpu`) join the keyword list. Opcodes/registers stay as
+  `TK_IDENT` per ADR 0004.
+- **1.2.4 — closeout / P(-1) hardening.** Per CLAUDE.md
+  §Closeout pass: full clean rebuild, dead-code audit, stale-
+  comment sweep, doc sync, and the next round of the
+  documentation roadmap-vs-reality reconciliation.
 
-- **`char_literal = true` default** (ADR-0007 candidate) — 2–3
-  char lookahead to tokenize `'x'` / `'\n'` as a single `string`
-  instead of an op/body/op triple. Needed by C, Rust, C++, Java,
-  Kotlin, Swift, Haskell, OCaml.
-- **`unicode_ident = true` default** (ADR-0008 candidate) — treat
-  bytes ≥ 0x80 as `ident_cont` to pass UTF-8 prose cleanly. Lets
-  Markdown stand-in reclaim its `—` em-dashes and unblocks
-  Unicode identifier handling for Python / Rust / Swift.
-- **`block` rule type** (ADR-0009 candidate) — `/* ... */` pair
-  rule spanning multiple lines. Needed by C, Rust, C++, Java, C#,
-  Go, Zig, CSS, SQL, and many more.
+### Forward plan — language batches (1.3.x – 1.9.x)
 
-### 1.2.0 — Vidya-backed languages (ready-to-ship tier)
+Each minor cut is a coherent ecosystem batch. All are additive —
+no breaking changes.
 
-Five vidya samples already sit in `content/lexing_and_parsing/`
-waiting for grammars. Each is a ~30-min `.cyml` + snapshot + wire
-session per the M3 recipe (`state.md` §What shipped).
+- **1.3.0 — JVM + C-family.** `java`, `kotlin`, `cpp` (templates,
+  `::`, generics — may surface scanner needs), `csharp`. All
+  benefit from the 1.1.0 scanner work and 1.2.1 char_literal.
+- **1.4.0 — Scripting + mobile.** `php`, `ruby`,
+  `lua` (small grammar; good "canary" for the scanner), `swift`.
+- **1.5.0 — Functional tier.** `elixir`, `ocaml`, `haskell`.
+  May surface new rule-type needs (`|>`, pattern guards,
+  algebraic-data-type shapes); each gets its own ADR if so.
+- **1.6.0 — Data / query / IDL.** `sql` (dialect-neutral
+  baseline), `graphql`, `protobuf`. `capnp` tracked post-1.6
+  if demand emerges.
+- **1.7.0 — Markup + styling.** `html` (tag + attribute shape;
+  inner-`<script>` / `<style>` is grammar-composition work →
+  see 1.11.0), `xml`, `css`, `scss` / `less`.
+- **1.8.0 — Dev ops + infrastructure formats.** `dockerfile`,
+  `makefile` (tab-sensitive — verify the scanner covers it),
+  `ini` / `.conf`. `nginx` tracked post-1.8 if demand emerges.
+- **1.9.0 — AGNOS-native.** `cyml` (proper `---`-delimited
+  grammar + markdown body — own dogfood), `llvm-ir`.
 
-- `go` — C-like + goroutines, no surprises
-- `zig` — C-like + comptime, similar shape to Rust
-- `openqasm` — quantum circuit syntax; small grammar
-- `asm_x86_64` — opcode + register + `%`/`$` sigil shape
-- `asm_aarch64` — same shape as x86 with ARM opcodes
+### Forward plan — pre-2.0 prep (1.10.x – 1.13.x)
 
-### 1.3.0 — JVM + C-family expansion
+The non-breaking work that used to be slated for "2.x" and is
+now staged as final 1.x cuts before the 2.0.0 streaming-tokenizer
+break. Logical groupings, not a rigid schedule — slots may shift
+if a real consumer forces an earlier landing.
 
-High-traffic languages not in the starter set (per Octoverse 2025 /
-Stack Overflow 2025). All benefit from the 1.1.0 scanner extensions.
+- **1.10.0 — Theme-palette contract + vidya reverse consumption.**
+  Pairs M4 (non-breaking parts) and M6: both are external-
+  coordination work and benefit from the full language set being
+  in place.
+  - Document the kind → palette slot mapping in
+    `vyakarana-design-spec.md` and the architecture overview.
+  - owl's theme files reference the ten kinds by name (not by
+    ad-hoc identifier).
+  - Add `vyk --theme <name>` to the diagnostic CLI for
+    grammar-author preview without running owl.
+  - vidya adds `[deps.vyakarana]`; its
+    `content/lexing_and_parsing/` samples render through
+    vyakarana + a renderer. Reciprocal-relationship payoff that
+    started with [ADR 0001](../adr/0001-corpus-sync-policy.md).
+- **1.11.0 — External integrations.** "Make vyakarana useful
+  from outside the AGNOS stack." All additive.
+  - **LSP bridge** — map external `textDocument/semanticTokens`
+    output onto the vyakarana palette. New module, new ADR.
+  - **Theme export** — emit theme files in external formats
+    (iTerm, VS Code, Helix `theme.toml`) generated from
+    vyakarana + owl palettes. CLI subcommand or separate tool.
+  - **Content-based language detection.** Fallback in
+    `detect_language` for files without extensions or shebangs
+    (heuristic-driven; e.g. shebang sniff, BOM detect).
+  - **Grammar composition for fenced markdown code blocks.**
+    Routes triple-backtick fenced code through the inner
+    language's grammar and re-tokenizes. New ADR; the markdown
+    grammar gets a hook for it.
+- **1.12.0 — Fuzz + stress harness.** M7 prep. Pre-release
+  hardening for 2.0.
+  - Malformed-input battery: unterminated strings, huge
+    single-line files, BOMs, mixed encodings, adversarial
+    `.cyml` files (the grammar loader is a parser, not just
+    static config).
+  - Stress: 100 MB single-buffer tokenize, time + memory
+    bounds.
+  - File findings under `docs/audit/YYYY-MM-DD-fuzz-audit.md`.
+- **1.13.0 — RC polish.** M7 finish. The doorstep of 2.0.
+  - Binary-size target verified — ≤ 300 KB for `vyk` with all
+    bundled grammars embedded.
+  - Startup-time benchmarks captured + tracked
+    (`docs/development/performance.md` if it doesn't exist
+    yet).
+  - Error-message review — every `usage_error` /
+    `no_grammar_error` / `io_error` reads cleanly to a non-
+    Cyrius user.
+  - Man page, README finalized, examples in `--help`.
+  - AGNOS / Cyrius packaging (zugot recipe etc.) pinned to a
+    1.x tag, verified on amd64 + arm64.
 
-- `java`
-- `kotlin`
-- `cpp` (templates, `::`, `<>` generics, namespace syntax — may
-  surface additional scanner needs)
-- `csharp`
+### 2.0.0 — Streaming tokenizer (the only breaking change)
 
-### 1.4.0 — Scripting + mobile
+Carry-over of the original M5 work, and the **only release
+allowed in the 2.x.x line under the current versioning rule**.
 
-- `php`
-- `ruby`
-- `lua` (small grammar; good "canary" for the scanner)
-- `swift`
+- `tokenize_source` returns an **iterator**, not a `tokenbuf`.
+  Memory goes O(tokens-in-flight) instead of O(input).
+- `owl /path/to/100MB.log` is visually interactive in under a
+  second.
+- Migration guide ships alongside. Consumers pinned to 1.x's
+  return type get a clear path: either bridge through a small
+  buffering helper for backward behaviour, or adopt the new
+  iterator shape directly.
+- ADR documenting the trade-off (working-set bound vs random-
+  access loss) and the bridge-helper shape.
 
-### 1.5.0 — Functional tier
+**Done when:** consumers (owl, cyim, vidya) have moved to the
+iterator API or chosen the bridging helper, and the migration
+guide has at least one consumer-side proof point.
 
-Distinct syntaxes; may surface new rule-type needs (e.g. `|>`,
-pattern guards, algebraic-data-type shapes).
+### Post-2.0 backlog (parked)
 
-- `elixir`
-- `ocaml`
-- `haskell`
+Items that don't yet have a forcing function:
 
-### 1.6.0 — Data / query / IDL
-
-- `sql` (dialect-neutral baseline; PostgreSQL / SQLite add-ons
-  as separate grammars if ever needed)
-- `graphql`
-- `protobuf`
-- `capnp` (optional; track post-1.6)
-
-### 1.7.0 — Markup + styling
-
-- `html` (tag + attribute shape; sub-grammar for `<script>` /
-  `<style>` contents might warrant an ADR)
-- `xml`
-- `css`
-- `scss` / `less` (extensions of css grammar; may share a single
-  `.cyml` with optional keywords)
-
-### 1.8.0 — Dev ops + infrastructure formats
-
-- `dockerfile`
-- `makefile` (tab-sensitive; indentation-adjacent — check whether
-  the scanner extension from 1.1.0 covers it)
-- `ini` / `.conf`
-- `nginx` (conditional — depends on user demand; track post-1.8)
-
-### 1.9.0 — AGNOS-native formats
-
-- `cyml` — proper grammar recognizing `---` delimiter + markdown
-  body (vyakarana's own grammar files, yukti config, vidya content)
-- `llvm-ir` (compiler-output inspection)
-
-### Post-1.x backlog (parked, not batched yet)
-
-- **Incremental retokenization** — only retokenize edited lines;
-  enables cyim and other live editors
-- **Regex rule type** — reopen ADR 0005 decision only if a
-  compelling grammar hits the wall
-- **Content-based language detection** — for files without
-  extensions or shebangs (heuristic-driven)
-- **Grammar composition** — Markdown fenced code blocks routing
-  into the fenced language's grammar
-- **Language server protocol bridge** — map external LSP semantic
-  tokens onto the vyakarana palette
-- **Theme export** — emit theme files in external formats (iTerm,
-  VS Code) generated from vyakarana + owl palettes
-
-### Major 2.x.x tiers (carried from pre-1.0 ROADMAP)
-
-The pre-1.0 M4–M7 milestones become 2.x:
-
-- **2.0.0** — Theme-palette contract with owl (M4). May be breaking
-  if the palette surface tightens.
-- **2.1.0** — Streaming tokenizer / iterator API (M5). Memory goes
-  O(tokens-in-flight); unlocks `owl huge.log`.
-- **2.2.0** — vidya reverse consumption (M6). vidya starts
-  rendering its `content/lexing_and_parsing/` samples through
-  vyakarana.
-- **2.3.0** — Polish + RC (M7). Fuzz, stress, binary-size target,
-  man page, release candidate.
+- **Incremental retokenization** — only retokenize edited
+  lines; enables cyim and other live editors. May be additive
+  (a separate `retokenize_range` API alongside the streaming
+  one), in which case it lands in some 2.x.x or even 1.x line
+  if it predates 2.0; may be breaking, in which case 3.0.0.
+  Reopen when a real editor pushes for it.
+- **Regex rule type** — reopens [ADR 0005](../adr/0005-m2-rule-type-scope.md)
+  only if a grammar genuinely cannot be expressed via the
+  current rule set. None of the 14 bundled grammars have hit
+  the wall.
 
 ---
 
