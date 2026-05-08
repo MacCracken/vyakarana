@@ -4,17 +4,14 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–1.11.2 are
+> **Read this file before doing anything.** 1.0.0–1.12.0 are
 > shipped. As of 2026-05-08 the toolchain pin is `cyrius = "5.9.36"`.
-> 1.10.0 opened the pre-2.0 prep sequence with the theme-palette
-> contract and consumer guide; **1.11.2 ships content-based
-> language detection** — closes the 1.11.x external-integrations
-> wave. 38 grammars bundled (unchanged), 707/707 tests passing.
-> The 1.11.x window split into three sub-cuts: 1.11.0 LSP
-> bridge, 1.11.1 grammar composition + theme export + self-
-> contained dist bundle, 1.11.2 content-based detection
-> (this cut). With 1.11.x done, next is 1.12.0 (fuzz + stress
-> harness, M7 prep) — see §Next up.
+> 1.11.x closed the external-integrations wave; **1.12.0 ships
+> the fuzz + stress harness + post-1.11 security audit** (M7
+> prep groundwork). 38 grammars bundled (unchanged), 717/717
+> tests passing, 3/3 fuzz harnesses passing. CI now runs
+> `cyrius fuzz` on every PR. Next is 1.12.1 (Helix + iTerm
+> theme export — deferred from 1.11.1) — see §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -34,8 +31,27 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `1.11.2` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `1.12.0` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`. Full 1.x tag history in the CHANGELOG.
+- **What 1.12.0 added (M7-prep groundwork):**
+  - **Fuzz harnesses** (`fuzz/*.fcyr`) — one per public API
+    entry: `tokenize.fcyr`, `detect.fcyr`,
+    `grammar_load.fcyr`. Each passes deterministically
+    against random / adversarial inputs. CI runs them on
+    every PR via a new `cyrius fuzz` step.
+  - **Stress probes** in `tests/vyakarana.tcyr` 1.12.0 group
+    — runaway pair openers, comment soup, broken UTF-8
+    mid-ident, unclosed compose, 6× nested compose, 4KB
+    ident run. Coverage invariant holds in every case.
+    707 → 717 passing.
+  - **Security audit doc**
+    `docs/audit/2026-05-09-1.11-closeout-audit.md` — surface
+    inventory, per-module review of 1.11.x additions,
+    fuzz/stress coverage summary. **0 CRITICAL / 0 HIGH /
+    0 MEDIUM / 1 LOW (FINDING-007 — fixed in pass).** Carryover
+    table from the 2026-04-23 pre-1.0 audit.
+  - **FINDING-007 fix.** `grammar_load` blob copy now clamps
+    against `GRAMMAR_FILE_CAP - 1`. Defense-in-depth.
 - **What 1.11.2 added (third and final sub-cut of the
   external-integrations wave):**
   - **Content-based language detection** (`src/detect.cyr` +
@@ -91,12 +107,12 @@
     gate run). `grammar_load` consults the blob registry
     first; file-load fallback retained for grammar-author
     dev workflow. Bundle grew 82KB → 253KB.
-- **Test count:** 707/707 (was 682 at 1.11.1; 25 new detect
-  probes covering path dispatch, shebang interp matching for
-  six interp families, three signature patterns, BOM strip,
-  combined dispatch with asm flavour vote). 4 new
-  content-detect smoke probes (auto-detect both asm corpora,
-  shebang-routed python file, `<?xml` signature).
+- **Test count:** 717/717 (was 707 at 1.11.2; 10 new 1.12.0
+  stress probes covering pathological backtracking, runaway
+  pair openers, broken UTF-8 mid-ident, unclosed and
+  6×-nested compose, 4KB ident run). 3 fuzz harnesses pass
+  (`fuzz/tokenize.fcyr`, `fuzz/detect.fcyr`,
+  `fuzz/grammar_load.fcyr`).
 - **No new grammars** — 38 bundled, unchanged.
 
 ### 1.10.0 deliverables (recap)
@@ -248,43 +264,57 @@ Still cosmetic-only and waiting on a future ADR:
 
 - [2026-04-23 — Pre-1.0 audit](../audit/2026-04-23-audit.md):
   0 CRITICAL / 0 HIGH / 0 MEDIUM-open (one MEDIUM fixed in-pass);
-  5 LOW. FINDING-006 fixed in 1.0.1. See `SECURITY.md` for the
-  living state of the audit findings.
+  5 LOW. FINDING-006 fixed in 1.0.1.
+- [2026-05-08 — 1.2.x closeout](../audit/2026-05-08-1.2.x-closeout-audit.md):
+  scope was the new-language batch (asm × 2, java/kotlin/cpp/csharp/php/ruby/lua/swift/elixir/ocaml/haskell).
+- [2026-05-09 — 1.11.x closeout](../audit/2026-05-09-1.11-closeout-audit.md):
+  surfaces added in 1.11.0 / 1.11.1 / 1.11.2 (LSP bridge,
+  composition, theme export, embedded blobs, content
+  detection). 0 CRITICAL / 0 HIGH / 0 MEDIUM / 1 LOW
+  (FINDING-007, fixed in-pass). Fuzz + stress coverage
+  established.
 
-Next scheduled audit: 1.2.x closeout (after the new-language
-additions land).
+See `SECURITY.md` for the living state of the audit findings.
+Next scheduled audit: 1.13.x (RC polish) before tagging 1.13.0.
 
 ---
 
-## Next up — 1.12.0
+## Next up — 1.12.1
 
 The 1.11.x external-integrations wave is complete:
 
 - **1.11.0 — LSP semantic-tokens bridge.** Shipped. ADR 0012.
 - **1.11.1 — Grammar composition + theme export + self-
-  contained dist bundle.** Shipped. ADRs 0013, 0014. HTML
-  routes `<style>` → CSS and `<script>` → JS; bundle inlines
-  every grammar so `cyrius deps` consumers no longer need
-  `grammars/`.
-- **1.11.2 — Content-based language detection.** Shipped
-  (this cut). ADR 0015. `src/detect.cyr` exposes path,
-  byte-content, and combined entries; auto-detect resolves
-  the `.s` ambiguity and handles extensionless shebang /
-  signature files.
+  contained dist bundle.** Shipped. ADRs 0013, 0014.
+- **1.11.2 — Content-based language detection.** Shipped.
+  ADR 0015.
 
-Followups from the 1.11.x window that are still queued:
+The 1.12.x window:
+
+- **1.12.0 — Fuzz + stress harness + post-1.11 audit.**
+  Shipped (this cut). 3 fuzz harnesses, 10 stress probes,
+  one LOW finding fixed in-pass.
+- **1.12.1 — Helix + iTerm theme export.** Pulls the
+  followups deferred from 1.11.1. Reuses
+  `src/theme_export.cyr`'s kind→hex mapping; adds two new
+  emitter functions for `theme.toml` (Helix) and
+  `.itermcolors` plist (iTerm). Smoke probes per format.
+  No new ADR (extends 1.11.1's design).
+
+Still queued from earlier:
 
 - **Markdown fence routing** (`` ```rust `` etc.). Current
   `match = "compose"` rule shape uses literal-prefix start —
   can't bind a captured language tag. Would need a new
   `match = "compose_fenced"`. See ADR 0013 §When to revisit.
-- **Helix / iTerm theme export formats.** 1.11.1 ships the
-  VS Code `theme.json` only. Add formats when a real consumer
-  asks.
+  Likely 1.13.x or its own minor.
 
-Now in flight:
+Beyond 1.12.x:
 
-- **1.12.0** — Fuzz + stress harness (M7 prep). Audit doc.
+- **1.13.0** — RC polish: binary size, startup benchmarks,
+  error messages, man page, AGNOS / Cyrius packaging.
+- **2.0.0** — Streaming tokenizer (M5 carryover). The one
+  scheduled break in the public API.
 - **1.13.0** — RC polish: binary size, startup benchmarks,
   error messages, man page, AGNOS / Cyrius packaging.
 - **2.0.0** — Streaming tokenizer (M5 carryover). The one

@@ -6,6 +6,62 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [1.12.0] — 2026-05-08
+
+First cut of the 1.12.x window — **fuzz + stress harness**
+plus the post-1.11 **security audit**. Lays the M7 prep
+groundwork: every public entry now has a fuzz harness; every
+known pathological-input class has a stress probe; one LOW
+finding fixed in the audit pass.
+
+### Added
+
+- **Fuzz harnesses (`fuzz/*.fcyr`).** Three per public-API
+  entry point, runnable via `cyrius fuzz`:
+  - `fuzz/tokenize.fcyr` — empty buffer, 1-byte sweep across
+    256 byte values × 3 grammars, pseudorandom buffers (3
+    sizes × 16 iterations × 6 grammars), adversarial inputs
+    (compose nesting, comment soup, escape jumble). Asserts
+    the four documented invariants: non-null tokenbuf,
+    positive lens, non-decreasing starts, coverage = strlen.
+  - `fuzz/detect.fcyr` — pathological paths, random byte
+    buffers (3 sizes × 16 iters), BOM-only inputs, NUL-
+    truncated shebangs, truncated `<?xml` / `<!DOCTYPE`
+    prefixes, combined dispatch with `.s` × random content.
+    Asserts every non-zero return is a registered grammar
+    name.
+  - `fuzz/grammar_load.fcyr` — 8 known blob round-trips,
+    printable-random CYML through `_gp_parse` (3 sizes × 8
+    iters), pathological CYML (empty headers, runaway
+    open-quote). Asserts no crash; null-or-valid handle.
+  All three pass deterministically (xorshift seeded from
+  fixed constants). CI runs them via a new `cyrius fuzz`
+  step after the smoke test.
+- **Stress probes** in `tests/vyakarana.tcyr` 1.12.0 group:
+  runaway block comment, runaway string, block-comment soup,
+  broken UTF-8 mid-ident, unclosed `<style>` compose,
+  6× adjacent compose blocks, 4KB ident run. Coverage
+  invariant holds in every case. 707 → 717 passing.
+- **Audit doc** `docs/audit/2026-05-09-1.11-closeout-audit.md`
+  — covers every surface added in 1.11.0 / 1.11.1 / 1.11.2.
+  0 CRITICAL / 0 HIGH / 0 MEDIUM / 1 LOW (FINDING-007, fixed
+  in-pass). Carryover findings table from the 2026-04-23
+  pre-1.0 audit.
+
+### Fixed
+
+- **FINDING-007 (LOW, audit pass).** `grammar_load`'s blob
+  path didn't clamp the copy loop against `GRAMMAR_FILE_CAP -
+  1`. Defense-in-depth — today's largest grammar is 6.7KB vs
+  a 32KB cap, but a future grammar past 32KB would overflow
+  the alloc'd buffer. One-line clamp added before the copy.
+
+### Changed
+
+- **CI runs `cyrius fuzz` on every PR.** New step in
+  `.github/workflows/ci.yml` after the smoke test. Failing
+  any harness invariant blocks the merge.
+
 ## [1.11.2] — 2026-05-08
 
 Third (and final) sub-cut of the 1.11.x window. **Content-based

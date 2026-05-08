@@ -684,7 +684,13 @@ fn grammar_load(path) {
         # cstrs out of slices, so we can't hand it the literal —
         # copy into a writable buffer first. Same buffer shape as
         # the file path so the parser sees identical input.
+        # Clamp length defensively against GRAMMAR_FILE_CAP per
+        # FINDING-007 (2026-05-09 audit) — today the largest
+        # bundled grammar is ~7KB vs a 32KB cap, but a future
+        # grammar growth past the cap would overflow the alloc'd
+        # buffer without this clamp.
         var bn = strlen(blob);
+        if (bn > GRAMMAR_FILE_CAP - 1) { bn = GRAMMAR_FILE_CAP - 1; }
         var i = 0;
         while (i < bn) {
             store8(buf + i, load8(blob + i));

@@ -2044,6 +2044,141 @@ fn main() {
     assert_streq(detect_language_combined("foo.S", asm_arm, strlen(asm_arm)),
                  "asm_aarch64", "combined: .S + arm signals -> aarch64");
 
+    test_group("1.12.0 stress — pathological backtracking and nested compose");
+
+    # 1. Unbalanced pair openers — runaway `/* …` with no `*/`,
+    # runaway `"…` with no closing quote. Scanner should consume
+    # to EOF and emit one big token, not loop forever.
+    var st_runaway_block = "/* this never closes and contains no terminator at all just bytes";
+    var tb_st1 = tokenbuf_new();
+    var gc = registry_find_by_name("c");
+    if (gc == 0) {
+        # Bootstrap if needed (test order may not have visited c yet).
+        gc = grammar_load("grammars/c.cyml");
+        registry_add(gc);
+    }
+    tokenize_with_grammar(gc, st_runaway_block, strlen(st_runaway_block), tb_st1);
+    assert(tokenbuf_count(tb_st1) >= 1, "runaway block comment: at least one token");
+    var sum_st1 = 0;
+    var st1i = 0;
+    while (st1i < tokenbuf_count(tb_st1)) {
+        sum_st1 = sum_st1 + tokenbuf_len(tb_st1, st1i);
+        st1i = st1i + 1;
+    }
+    assert_eq(sum_st1, strlen(st_runaway_block), "runaway block comment: coverage holds");
+
+    var st_runaway_str = "\"runaway string with no closing quote at all";
+    var tb_st2 = tokenbuf_new();
+    tokenize_with_grammar(gc, st_runaway_str, strlen(st_runaway_str), tb_st2);
+    var sum_st2 = 0;
+    var st2i = 0;
+    while (st2i < tokenbuf_count(tb_st2)) {
+        sum_st2 = sum_st2 + tokenbuf_len(tb_st2, st2i);
+        st2i = st2i + 1;
+    }
+    assert_eq(sum_st2, strlen(st_runaway_str), "runaway string: coverage holds");
+
+    # 2. Block-comment soup — overlapping `/* */ /* */` patterns
+    # that have caught greedy matchers in other tokenizers.
+    var st_soup = "/*/*/*/* nested-looking but really linear */ */ */ */";
+    var tb_st3 = tokenbuf_new();
+    tokenize_with_grammar(gc, st_soup, strlen(st_soup), tb_st3);
+    var sum_st3 = 0;
+    var st3i = 0;
+    while (st3i < tokenbuf_count(tb_st3)) {
+        sum_st3 = sum_st3 + tokenbuf_len(tb_st3, st3i);
+        st3i = st3i + 1;
+    }
+    assert_eq(sum_st3, strlen(st_soup), "block-comment soup: coverage holds");
+
+    # 3. Broken UTF-8 mid-ident. Continuation byte (0x80) without
+    # a leading byte must not crash; falls through to TK_ERROR or
+    # TK_OPERATOR depending on grammar but coverage still holds.
+    var st_bad_utf8 = alloc(64);
+    store8(st_bad_utf8,      102);   # 'f'
+    store8(st_bad_utf8 + 1,  111);   # 'o'
+    store8(st_bad_utf8 + 2,  111);   # 'o'
+    store8(st_bad_utf8 + 3,  128);   # 0x80 — UTF-8 continuation, no lead byte
+    store8(st_bad_utf8 + 4,  98);    # 'b'
+    store8(st_bad_utf8 + 5,  97);    # 'a'
+    store8(st_bad_utf8 + 6,  114);   # 'r'
+    store8(st_bad_utf8 + 7,  0);
+    var tb_st4 = tokenbuf_new();
+    tokenize_with_grammar(gc, st_bad_utf8, 7, tb_st4);
+    var sum_st4 = 0;
+    var st4i = 0;
+    while (st4i < tokenbuf_count(tb_st4)) {
+        sum_st4 = sum_st4 + tokenbuf_len(tb_st4, st4i);
+        st4i = st4i + 1;
+    }
+    assert_eq(sum_st4, 7, "broken UTF-8 mid-ident: coverage holds");
+
+    # 4. Mismatched compose markers — `<style>` opener, no
+    # `</style>` closer. The compose handler must fall through to
+    # the regular HTML scanner for the body bytes (graceful
+    # degradation). Coverage still holds.
+    var st_unclosed_compose = "<style>body { color: red ;";
+    var tb_st5 = tokenbuf_new();
+    var ghtml_st = registry_find_by_name("html");
+    if (ghtml_st == 0) {
+        ghtml_st = grammar_load("grammars/html.cyml");
+        registry_add(ghtml_st);
+    }
+    tokenize_with_grammar(ghtml_st, st_unclosed_compose, strlen(st_unclosed_compose), tb_st5);
+    var sum_st5 = 0;
+    var st5i = 0;
+    while (st5i < tokenbuf_count(tb_st5)) {
+        sum_st5 = sum_st5 + tokenbuf_len(tb_st5, st5i);
+        st5i = st5i + 1;
+    }
+    assert_eq(sum_st5, strlen(st_unclosed_compose),
+              "unclosed <style> compose: coverage holds");
+
+    # 5. Deeply nested compose. Build "<style></style><style></style>...":
+    # six adjacent compose blocks. Verifies the recursive call in
+    # _ds_try_compose_rules is bounded — not a tail call but shallow
+    # enough to never blow stack on real content. Coverage still
+    # holds across all of it.
+    var st_deep = "<style></style><style></style><style></style><style></style><style></style><style></style>";
+    var tb_st6 = tokenbuf_new();
+    tokenize_with_grammar(ghtml_st, st_deep, strlen(st_deep), tb_st6);
+    var sum_st6 = 0;
+    var st6i = 0;
+    while (st6i < tokenbuf_count(tb_st6)) {
+        sum_st6 = sum_st6 + tokenbuf_len(tb_st6, st6i);
+        st6i = st6i + 1;
+    }
+    assert_eq(sum_st6, strlen(st_deep), "6× repeated compose: coverage holds");
+    # Each `<style>` and `</style>` are length-7/8 punctuation
+    # markers; with 6 of each we must see at least 12 marker-class
+    # tokens.
+    var marker_count = 0;
+    var st6j = 0;
+    while (st6j < tokenbuf_count(tb_st6)) {
+        var tklen = tokenbuf_len(tb_st6, st6j);
+        if ((tklen == 7) || (tklen == 8)) {
+            if (tokenbuf_kind(tb_st6, st6j) == TK_PUNCTUATION) {
+                marker_count = marker_count + 1;
+            }
+        }
+        st6j = st6j + 1;
+    }
+    assert(marker_count >= 12, "6× compose: at least 12 marker tokens");
+
+    # 6. Long single-line input — 4KB of repeated `a`'s. Tokenizer
+    # must not hit any quadratic behaviour on long ident runs.
+    var st_long = alloc(4096);
+    var lk = 0;
+    while (lk < 4000) {
+        store8(st_long + lk, 97);   # 'a'
+        lk = lk + 1;
+    }
+    store8(st_long + 4000, 0);
+    var tb_st7 = tokenbuf_new();
+    tokenize_with_grammar(gc, st_long, 4000, tb_st7);
+    assert_eq(tokenbuf_count(tb_st7), 1, "4KB ident run: one token");
+    assert_eq(tokenbuf_len(tb_st7, 0), 4000, "4KB ident run: span covers everything");
+
     test_group("version string shape");
     # VYK_VERSION lives in src/version_str.cyr (auto-generated by
     # scripts/version-bump.sh). Asserting shape, not value, so the

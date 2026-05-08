@@ -64,6 +64,14 @@ jobs:
       - name: Smoke test
         run: sh scripts/smoke.sh build/vyk
 
+      # Fuzz harnesses — one per public API entry. Random /
+      # adversarial inputs through tokenize_source, the three
+      # detect_language* entries, and the CYML grammar parser.
+      # All hold the documented invariants (coverage, no crash,
+      # registered-name return). Audit doc 2026-05-09 §3.
+      - name: Fuzz harnesses
+        run: cyrius fuzz
+
       # Owl and other downstream consumers pull
       # `[deps.vyakarana] modules = ["dist/vyakarana.cyr"]` at a
       # tag — so the committed bundle must match what `cyrius

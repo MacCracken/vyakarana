@@ -1,0 +1,174 @@
+# vyakarana — fuzz harness for detect_language*
+#
+# Exercises the three detection entries against varied inputs.
+# Asserts:
+#
+#   1. Each entry returns either 0 or a cstr pointer the caller
+#      can safely strlen and pass to has_grammar.
+#   2. Returned names match exactly one of the bundled grammar
+#      names — no garbage cstrs, no off-by-one slice into a
+#      string-literal pool.
+#   3. Doesn't crash on adversarial paths (long basenames, NUL in
+#      mid-buffer for the byte API, BOM-only inputs, etc.).
+
+include "src/token.cyr"
+include "src/grammar.cyr"
+include "src/tokenize.cyr"
+include "src/detect.cyr"
+
+# Same xorshift as fuzz/tokenize.fcyr; deterministic.
+var _detect_state = 14695981039346656037;
+
+fn _detect_rand() {
+    var x = _detect_state;
+    x = x ^ (x << 13);
+    x = x ^ (x >> 7);
+    x = x ^ (x << 17);
+    _detect_state = x;
+    return x;
+}
+
+fn _detect_fill(buf, n) {
+    var i = 0;
+    while (i < n) {
+        store8(buf + i, _detect_rand() & 255);
+        i = i + 1;
+    }
+    store8(buf + n, 0);
+    return 0;
+}
+
+# A non-zero return must point to a cstr whose strlen is reasonable
+# (1..32) and which has_grammar accepts. Anything else is a bug.
+fn _detect_check_lang(name, label) {
+    if (name == 0) { return 0; }
+    var l = strlen(name);
+    if (l == 0) {
+        eprint("FAIL: ", 6); eprint(label, strlen(label));
+        eprint(" — empty cstr returned\n", 24);
+        return 1;
+    }
+    if (l > 32) {
+        eprint("FAIL: ", 6); eprint(label, strlen(label));
+        eprint(" — implausibly long cstr returned\n", 35);
+        return 1;
+    }
+    if (has_grammar(name) == 0) {
+        eprint("FAIL: ", 6); eprint(label, strlen(label));
+        eprint(" — returned name not a registered grammar: ", 44);
+        eprint(name, l);
+        eprint("\n", 1);
+        return 1;
+    }
+    return 0;
+}
+
+fn fuzz_main(data, n) {
+    # Seed grammar registry.
+    tokenize_source("", "shell");
+
+    # 1. Path API — fixed adversarial paths.
+    if (_detect_check_lang(detect_language(""),                "path/empty")     != 0) { return 1; }
+    if (_detect_check_lang(detect_language("."),               "path/dot")       != 0) { return 1; }
+    if (_detect_check_lang(detect_language(".s"),              "path/dotS")      != 0) { return 1; }
+    if (_detect_check_lang(detect_language("/"),               "path/slash")     != 0) { return 1; }
+    if (_detect_check_lang(detect_language("///foo.sh"),       "path/slashes")   != 0) { return 1; }
+    if (_detect_check_lang(detect_language("Dockerfile.bak"),  "path/df-bak")    != 0) { return 1; }
+    if (_detect_check_lang(detect_language("foo.sh.bak"),      "path/sh-bak")    != 0) { return 1; }
+
+    # Long path — all bytes random ASCII-ish, no extension match.
+    var lp = alloc(2048);
+    var i = 0;
+    while (i < 2000) {
+        store8(lp + i, 65 + (_detect_rand() & 25));
+        i = i + 1;
+    }
+    store8(lp + 2000, 0);
+    if (_detect_check_lang(detect_language(lp), "path/long-random") != 0) { return 1; }
+
+    # 2. Content API — random byte sweeps, BOM-only, shebang variants.
+    var cbuf = alloc(4096);
+
+    # Random buffers (NUL-terminated; effective_n via strlen).
+    var sizes_buf = alloc(48);
+    store8(sizes_buf,      10);
+    store8(sizes_buf + 8,  64);
+    store8(sizes_buf + 16, 256);
+    var s = 0;
+    while (s < 3) {
+        var sz = load8(sizes_buf + (s * 8));
+        var iter = 0;
+        while (iter < 16) {
+            _detect_fill(cbuf, sz);
+            if (_detect_check_lang(detect_language_from_content(cbuf, strlen(cbuf)),
+                                    "content/random") != 0) { return 1; }
+            iter = iter + 1;
+        }
+        s = s + 1;
+    }
+
+    # BOM-only content (3 bytes, no payload).
+    store8(cbuf,     239);
+    store8(cbuf + 1, 187);
+    store8(cbuf + 2, 191);
+    store8(cbuf + 3, 0);
+    if (_detect_check_lang(detect_language_from_content(cbuf, 3),
+                            "content/bom-only") != 0) { return 1; }
+
+    # Shebang with NUL mid-line — strlen truncates; should not crash.
+    store8(cbuf,     35);    # '#'
+    store8(cbuf + 1, 33);    # '!'
+    store8(cbuf + 2, 47);    # '/'
+    store8(cbuf + 3, 0);     # NUL
+    store8(cbuf + 4, 0);
+    if (_detect_check_lang(detect_language_from_content(cbuf, strlen(cbuf)),
+                            "content/shebang-nul") != 0) { return 1; }
+
+    # Empty content.
+    if (_detect_check_lang(detect_language_from_content("", 0),
+                            "content/empty") != 0) { return 1; }
+
+    # Garbage `<?xml` lookalikes (truncated prefix).
+    if (_detect_check_lang(detect_language_from_content("<?", 2),
+                            "content/short-pi") != 0) { return 1; }
+    if (_detect_check_lang(detect_language_from_content("<!DOC", 5),
+                            "content/short-doctype") != 0) { return 1; }
+
+    # 3. Combined API — path × content cross-product.
+    var pyish = "#!/usr/bin/env python3\n";
+    if (_detect_check_lang(detect_language_combined("foo", pyish, strlen(pyish)),
+                            "combined/extensionless+shebang") != 0) { return 1; }
+    if (_detect_check_lang(detect_language_combined("foo.s", pyish, strlen(pyish)),
+                            "combined/asm-with-py-content") != 0) { return 1; }
+    if (_detect_check_lang(detect_language_combined("", "", 0),
+                            "combined/empty") != 0) { return 1; }
+
+    # Combined with random buffers and various extensions.
+    var exts_buf = alloc(64);
+    var ext_paths = "foo.s\0foo.S\0foo.txt\0bar\0baz.unknown\0";
+    # (Not actually iterating ext_paths — just sanity-check the easy four.)
+    var rb = alloc(2048);
+    var ri = 0;
+    while (ri < 8) {
+        _detect_fill(rb, 256);
+        if (_detect_check_lang(detect_language_combined("foo.s", rb, strlen(rb)),
+                                "combined/.s+random") != 0) { return 1; }
+        if (_detect_check_lang(detect_language_combined("script", rb, strlen(rb)),
+                                "combined/extensionless+random") != 0) { return 1; }
+        ri = ri + 1;
+    }
+
+    return 0;
+}
+
+fn _harness_main() {
+    if (fuzz_main("x", 1) != 0) {
+        eprint("detect fuzz: FAIL\n", 19);
+        return 1;
+    }
+    print("detect fuzz: OK\n", 16);
+    return 0;
+}
+
+var _ec = _harness_main();
+syscall(60, _ec);

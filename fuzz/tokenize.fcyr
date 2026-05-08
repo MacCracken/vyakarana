@@ -1,0 +1,179 @@
+# vyakarana — fuzz harness for tokenize_source
+#
+# Exercises the public tokenize entry against varied inputs across
+# every bundled grammar. Asserts the four invariants that hold by
+# design:
+#
+#   1. tokenize_source never returns 0 (registered grammar always
+#      produces a tokenbuf, even an empty one).
+#   2. Every emitted token has start >= 0 and len > 0.
+#   3. The coverage invariant holds: sum(len) over all tokens
+#      equals strlen(src). One byte → one token's span.
+#   4. Token starts are non-decreasing and span the full source
+#      without gaps or overlap.
+#
+# Inputs:
+#   - Empty buffer.
+#   - 1-byte sweep across every byte value (0..255).
+#   - Pseudorandom buffers (xorshift-seeded; deterministic).
+#   - "Adversarial-looking" inputs that exercise grammar edges.
+#
+# Each input is run against every bundled grammar so a bug in any
+# one grammar's scanner is surfaced.
+
+include "src/token.cyr"
+include "src/grammar.cyr"
+include "src/tokenize.cyr"
+
+# Deterministic xorshift64. Same sequence every run so failures
+# reproduce.
+var _fuzz_state = 88172645463325252;
+
+fn _fuzz_rand() {
+    var x = _fuzz_state;
+    x = x ^ (x << 13);
+    x = x ^ (x >> 7);
+    x = x ^ (x << 17);
+    _fuzz_state = x;
+    return x;
+}
+
+fn _fuzz_fill(buf, n) {
+    var i = 0;
+    while (i < n) {
+        var r = _fuzz_rand();
+        store8(buf + i, r & 255);
+        i = i + 1;
+    }
+    store8(buf + n, 0);
+    return 0;
+}
+
+# Verify the four invariants. Returns 0 on pass, non-zero on
+# violation (with stderr complaint).
+fn _fuzz_check(tb, n_bytes, label) {
+    if (tb == 0) {
+        eprint("FAIL: ", 6); eprint(label, strlen(label));
+        eprint(" — tokenbuf is null\n", 21);
+        return 1;
+    }
+    var ntoks = tokenbuf_count(tb);
+    var sum = 0;
+    var prev_end = 0;
+    var i = 0;
+    while (i < ntoks) {
+        var s = tokenbuf_start(tb, i);
+        var l = tokenbuf_len(tb, i);
+        if (l <= 0) {
+            eprint("FAIL: ", 6); eprint(label, strlen(label));
+            eprint(" — non-positive len\n", 21);
+            return 1;
+        }
+        if (s < 0) {
+            eprint("FAIL: ", 6); eprint(label, strlen(label));
+            eprint(" — negative start\n", 19);
+            return 1;
+        }
+        if (s != prev_end) {
+            eprint("FAIL: ", 6); eprint(label, strlen(label));
+            eprint(" — gap or overlap\n", 19);
+            return 1;
+        }
+        prev_end = s + l;
+        sum = sum + l;
+        i = i + 1;
+    }
+    if (sum != n_bytes) {
+        eprint("FAIL: ", 6); eprint(label, strlen(label));
+        eprint(" — coverage invariant broken\n", 30);
+        return 1;
+    }
+    return 0;
+}
+
+# Run one input across the public API. tokenize_source treats `buf`
+# as a cstr (strlen-determined length), so the coverage invariant
+# is checked against strlen(buf), not the caller's `n` — random
+# NUL bytes early-terminate the buffer, which is correct API
+# behaviour and not a bug.
+fn _fuzz_one(buf, lang, label) {
+    if (has_grammar(lang) == 0) { return 0; }   # skip if not loaded
+    var effective_n = strlen(buf);
+    var tb = tokenize_source(buf, lang);
+    return _fuzz_check(tb, effective_n, label);
+}
+
+fn fuzz_main(data, n) {
+    # Seed the registry on first call. tokenize_source is lazy.
+    var seed = tokenize_source("", "shell");
+    if (seed == 0) {
+        eprint("FAIL: shell grammar didn't load\n", 33);
+        return 1;
+    }
+
+    # 1. Empty buffer.
+    if (_fuzz_one("", "shell",      "empty/shell")      != 0) { return 1; }
+    if (_fuzz_one("", "json",       "empty/json")       != 0) { return 1; }
+    if (_fuzz_one("", "html",       "empty/html")       != 0) { return 1; }
+    if (_fuzz_one("", "asm_x86_64", "empty/asm_x86_64") != 0) { return 1; }
+
+    # 2. 1-byte sweep across all 256 byte values.
+    var buf1 = alloc(2);
+    var b = 0;
+    while (b < 256) {
+        store8(buf1, b);
+        store8(buf1 + 1, 0);
+        if (b == 0) { b = b + 1; continue; }   # cstr-null only
+        if (_fuzz_one(buf1, "shell", "byte/shell") != 0) { return 1; }
+        if (_fuzz_one(buf1, "rust",  "byte/rust")  != 0) { return 1; }
+        if (_fuzz_one(buf1, "html",  "byte/html")  != 0) { return 1; }
+        b = b + 1;
+    }
+
+    # 3. Pseudorandom buffers across multiple sizes / grammars.
+    var sizes_buf = alloc(48);
+    store8(sizes_buf,      10);
+    store8(sizes_buf + 8, 100);
+    store8(sizes_buf + 16, 250);
+    var random_buf = alloc(4096);
+    var s = 0;
+    while (s < 3) {
+        var sz = load8(sizes_buf + (s * 8));
+        var iter = 0;
+        while (iter < 16) {
+            _fuzz_fill(random_buf, sz);
+            if (_fuzz_one(random_buf, "shell",  "rand/shell")  != 0) { return 1; }
+            if (_fuzz_one(random_buf, "rust",   "rand/rust")   != 0) { return 1; }
+            if (_fuzz_one(random_buf, "json",   "rand/json")   != 0) { return 1; }
+            if (_fuzz_one(random_buf, "python", "rand/python") != 0) { return 1; }
+            if (_fuzz_one(random_buf, "html",   "rand/html")   != 0) { return 1; }
+            if (_fuzz_one(random_buf, "asm_x86_64", "rand/asm_x86_64") != 0) { return 1; }
+            iter = iter + 1;
+        }
+        s = s + 1;
+    }
+
+    # 4. Adversarial-looking inputs.
+    var adv1 = "<style>{<script><<<<</style>";   # nested compose with garbage
+    if (_fuzz_one(adv1, "html", "adv/nested-compose") != 0) { return 1; }
+
+    var adv2 = "/*/*/*/*";   # block-comment confusion
+    if (_fuzz_one(adv2, "c", "adv/comment-soup") != 0) { return 1; }
+
+    var adv3 = "\"\\\"\\\\\"";   # string + escape jumble
+    if (_fuzz_one(adv3, "rust", "adv/escape-jumble") != 0) { return 1; }
+
+    return 0;
+}
+
+fn _harness_main() {
+    if (fuzz_main("x", 1) != 0) {
+        eprint("tokenize fuzz: FAIL\n", 21);
+        return 1;
+    }
+    print("tokenize fuzz: OK\n", 18);
+    return 0;
+}
+
+var _ec = _harness_main();
+syscall(60, _ec);
