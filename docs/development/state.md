@@ -4,15 +4,17 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–1.2.2 are
+> **Read this file before doing anything.** 1.0.0–1.2.3 are
 > shipped. As of 2026-05-08 the toolchain pin is `cyrius = "5.9.36"`.
-> 1.2.x history so far: 1.2.0 added Go and Zig; 1.2.1 closed the
-> `'\n'` char-literal-with-escape gap via a new
-> `[defaults] char_literal` flag (ADR 0010); **1.2.2 adds the
-> `asm_x86_64` grammar** (Intel syntax, GAS directives as
-> keywords, opcodes/registers as ident per ADR 0004). All three
-> gates are green at 1.2.2. The 1.2.x line continues with
-> `asm_aarch64` and `openqasm` — see §Next up.
+> 1.2.x history: 1.2.0 added Go and Zig; 1.2.1 shipped
+> `[defaults] char_literal` (ADR 0010); 1.2.2 shipped
+> `asm_x86_64` (Intel syntax); **1.2.3 ships `asm_aarch64`** —
+> same tokenizer with ARM-specific tuning (`//` line comments,
+> `#` immediate-prefix as operator, `.` in both ident_start and
+> ident_cont so `b.eq`/`b.ne` are one ident). All 7 vidya
+> `asm_aarch64.s` spot-checks come back clean. Three gates green
+> at 1.2.3. **One cut left in 1.2.x: 1.2.4 closeout / P(-1)
+> hardening** — see §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -32,30 +34,40 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `1.2.2` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `1.2.3` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`. Tagged predecessors:
   `1.0.0` / `1.0.1` (ANSI-escape sanitizer) /
   `1.0.2` (distlib bundle) / `1.0.3` (cyrius 5.9.36 pin) /
   `1.1.0` (Rust `$`-macros, TOML triple-quoted, `unicode_ident`
-  + C block comments) / `1.2.0` (Go + Zig grammars) /
-  `1.2.1` (`char_literal` flag — ADR 0010).
-- **What 1.2.2 added:** `asm_x86_64` grammar
-  (`grammars/asm_x86_64.cyml` + `tests/corpus/asm_x86_64.s`).
-  Intel-syntax GAS, `.`-prefixed directives via `ident_start`,
-  ~50 GAS directives in the keyword set; opcodes and registers
-  stay as `TK_IDENT` per ADR 0004. Canonical sample: 1655
-  tokens, zero errors. 6 of 7 vidya `asm_x86_64.s` spot-checks
-  clean; the seventh (`binary_formats`) uses AT&T syntax
-  (`%rax`, `$1`) which is documented as a future ADR
-  candidate. Wired into `bootstrap_grammars`, `detect_language`
-  (`.s`/`.S` default to `asm_x86_64`), smoke loop (now 14
-  grammars), and four probe assertions. Test count: 431
-  (was 422 at 1.2.1).
-- **Smoke loop refactor in 1.2.2:** the corpus round-trip now
-  passes `--language=` explicitly so the test is robust to
-  extension collisions (the upcoming `asm_aarch64` will share
-  `.s` with `asm_x86_64`). Extension dispatch coverage stays in
-  the existing `--list-languages` probe.
+  + C block comments) / `1.2.0` (Go + Zig) /
+  `1.2.1` (`char_literal` flag — ADR 0010) /
+  `1.2.2` (`asm_x86_64`).
+- **What 1.2.3 added:** `asm_aarch64` grammar
+  (`grammars/asm_aarch64.cyml` + `tests/corpus/asm_aarch64.s`,
+  1367 tokens, zero errors). Same data-driven tokenizer as
+  `asm_x86_64` with ARM-specific tuning: `//` line comments
+  instead of `#`, `#` as operator (immediate prefix), `!` as
+  operator (write-back addressing), and **`.` in both
+  `ident_start` and `ident_cont`** so conditional branches
+  (`b.eq` / `b.ne` / `b.lt` / `b.hi`) tokenize as a single
+  ident. ARM-specific GAS directives (`.arch`, `.cpu`, `.fpu`,
+  `.arm`, `.thumb`) join the keyword list. **All 7 vidya
+  `asm_aarch64.s` spot-checks come back at zero errors** —
+  cleaner than `asm_x86_64`'s 6/7 because ARM doesn't have the
+  AT&T-vs-Intel split. Wired into `bootstrap_grammars`, smoke
+  loop (now 15 grammars), and five probe assertions. Test
+  count: 439 (was 431 at 1.2.2).
+- **Roadmap restructured (also in 1.2.3):** `2.x.x` is now
+  reserved for **breaking changes only**. The carried-over
+  M4–M7 work moves to pre-2.0 1.x.x cuts: theme-palette
+  contract + vidya reverse consumption → 1.10.0, external
+  integrations → 1.11.0, fuzz/stress harness → 1.12.0, RC
+  polish → 1.13.0. **2.0.0 is now the streaming-tokenizer
+  return-type change alone.**
+- **Dispatch:** `.s` and `.S` continue to default to
+  `asm_x86_64`. ARM users pass `--language=asm_aarch64`. A
+  content-based fallback (sniff `.arch` / `.cpu` directives or
+  ARM register names) is on the books for 1.11.0.
 - **Grammar record:** unchanged at 152 bytes since 1.2.1.
 - **Toolchain pin:** `cyrius = "5.9.36"` in `cyrius.cyml`
   (unchanged since 1.0.3).
@@ -109,16 +121,22 @@ additions land).
 
 ## Next up — finish the 1.2.x line
 
-- **1.2.3 — `asm_aarch64` grammar.** Same shape as `asm_x86_64`
-  with ARM opcodes / registers (`x0`-`x30`, `w0`-`w30`,
-  `sp`/`pc`/`lr`). Opcodes/registers stay as `TK_IDENT` (the
-  set is huge); ARM-specific directives (`.arch`, `.cpu`,
-  `.fpu`) join the keyword list.
-- **1.2.4 — closeout / P(-1) hardening.** Per CLAUDE.md
-  §Closeout pass. Full clean rebuild, dead-code audit, stale
-  comment sweep, doc sync, roadmap refresh (the 1.1.0 plan in
-  `roadmap.md` doesn't match what 1.1.0 actually shipped, and
-  the 2.x.x section needs to absorb the post-1.x backlog).
+- **1.2.4 — closeout / P(-1) hardening.** The last cut in 1.2.x.
+  Per CLAUDE.md §Closeout pass:
+  - Full test suite passes (439+/439+).
+  - Full smoke script — every language corpus round-trips.
+  - Dead-code audit (`cyrius build` "dead:" output).
+  - Stale-comment sweep — old version refs, outdated TODO(M?)
+    markers, ADR pointers to moved files.
+  - Doc sync — CHANGELOG `[Unreleased]` collapses cleanly,
+    state.md matches reality, roadmap is current.
+  - Clean build — `rm -rf build && cyrius deps && cyrius build`
+    from scratch.
+  - Downstream check — owl still builds against the new tag.
+
+After 1.2.4, the 1.x line continues per the
+[restructured roadmap](./roadmap.md): 1.3.0 is JVM + C-family
+languages.
 
 Each new grammar is a `grammars/<name>.cyml` plus a
 `tests/corpus/<name>.<ext>` (vidya snapshot per
@@ -179,5 +197,6 @@ live in [`../architecture/`](../architecture/). Refresh history:
 2026-05-08 (1.1.0 cut + modernization fixes + docs reshape per
 AGNOS first-party-documentation standard); 2026-05-08 (1.2.0 cut
 + Go and Zig grammars); 2026-05-08 (1.2.1 cut + `char_literal`
-flag); 2026-05-08 (1.2.2 cut + `asm_x86_64` grammar). Next
-refresh: when 1.2.3 (asm_aarch64) ships.*
+flag); 2026-05-08 (1.2.2 cut + `asm_x86_64`); 2026-05-08
+(1.2.3 cut + `asm_aarch64` + roadmap restructure). Next refresh:
+when 1.2.4 (closeout) ships.*

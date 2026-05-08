@@ -4,6 +4,47 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+_No unreleased changes._
+
+## [1.2.3] — 2026-05-08
+
+### Added
+
+- **`asm_aarch64` grammar.** New `grammars/asm_aarch64.cyml` +
+  `tests/corpus/asm_aarch64.s` (snapshot of
+  `vidya/content/lexing_and_parsing/asm_aarch64.s`, 8037 B,
+  1367 tokens at zero `error` kinds). ARM 64-bit assembly. Same
+  data-driven tokenizer as `asm_x86_64` with ARM-specific tuning:
+  - `//` line comments (NOT `#` — `#` is the immediate-operand
+    prefix in ARM, e.g. `mov w0, #5`, and tokenizes as a 1-byte
+    operator).
+  - `/* … */` block comments via the standard pair rule.
+  - `.` is in BOTH `ident_start` and `ident_cont` (vs.
+    `asm_x86_64` where it's only in `ident_start`), so ARM
+    conditional branches `b.eq` / `b.ne` / `b.lt` / `b.hi` / etc.
+    tokenize as a single `ident`. Same trick captures `.global`,
+    `.is_digit_yes` (local label), and bare `.` (current-address)
+    uniformly.
+  - Operator set adds `!` (write-back addressing mode, e.g.
+    `[sp, #-16]!`).
+  - Keyword list shares the GAS directive set with `asm_x86_64`
+    plus ARM-specific `.arch`, `.cpu`, `.fpu`, `.arm`, `.thumb`,
+    `.code`, `.thumb_func`, `.req`, `.unreq`.
+  - Opcodes (`mov`, `bl`, `stp`, `ldp`, `ldrb`, `ret`, …) and
+    registers (`x0`-`x30`, `w0`-`w30`, `sp`, `pc`, `lr`, …)
+    stay `TK_IDENT` per [ADR 0004](docs/adr/0004-shell-builtins-as-ident.md)
+    — the ARM aarch64 instruction set is too large to enumerate.
+  - **All 7 vidya `asm_aarch64.s` spot-checks come back at zero
+    errors** (cleaner than `asm_x86_64`'s 6/7, since ARM has more
+    uniform syntax across the corpus and there's no AT&T-vs-Intel
+    split). Wired into `bootstrap_grammars`, the smoke loop, and
+    five probe assertions in `tests/vyakarana.tcyr` (439 total
+    passing). `.s` and `.S` continue to default to `asm_x86_64`
+    in `detect_language`; ARM users pass
+    `--language=asm_aarch64` explicitly. Content-based dispatch
+    is in scope for 1.11.0 (external integrations / detection
+    upgrades) per the restructured roadmap.
+
 ### Changed
 
 - **Roadmap restructure.** `docs/development/roadmap.md` rewritten

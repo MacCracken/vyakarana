@@ -1,0 +1,142 @@
+# asm_aarch64 — AArch64 (ARM 64-bit) assembly tokenizer grammar
+#
+# Rule scheme per ADR 0005. Same tokenizer shape as
+# `asm_x86_64.cyml` but tuned for ARM GAS conventions:
+#
+#   - Line comments are `//` (NOT `#` — `#` is the immediate-
+#     operand prefix in ARM, e.g. `mov w0, #5`).
+#   - Block comments `/* … */` follow the same shape as C.
+#   - `.` is in BOTH `ident_start` and `ident_cont` so that ARM
+#     conditional branches (`b.eq`, `b.ne`, `b.lt`, …) tokenize
+#     as a single `ident`. Same trick captures GAS directives
+#     (`.global`, `.section`) and local labels (`.is_digit_yes`).
+#     Bare `.` (current-address marker) still tokenizes as a
+#     length-1 ident — `_ds_scan_ident` returns 1 when the next
+#     byte is whitespace.
+#
+# Dispatch: `.s` and `.S` are shared with `asm_x86_64`; the
+# hardcoded `detect_language` in `src/main.cyr` defaults `.s`
+# to `asm_x86_64`. ARM users invoke `vyk --language=asm_aarch64
+# file.s`. A future content-based detection pass (1.13.0 in the
+# roadmap) could sniff `.arch`/`.cpu` directives or
+# ARM-specific register names and route automatically.
+#
+# Opcodes (`mov`, `bl`, `stp`, `ldp`, `ldrb`, `cmp`, `b.eq`,
+# `ret`, …) and registers (`x0`-`x30`, `w0`-`w30`, `sp`, `pc`,
+# `lr`, `xzr`, `wzr`, …) tokenize as `TK_IDENT`, NOT
+# `TK_KEYWORD`. ARM aarch64 has ~500 instructions plus SIMD/SVE
+# extensions — the keyword-list approach doesn't scale, and per
+# [ADR 0004](../docs/adr/0004-shell-builtins-as-ident.md) the
+# right place to colour opcodes-vs-other-idents is the theme
+# renderer's secondary palette.
+#
+# Known gaps (not triggered by the vidya sample):
+#   - Float literals (`1.5`). Asm rarely uses these inline; the
+#     `.float 1.5` directive form would tokenize as
+#     `keyword(.float)` + `number(1)` + `ident(.5)`. Same
+#     limitation as `asm_x86_64`.
+#   - `;` instruction-separator syntax (rare on ARM). Today
+#     tokenizes as punctuation.
+
+[grammar]
+name = "asm_aarch64"
+extensions = [".s", ".S", ".asm"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+# `.` in both ident_start and ident_cont: captures `b.ne`,
+# `.global`, `.is_digit_yes`, and bare `.` uniformly.
+ident_start = "A-Za-z_."
+ident_cont  = "A-Za-z0-9_."
+
+number_decimal = true
+number_0x      = true
+number_0b      = false
+number_0o      = false
+
+special_vars = false
+
+# UTF-8 in `//` and `/* */` comment text → one ident instead of
+# per-byte errors. ADR 0009.
+unicode_ident = true
+
+# Char literals `'5'`, `'A'`, `'\n'` (used as immediate operand
+# bodies after `#`). ADR 0010.
+char_literal = true
+
+# Operators in longest-match order. ARM-specific: `#` immediate
+# prefix, `!` write-back addressing mode, plus standard
+# expression operators for symbol arithmetic.
+operators = [
+    "==", "!=",
+    "<<", ">>",
+    "<=", ">=",
+    "=", "+", "-", "*", "/", "%",
+    "&", "|", "^", "~",
+    "<", ">",
+    "#", "!",
+]
+
+# Punctuation. `{` `}` for register lists (LDM / STM / TBX),
+# `[` `]` for memory access, `:` for label terminator.
+punctuation = [
+    "(", ")", "[", "]", "{", "}",
+    ";", ",", ":",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+# ARM GAS line comments. Note `#` is the immediate prefix, not
+# a comment marker — handled as an operator above.
+[[rules]]
+kind = "comment"
+match = "line"
+start = "//"
+
+
+# Block comments `/* … */`. Non-nestable, simple greedy match —
+# same shape as the C grammar's rule introduced in ADR 0009.
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "/*"
+end = "*/"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # GAS section / linkage (shared with asm_x86_64)
+    ".section", ".text", ".data", ".bss", ".rodata",
+    ".global", ".globl", ".local", ".extern", ".weak",
+    # ARM-specific architecture / mode directives
+    ".arch", ".cpu", ".fpu", ".arm", ".thumb", ".code",
+    ".thumb_func", ".req", ".unreq",
+    # Data emit (shared with asm_x86_64)
+    ".byte", ".word", ".short", ".long", ".int", ".quad",
+    ".ascii", ".asciz", ".string", ".float", ".double",
+    ".skip", ".zero", ".fill", ".space",
+    # Alignment / layout
+    ".align", ".balign", ".p2align", ".org",
+    # Symbol manipulation
+    ".set", ".equ", ".equiv", ".size", ".type",
+    # Conditional / macro
+    ".if", ".ifdef", ".ifndef", ".else", ".elseif", ".endif",
+    ".macro", ".endm", ".include",
+    # Debug / DWARF
+    ".file", ".loc",
+    ".cfi_startproc", ".cfi_endproc", ".cfi_def_cfa",
+    ".cfi_offset", ".cfi_restore",
+]
