@@ -76,6 +76,7 @@ pkg install vyakarana
 git clone https://github.com/MacCracken/vyakarana
 cd vyakarana
 cyrius deps
+sh scripts/embed-grammars.sh        # inlines grammars/*.cyml; gitignored
 cyrius build src/main.cyr build/vyk
 ```
 

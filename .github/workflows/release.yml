@@ -92,6 +92,11 @@ jobs:
       - name: Resolve dependencies
         run: cyrius deps
 
+      # Generate src/grammar_blobs.cyr (gitignored) — see ADR 0014
+      # and CI's Embed grammars step.
+      - name: Embed grammars
+        run: sh scripts/embed-grammars.sh
+
       - name: Build DCE'd binary
         run: |
           mkdir -p build
