@@ -86,6 +86,73 @@ set -e
 [ "$rc" = "2" ] || fail "unknown-option exit: got $rc, expected 2"
 grep -q "^vyk: unknown option: --frobnicate" "$TMPDIR/err" \
     || fail "unknown-option stderr format wrong: $(cat "$TMPDIR/err")"
+grep -q "try --help" "$TMPDIR/err" \
+    || fail "unknown-option missing --help hint"
+
+# 1.13.1 — error-message audit. Each failure class produces a
+# distinct, actionable message and the documented exit code.
+
+# Bad --theme= value: exit 2, names the value, lists allowed.
+set +e
+"$BIN" --theme=bogus tests/corpus/shell.sh > /dev/null 2> "$TMPDIR/err"
+rc=$?
+set -e
+[ "$rc" = "2" ] || fail "--theme=bogus exit: got $rc, expected 2"
+grep -q "^vyk: invalid value for --theme=bogus" "$TMPDIR/err" \
+    || fail "--theme=bogus stderr wrong: $(cat "$TMPDIR/err")"
+grep -q "default, dark, none" "$TMPDIR/err" \
+    || fail "--theme=bogus missing allowed-values list"
+
+# Bad --export-theme= value.
+set +e
+"$BIN" --export-theme=helxx > /dev/null 2> "$TMPDIR/err"
+rc=$?
+set -e
+[ "$rc" = "2" ] || fail "--export-theme=helxx exit: got $rc, expected 2"
+grep -q "^vyk: invalid value for --export-theme=helxx" "$TMPDIR/err" \
+    || fail "--export-theme=helxx stderr wrong"
+grep -q "vscode, helix, iterm" "$TMPDIR/err" \
+    || fail "--export-theme=helxx missing allowed-values list"
+
+# Extra positional argument.
+set +e
+"$BIN" tests/corpus/shell.sh tests/corpus/concept.json > /dev/null 2> "$TMPDIR/err"
+rc=$?
+set -e
+[ "$rc" = "2" ] || fail "extra-arg exit: got $rc, expected 2"
+grep -q "^vyk: extra argument:" "$TMPDIR/err" \
+    || fail "extra-arg stderr wrong: $(cat "$TMPDIR/err")"
+
+# Missing file (cannot read).
+set +e
+"$BIN" /tmp/vyk-no-such-file-12345 > /dev/null 2> "$TMPDIR/err"
+rc=$?
+set -e
+[ "$rc" = "3" ] || fail "io-error exit: got $rc, expected 3"
+grep -q "^vyk: cannot read /tmp/vyk-no-such-file-12345" "$TMPDIR/err" \
+    || fail "io-error stderr wrong: $(cat "$TMPDIR/err")"
+grep -q "file not found or not readable" "$TMPDIR/err" \
+    || fail "io-error missing reason hint"
+
+# Unknown grammar — extensionless, no shebang/signature match.
+EMPTY_FIXTURE="$TMPDIR/no_match"
+echo "plain text" > "$EMPTY_FIXTURE"
+set +e
+"$BIN" "$EMPTY_FIXTURE" > /dev/null 2> "$TMPDIR/err"
+rc=$?
+set -e
+[ "$rc" = "4" ] || fail "no-grammar exit: got $rc, expected 4"
+grep -q "^vyk: no grammar matched for" "$TMPDIR/err" \
+    || fail "no-grammar stderr wrong"
+grep -q "run --list-languages" "$TMPDIR/err" \
+    || fail "no-grammar missing --list-languages hint"
+
+# --help mentions exit codes (1.13.1 audit).
+"$BIN" --help > "$TMPDIR/help" 2>&1
+grep -q "^Exit codes:" "$TMPDIR/help" \
+    || fail "--help missing Exit codes section"
+grep -q "^Examples:" "$TMPDIR/help" \
+    || fail "--help missing Examples section"
 
 # --theme=<name> renders ANSI-coloured source instead of NDJSON.
 # Probe: `--theme=default` on a real grammar file emits non-empty

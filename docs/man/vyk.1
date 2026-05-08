@@ -1,0 +1,194 @@
+.\" vyk(1) — man page for the vyakarana CLI
+.\" Format: groff_man(7).  Render with `man -l docs/man/vyk.1`
+.\"           or `groff -man -Tutf8 docs/man/vyk.1 | less -R`.
+.\"
+.\" Update procedure: this page mirrors `vyk --help` (src/main.cyr
+.\" `print_help`).  When changing one, refresh the other and the
+.\" 1.13.1 smoke probes.
+.\"
+.TH VYK 1 "2026-05-08" "vyakarana 1.13.1" "User Commands"
+.SH NAME
+vyk \- source-code tokenizer (vyakarana demo CLI)
+.SH SYNOPSIS
+.B vyk
+[\fIOPTIONS\fR]
+[\fIFILE\fR]
+.SH DESCRIPTION
+.B vyk
+reads
+.I FILE
+and emits one NDJSON record per recognized token, or ANSI-coloured
+source bytes when
+.B \-\-theme=
+is given.
+.PP
+Detection is automatic: extension first
+.RI "(" .sh ", " .py ", " ".rs," " ...),"
+content sniff for extensionless files (shebang, BOM, magic
+bytes), and an asm flavour vote for
+.IR .s / .S .
+Override with
+.B \-\-language=<name>\fR.
+.PP
+Without
+.IR FILE ,
+.B vyk
+prints help and exits 0.
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Print help and exit.
+.TP
+.BR \-V ", " \-\-version
+Print version and exit.
+.TP
+.B \-\-list-kinds
+Print the ten token kinds and exit.
+.TP
+.B \-\-list-languages
+Print every loaded grammar name and exit.
+.TP
+.BI \-\-language= name
+Override extension/content detection. Run
+.B \-\-list-languages
+for valid names.
+.TP
+.BI \-\-theme= name
+Render ANSI-coloured source instead of NDJSON. Bundled themes:
+.BR default ", " dark ", " none .
+See
+.I docs/architecture/004-theme-palette-contract.md
+for the kind\(->slot mapping.
+.TP
+.BI \-\-export-theme= format
+Emit a theme file for the named editor format and exit. Formats:
+.BR vscode " (theme.json),"
+.BR helix " (theme.toml),"
+.BR iterm " (.itermcolors plist)."
+Pair with
+.B \-\-theme=<name>
+to pick the source palette (default:
+.BR default ).
+.TP
+.B \-\-handcoded
+Route through the M1 hand-coded shell oracle. Regression
+diagnostic for the shell grammar only.
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+Tokenization produced one or more
+.I error
+token kinds (grammar gap or malformed input).
+.TP
+.B 2
+Bad command-line usage. Run
+.B \-\-help
+for syntax.
+.TP
+.B 3
+Cannot read
+.IR FILE :
+file not found or not readable.
+.TP
+.B 4
+No grammar matched
+.IR FILE .
+Run
+.B \-\-list-languages
+to see all bundled names, then retry with
+.B \-\-language=<name>\fR.
+.SH EXAMPLES
+NDJSON tokens to stdout:
+.PP
+.RS
+.nf
+\fBvyk script.sh\fR
+.fi
+.RE
+.PP
+ANSI-coloured render with the dark theme:
+.PP
+.RS
+.nf
+\fBvyk \-\-theme=dark file.rs\fR
+.fi
+.RE
+.PP
+Tokenize an extensionless script via explicit language:
+.PP
+.RS
+.nf
+\fBvyk \-\-language=python script\fR
+.fi
+.RE
+.PP
+Emit a VS Code theme file:
+.PP
+.RS
+.nf
+\fBvyk \-\-export-theme=vscode > theme.json\fR
+.fi
+.RE
+.PP
+Discover available grammar names:
+.PP
+.RS
+.nf
+\fBvyk \-\-list-languages | grep ml\fR
+.fi
+.RE
+.SH OUTPUT
+NDJSON records, one per line:
+.PP
+.RS
+.nf
+{"kind":"keyword","start":0,"len":2}
+.fi
+.RE
+.PP
+Where
+.I kind
+is one of:
+.B ident, keyword, string, number, comment, operator,
+.B punctuation, whitespace, preprocessor, error;
+.I start
+is a 0-indexed byte offset into
+.IR FILE ;
+and
+.I len
+is the token's byte length. Every input byte maps to exactly
+one token's
+.RI [ start ", " start + len )
+span (the
+.I coverage invariant\fR).
+.SH FILES
+.TP
+.I dist/vyakarana.cyr
+Single-file bundle for downstream
+.BR cyrius (1)
+consumers. Includes all 38 grammars inlined as Cyrius string
+literals.
+.TP
+.I grammars/<name>.cyml
+Source grammar definitions. Authored by hand, embedded by
+.B scripts/embed-grammars.sh
+into the bundle.
+.SH SEE ALSO
+.BR cyrius (1),
+.BR owl (1).
+.PP
+Project documentation:
+.IR vyakarana-design-spec.md ,
+.IR docs/development/state.md ,
+.IR docs/adr/ .
+.SH AUTHORS
+Robert MacCracken and contributors.
+.SH BUGS
+Report at
+.UR https://github.com/MacCracken/vyakarana/issues
+.UE .
+Security advisories per
+.IR SECURITY.md .

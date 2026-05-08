@@ -4,15 +4,17 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–1.13.0 are
+> **Read this file before doing anything.** 1.0.0–1.13.1 are
 > shipped. As of 2026-05-08 the toolchain pin is `cyrius = "5.9.36"`.
 > 1.11.x closed the external-integrations wave; 1.12.x added
-> hardening + theme-export polish. **1.13.0 establishes the
-> pre-2.0 performance baseline** — 8-benchmark suite under
-> `tests/bcyr/`, binary-size measurement, performance.md doc.
-> 38 grammars bundled (unchanged), 717/717 tests passing,
-> 3/3 fuzz harnesses passing. Next is 1.13.1 (error messages
-> + man page audit) — see §Next up.
+> hardening + theme-export polish; 1.13.0 set the pre-2.0
+> performance baseline. **1.13.1 polishes the CLI surface**
+> — error messages split by failure class, `--help` gets
+> Exit-codes and Examples sections, and a real `vyk(1)` man
+> page ships under `docs/man/`. 38 grammars bundled
+> (unchanged), 717/717 tests passing, 3/3 fuzz harnesses
+> passing. Next is 1.13.2 (markdown fence routing) — see
+> §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -32,8 +34,22 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `1.13.0` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `1.13.1` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`. Full 1.x tag history in the CHANGELOG.
+- **What 1.13.1 added (CLI polish cut):**
+  - **Error messages split by failure class.**
+    `unknown_option_error` / `bad_value_error` /
+    `extra_arg_error` / `io_error` / `no_grammar_error` —
+    each names the problem and points to the next step
+    (allowed values, `--list-languages`, `--help`).
+    `usage_error` removed.
+  - **`vyk --help` Exit-codes + Examples sections.**
+    Documents exits 0–4 explicitly; five canonical
+    invocations.
+  - **`docs/man/vyk.1`** — groff man page mirroring
+    `--help`. Render with `groff -man -Tutf8 …` or `man
+    -l`.
+  - 9 new smoke probes covering every failure class.
 - **What 1.13.0 added (performance baseline cut):**
   - **`tests/bcyr/vyakarana.bcyr`** — 8-benchmark suite
     covering tokenize (shell / rust / json / html-compose),

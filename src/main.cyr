@@ -35,18 +35,23 @@ fn print_version() {
 }
 
 fn print_help() {
-    println("vyk — vyakarana demo CLI");
+    println("vyk — vyakarana source-code tokenizer (demo CLI)");
     println("");
     println("Usage: vyk [OPTIONS] [FILE]");
+    println("");
+    println("Tokenize FILE and print one NDJSON record per token, or");
+    println("emit ANSI-coloured source bytes when --theme= is set.");
+    println("Without FILE, exits with --help text.");
     println("");
     println("Options:");
     println("  -h, --help             Print this help and exit");
     println("  -V, --version          Print version and exit");
-    println("      --list-kinds       Print the ten token kinds");
-    println("      --list-languages   Print loaded grammars");
-    println("      --language=<lang>  Override language detection");
+    println("      --list-kinds       Print the ten token kinds and exit");
+    println("      --list-languages   Print loaded grammars and exit");
+    println("      --language=<lang>  Override extension/content detection");
+    println("                         (run --list-languages for valid names)");
     println("      --theme=<name>     Render ANSI-coloured source instead");
-    println("                         of NDJSON. Themes: default, dark, none.");
+    println("                         of NDJSON. Names: default, dark, none.");
     println("                         See docs/architecture/004-theme-palette-contract.md.");
     println("      --export-theme=<format>  Emit a theme file for the named");
     println("                         editor format and exit. Formats:");
@@ -54,9 +59,28 @@ fn print_help() {
     println("                         iterm (.itermcolors plist).");
     println("                         Pair with --theme=<name> to pick the");
     println("                         palette (default: default).");
+    println("      --handcoded        Use the M1 hand-coded shell oracle");
+    println("                         (regression diagnostic; shell only)");
     println("");
-    println("If FILE is given without --theme, tokens are printed as NDJSON:");
+    println("Exit codes:");
+    println("  0  success");
+    println("  1  tokenization produced an `error` token kind");
+    println("  2  bad command-line usage (run --help)");
+    println("  3  cannot read FILE (not found or not readable)");
+    println("  4  no grammar matched FILE");
+    println("");
+    println("Examples:");
+    println("  vyk script.sh                    # NDJSON tokens to stdout");
+    println("  vyk --theme=dark file.rs         # ANSI-coloured render");
+    println("  vyk --language=python script     # extensionless file");
+    println("  vyk --export-theme=vscode > theme.json   # editor theme");
+    println("  vyk --list-languages | grep ml   # discover grammar names");
+    println("");
+    println("NDJSON output shape:");
     println("  {\"kind\":\"keyword\",\"start\":0,\"len\":2}");
+    println("  Kinds: ident, keyword, string, number, comment,");
+    println("         operator, punctuation, whitespace,");
+    println("         preprocessor, error.");
     return 0;
 }
 
@@ -107,7 +131,16 @@ fn _sanitize_for_stderr(s) {
     return out;
 }
 
-fn usage_error(flag) {
+# Error functions split by failure class (1.13.1):
+#   - unknown_option_error(flag)        — `--bogus` style
+#   - bad_value_error(flag, allowed)    — `--theme=nope`
+#   - extra_arg_error(arg)              — second positional file
+#   - io_error(path)                    — file read failed
+#   - no_grammar_error(path)            — extension/content didn't match
+# Each one tells the user *what* the problem is and *what* to do
+# next. The `try --help` reference is consistent across all.
+
+fn unknown_option_error(flag) {
     var msg1 = "vyk: unknown option: ";
     eprint(msg1, strlen(msg1));
     var safe = _sanitize_for_stderr(flag);
@@ -118,12 +151,40 @@ fn usage_error(flag) {
     return 0;
 }
 
+# `flag` is the offending argv (e.g. `--theme=nope`); `allowed`
+# is a comma-separated list of valid values for the user to
+# scan ("default, dark, none").
+fn bad_value_error(flag, allowed) {
+    var msg1 = "vyk: invalid value for ";
+    eprint(msg1, strlen(msg1));
+    var safe = _sanitize_for_stderr(flag);
+    eprint(safe, strlen(safe));
+    eprint("\n", 1);
+    var msg2 = "vyk: allowed values: ";
+    eprint(msg2, strlen(msg2));
+    eprint(allowed, strlen(allowed));
+    eprint("\n", 1);
+    return 0;
+}
+
+fn extra_arg_error(arg) {
+    var msg1 = "vyk: extra argument: ";
+    eprint(msg1, strlen(msg1));
+    var safe = _sanitize_for_stderr(arg);
+    eprint(safe, strlen(safe));
+    eprint("\n", 1);
+    var msg2 = "vyk: only one FILE may be given (try --help)\n";
+    eprint(msg2, strlen(msg2));
+    return 0;
+}
+
 fn io_error(path) {
     var m1 = "vyk: cannot read ";
     eprint(m1, strlen(m1));
     var safe = _sanitize_for_stderr(path);
     eprint(safe, strlen(safe));
-    eprint("\n", 1);
+    var m2 = ": file not found or not readable\n";
+    eprint(m2, strlen(m2));
     return 0;
 }
 
@@ -132,7 +193,7 @@ fn no_grammar_error(path) {
     eprint(m1, strlen(m1));
     var safe = _sanitize_for_stderr(path);
     eprint(safe, strlen(safe));
-    var m2 = " (try --language=shell)\n";
+    var m2 = "\nvyk: try --language=<name> (run --list-languages to see all)\n";
     eprint(m2, strlen(m2));
     return 0;
 }
@@ -305,7 +366,7 @@ fn main() {
         if (themev != 0) {
             theme = theme_resolve(themev);
             if (theme < 0) {
-                usage_error(a);
+                bad_value_error(a, "default, dark, none");
                 return EXIT_USAGE;
             }
             i = i + 1;
@@ -331,14 +392,14 @@ fn main() {
                 theme_export_iterm(which);
                 return EXIT_OK;
             }
-            usage_error(a);
+            bad_value_error(a, "vscode, helix, iterm");
             return EXIT_USAGE;
         }
 
         # First non-flag: treat as a file path. Reject anything else
         # starting with `-` as an unknown option.
         if (load8(a) == 45) {   # `-`
-            usage_error(a);
+            unknown_option_error(a);
             return EXIT_USAGE;
         }
         if (path == 0) {
@@ -346,8 +407,8 @@ fn main() {
             i = i + 1;
             continue;
         }
-        # Second positional — treat as a usage error.
-        usage_error(a);
+        # Second positional — too many file args.
+        extra_arg_error(a);
         return EXIT_USAGE;
     }
 

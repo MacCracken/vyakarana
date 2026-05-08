@@ -6,6 +6,74 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [1.13.1] — 2026-05-08
+
+Second sub-cut of the 1.13.x RC-polish window. **Error
+messages get useful**, `vyk --help` gets Exit-codes and
+Examples sections, and a real **man page** ships under
+`docs/man/vyk.1`. Every CLI failure class now produces a
+specific, actionable message + the documented exit code.
+
+### Added
+
+- **`docs/man/vyk.1` — groff man page.** Mirrors `vyk --help`
+  with NAME / SYNOPSIS / DESCRIPTION / OPTIONS / EXIT STATUS
+  / EXAMPLES / OUTPUT / FILES / SEE ALSO sections. Render
+  with `groff -man -Tutf8 docs/man/vyk.1`. Update procedure
+  documented in the file header — refresh whenever
+  `print_help` changes.
+- **`vyk --help` Exit-codes section.** Lists 0/1/2/3/4 with
+  one-line meanings. Was implicit in spec/state.md before;
+  now explicit at the CLI surface.
+- **`vyk --help` Examples section.** Five canonical
+  invocations: NDJSON tokenize, themed render,
+  extensionless-via-language, `--export-theme=`,
+  `--list-languages | grep`.
+- **`--handcoded` documented.** The M1 hand-coded shell
+  oracle was always present but never appeared in `--help`.
+  Now listed explicitly as a regression diagnostic.
+
+### Changed
+
+- **Error messages split by failure class.** The single
+  `usage_error` was used for four different failure shapes
+  with the same misleading "unknown option" prefix. Now:
+  - `unknown_option_error(flag)` — `--bogus`
+  - `bad_value_error(flag, allowed)` — `--theme=nope`
+    emits `vyk: invalid value for --theme=nope` and lists
+    the allowed values (`default, dark, none`).
+  - `extra_arg_error(arg)` — second positional FILE
+    emits `vyk: extra argument: …` + `only one FILE may
+    be given`.
+  - `unknown_option_error` keeps the original "unknown
+    option:" + "try --help" wording for genuinely unknown
+    flags.
+- **`io_error` adds a reason hint.** Was bare
+  `vyk: cannot read FILE`; now `vyk: cannot read FILE: file
+  not found or not readable`. Cyrius doesn't expose `errno`
+  beyond a negative return from `file_read_all`, so the
+  message is still generic — but actionable enough that a
+  user knows whether to check the path or the permissions.
+- **`no_grammar_error` drops the misleading hint.** Old
+  message ended in `(try --language=shell)` — telling users
+  to override with shell when their file is something else
+  entirely. New message points to `--language=<name>` and
+  `--list-languages`.
+
+### Wiring
+
+- `src/main.cyr` — three new error functions; four call
+  sites migrated from the catch-all `usage_error` to the
+  specific variants. `usage_error` removed (was a shim per
+  CLAUDE.md "no backwards-compat hacks"; nothing else in
+  the codebase referenced it).
+- `scripts/smoke.sh` — 9 new error-message probes covering
+  every failure class + the new `--help` sections.
+- No new tcyr probes — error messages are CLI-surface only.
+- No ADR — error UX changes don't change the documented
+  contract; just refines the wording within the same
+  exit-code mapping.
+
 ## [1.13.0] — 2026-05-08
 
 First sub-cut of the 1.13.x RC-polish window. Establishes the
