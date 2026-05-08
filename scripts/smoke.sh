@@ -47,7 +47,7 @@ done
 
 # --list-languages lists loaded grammars (see bootstrap_grammars in
 # src/tokenize.cyr). Assert presence rather than exact order so that
-# adding grammars in M3 is a one-line change here.
+# adding a new grammar is a one-line change here.
 llist=$("$BIN" --list-languages)
 for lang in shell toml json cyrius rust yaml markdown c typescript javascript python go zig asm_x86_64 asm_aarch64; do
     printf '%s\n' "$llist" | grep -q "^$lang\$" \
@@ -146,11 +146,11 @@ if ! diff -q "$TMPDIR/m1.ndjson" "$TMPDIR/m2.ndjson" > /dev/null; then
 fi
 
 # ============================================================
-# M3 — additional bundled grammars
+# Bundled grammars — corpus round-trip
 # ============================================================
 #
-# Each entry is "language:corpus-path". When adding a new grammar
-# in M3, append a line and the loop does the rest.
+# Each entry is "language:corpus-path". When adding a new grammar,
+# append a line and the loop does the rest.
 
 M3_CORPUS_ENTRIES="
 toml:tests/corpus/concept.toml

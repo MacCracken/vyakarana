@@ -61,8 +61,7 @@ fn print_list_languages() {
     # Enumerate loaded grammars via the registry (src/grammar.cyr).
     # bootstrap_grammars ensures the bundled grammars are loaded —
     # this path doesn't go through tokenize_source / has_grammar so
-    # it needs to trigger the load explicitly. M3 will revisit the
-    # bootstrap shape when there are more grammars.
+    # it needs to trigger the load explicitly.
     bootstrap_grammars();
     var names = vec_new();
     list_languages_into(names);

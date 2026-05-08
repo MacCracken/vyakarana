@@ -74,11 +74,14 @@ Trust boundary:
   buffer-overflow-in-parser classes — vyakarana is immune by
   design to all of them. FINDING-006 (ANSI-escape on echoed
   argv, LOW) was fixed in 1.0.1.
+- [2026-05-08 — 1.2.x closeout audit](docs/audit/2026-05-08-1.2.x-closeout-audit.md)
+  — covers everything since the 2026-04-23 baseline:
+  `unicode_ident` (1.1.0), `char_literal` (1.2.1), and four new
+  grammar files (Go, Zig, asm_x86_64, asm_aarch64). 0 CRITICAL,
+  0 HIGH, 0 MEDIUM, 0 new LOW. Bounds checks on every new
+  `load8` / `alloc` reviewed and confirmed.
 
-State at v1.1.0: 0 CRITICAL, 0 HIGH, 0 MEDIUM. The 1.1.0 cut
-added a `unicode_ident` flag, three new `[[rules]]` entries
-(TOML triple-quoted, C block-comment), and one `ident_start`
-character (`$` in Rust). No new syscall surfaces, no new
-allocation paths, no new pointer arithmetic. The 2026-04-23
-audit's findings remain valid; the next scheduled audit is the
-1.2.x closeout (after the new-language additions).
+State at v1.2.4: 0 CRITICAL, 0 HIGH, 0 MEDIUM. The 2026-04-23
+baseline findings carry forward unchanged. Next scheduled audit
+is the 1.13.0 RC-polish closeout, or sooner if 1.10.x / 1.11.x
+adds public-API surface.

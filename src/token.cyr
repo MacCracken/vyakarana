@@ -38,7 +38,9 @@ fn kind_name(kind) {
     return "<invalid>";
 }
 
-# Coverage check helper — M0 stub, real use in M1+.
+# Coverage check helper — exported in `[lib] modules` so downstream
+# consumers can validate `kind` values they receive from
+# `tokenize_source`.
 fn kind_is_valid(kind) {
     if (kind < 0) { return 0; }
     if (kind >= TK_COUNT) { return 0; }
@@ -112,8 +114,9 @@ fn tokenbuf_push(tb, kind, start, len) {
 }
 
 # Accessors by index (bounds-unchecked — caller must compare to
-# tokenbuf_count). Kept small so the hot-path stays inline-friendly
-# for the streaming work in M5.
+# tokenbuf_count). Kept small so the hot path stays inline-friendly
+# for the streaming-tokenizer work scheduled for 2.0.0 (see
+# `docs/development/roadmap.md`).
 fn _tokenbuf_slot(tb, i) {
     var data = load64(tb);
     return data + i * TOKEN_SIZE;

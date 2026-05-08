@@ -3,15 +3,19 @@
 #   - `tokenize_source(src, lang)` looks up `lang` in the grammar
 #     registry and dispatches to the data-driven default scanner.
 #   - On first call, grammars are loaded from `grammars/<lang>.cyml`
-#     (relative to cwd for now — a proper resolution strategy for
-#     installed binaries is tagged for post-1.0).
+#     (relative to cwd). A proper resolution strategy for installed
+#     binaries is open work — content-based detection / install-path
+#     resolution lands as part of the 1.11.0 external-integrations
+#     wave (see `docs/development/roadmap.md`).
 #   - `tokenize_source_handcoded(src, "shell")` is the hand-coded
 #     M1 path, retained as a regression oracle for smoke.sh's
-#     byte-identical diff check. Candidate for removal in the
-#     hardening / 1.0.0 pass.
+#     byte-identical diff check. Removal candidate for a future
+#     closeout if the data-driven shell grammar stays green long
+#     enough to retire the oracle.
 #
-# owl M3b imports `tokenize_source`. Don't rename without a
-# CHANGELOG entry.
+# owl imports `tokenize_source`. Don't rename without a CHANGELOG
+# entry — see `docs/architecture/overview.md` "Frozen public
+# contracts."
 
 include "src/token.cyr"
 include "src/grammar.cyr"
@@ -23,8 +27,15 @@ var _grammars_bootstrapped = 0;
 # Load every bundled grammar on first use. Idempotent. Callers that
 # don't exercise tokenize_source / has_grammar (e.g. `vyk
 # --list-languages`) should call this explicitly before reading the
-# registry. This is the M2 shape — M3 will swap the hardcoded list
-# for an index file or directory scan.
+# registry.
+#
+# This is a hardcoded list by design — the 14 bundled grammars are
+# part of vyakarana's distribution shape and the order here defines
+# `vyk --list-languages` output order. Adding a grammar means
+# adding a `.cyml` file, a corpus snapshot, a probe in the test
+# suite, an entry here, and a smoke-script line. A directory-scan
+# variant could replace this if and when grammars become user-
+# pluggable, but that's a future feature with its own ADR.
 fn bootstrap_grammars() {
     if (_grammars_bootstrapped == 1) { return 0; }
     _grammars_bootstrapped = 1;

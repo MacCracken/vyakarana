@@ -191,8 +191,9 @@ fn _scan_ident(src, src_len, i) {
 }
 
 # Number: decimal, or 0x.../0b.../0o... prefix. Caller confirmed
-# is_digit(src[i]). Does NOT handle floats in M1 (vidya sample is
-# integers only).
+# is_digit(src[i]). Does NOT handle floats — the shell corpus is
+# integers only, and bash itself doesn't have float arithmetic in
+# the language proper.
 fn _scan_number(src, src_len, i) {
     # Check for prefix
     if (load8(src + i) == 48) {                  # leading 0

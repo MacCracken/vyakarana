@@ -152,17 +152,6 @@ fn char_class_match(tbl, byte) {
     return load8(tbl + byte);
 }
 
-# ── cstr helpers (local; stdlib's string/str don't quite fit) ───────
-
-# Copy n bytes from src into a freshly-allocated null-terminated
-# buffer. Returns the pointer.
-fn _g_cstr_copy(src, n) {
-    var s = alloc(n + 1);
-    var i = 0;
-    while (i < n) { store8(s + i, load8(src + i)); i = i + 1; }
-    store8(s + n, 0);
-    return s;
-}
 
 # ── CYML parser ─────────────────────────────
 # Grammar files are a deliberately small TOML dialect:
@@ -659,16 +648,6 @@ fn registry_add(g) {
     return 0;
 }
 
-fn registry_count() {
-    registry_init();
-    return vec_len(_registry);
-}
-
-fn registry_get(i) {
-    registry_init();
-    return vec_get(_registry, i);
-}
-
 fn registry_find_by_name(name) {
     registry_init();
     var n = vec_len(_registry);
@@ -682,12 +661,6 @@ fn registry_find_by_name(name) {
         i = i + 1;
     }
     return 0;
-}
-
-# Stub overrides for the M0-era accessors declared in src/grammar.cyr
-# previously. These now return real values from the registry.
-fn grammar_count() {
-    return registry_count();
 }
 
 fn list_languages_into(out_vec) {

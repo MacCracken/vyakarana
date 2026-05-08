@@ -6,6 +6,45 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [1.2.4] — 2026-05-08
+
+Closeout / P(-1) hardening pass for the 1.2.x line. No
+behavioural changes; cleanup, audit, and doc-sync only.
+
+### Changed
+
+- **Dead-code removal.** The compiler's "dead:" report had been
+  flagging four vyakarana-owned functions for several builds:
+  `registry_get`, `registry_count`, `grammar_count`,
+  `_g_cstr_copy`. None had callers anywhere in `src/` /
+  `tests/` / the dist bundle, and none were documented as
+  public API. All four removed. `kind_is_valid` is also
+  flagged as dead by the binary build but is intentionally
+  retained — it's exported via `[lib] modules` for downstream
+  consumers and is exercised by 5 test assertions; the
+  comment now explains why.
+- **Stale comment sweep.** Six source-comment references to
+  pre-shipped milestones cleaned up: `src/token.cyr` (M0 stub
+  / M5 streaming work), `src/main.cyr` (M3 will revisit),
+  `src/tokenize.cyr` (hardening / 1.0.0 pass — M1 path
+  retention), `src/grammars/shell.cyr` (M1 sample is integers),
+  `scripts/smoke.sh` ("adding grammars in M3"). Each rewritten
+  to point at current reality: docs/architecture pointers for
+  invariants, docs/development/roadmap.md pointers for
+  forward work.
+
+### Security
+
+- **1.2.x closeout audit** filed at
+  [docs/audit/2026-05-08-1.2.x-closeout-audit.md](docs/audit/2026-05-08-1.2.x-closeout-audit.md).
+  Covers every scanner-level change since the 2026-04-23
+  baseline (`unicode_ident` / `char_literal` / four new
+  grammar files / 1.2.4 dead-code cleanup). 0 CRITICAL, 0
+  HIGH, 0 MEDIUM, 0 new LOW. The 2026-04-23 baseline findings
+  carry forward unchanged. Bounds checks on every new
+  `load8` / `alloc` reviewed and confirmed; known-CVE
+  checklist re-run against the new code shape.
+
 ## [1.2.3] — 2026-05-08
 
 ### Added
