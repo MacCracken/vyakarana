@@ -21,7 +21,7 @@ struct Str { data; len; }
 # pointed-to data is NOT copied — the Str shares the cstr's storage
 # (same as the back-compat str_from). For an owning copy, use
 # str_clone_a / str_dup_a.
-fn str_from_a(a, cstr) {
+fn str_from_a(a, cstr): Str {
     var slen = strlen(cstr);
     var s = alloc_via(a, 16);
     if (s == 0) { return 0; }
@@ -32,14 +32,14 @@ fn str_from_a(a, cstr) {
 
 # Create a Str from a C string literal. v5.8.35 wrapper —
 # delegates to str_from_a with default_alloc().
-fn str_from(cstr) {
+fn str_from(cstr): Str {
     return str_from_a(default_alloc(), cstr);
 }
 
 # v5.8.35 — Allocator-as-first-arg variant of str_new. Allocates
 # the 16-byte Str header through `a`. Data buffer is borrowed,
 # not copied. Returns 0 on OOM.
-fn str_new_a(a, data, len) {
+fn str_new_a(a, data, len): Str {
     var s = alloc_via(a, 16);
     if (s == 0) { return 0; }
     store64(s, data);
@@ -48,31 +48,41 @@ fn str_new_a(a, data, len) {
 }
 
 # Create a Str from buffer + length. v5.8.35 wrapper.
-fn str_new(data, len) {
+fn str_new(data, len): Str {
     return str_new_a(default_alloc(), data, len);
 }
 
 # Get length
-fn str_len(s) {
+fn str_len(s: Str) {
     return load64(s + 8);
 }
 
 # Get data pointer
-fn str_data(s) {
+fn str_data(s: Str) {
     return load64(s);
 }
 
 # Print a Str to stdout
-fn str_print(s) {
+fn str_print(s: Str) {
     syscall(1, 1, load64(s), load64(s + 8));
     return 0;
 }
 
 # Print Str + newline
-fn str_println(s) {
+fn str_println(s: Str) {
     str_print(s);
     syscall(1, 1, "\n", 1);
     return 0;
+}
+
+# v5.10.3 overload-dispatch target: `println(s: Str)` routes
+# here via PARSE_FNCALL's name-mangling lookup. Body is a thin
+# alias for str_println — gives the overload dispatch a
+# concrete symbol to land on without changing str_println's
+# semantics. Consumer-facing: `println(my_str)` Just Works
+# without explicit `str_println(my_str)` boilerplate.
+fn println_str(s: Str) {
+    return str_println(s);
 }
 
 # Compare two Strs
@@ -87,7 +97,7 @@ fn str_eq(a: Str, b: Str) {
 # both the concatenated data buffer AND the Str header via `alloc`.
 # Returns 0 on OOM (either allocation). The header points into the
 # fresh buffer — caller owns both.
-fn str_cat_a(alloc, x: Str, y: Str) {
+fn str_cat_a(alloc, x: Str, y: Str): Str {
     var la = load64(x + 8);
     var lb = load64(y + 8);
     var newlen = la + lb;
@@ -100,7 +110,7 @@ fn str_cat_a(alloc, x: Str, y: Str) {
 
 # Concatenate two Strs (allocates new). v5.8.35 wrapper —
 # delegates to str_cat_a with default_alloc().
-fn str_cat(a: Str, b: Str) {
+fn str_cat(a: Str, b: Str): Str {
     return str_cat_a(default_alloc(), a, b);
 }
 
@@ -108,20 +118,20 @@ fn str_cat(a: Str, b: Str) {
 # v5.8.43 — Allocator-as-first-arg variant of str_sub. Allocates
 # only the 16-byte Str header via `a` (data ptr is shared with the
 # parent Str — this is a view, not a copy). Returns 0 on OOM.
-fn str_sub_a(a, s, start, len) {
+fn str_sub_a(a, s: Str, start, len): Str {
     return str_new_a(a, load64(s) + start, len);
 }
 
 # Substring (allocates new Str header, shares data with parent).
 # v5.8.43 wrapper — delegates to str_sub_a with default_alloc().
-fn str_sub(s, start, len) {
+fn str_sub(s: Str, start, len): Str {
     return str_new(load64(s) + start, len);
 }
 
 # v5.8.35 — Allocator-as-first-arg variant of str_clone. Allocates
 # a fresh `slen + 1` byte buffer (null-terminated) AND the 16-byte
 # Str header via `a`. Returns 0 on OOM.
-fn str_clone_a(a, s) {
+fn str_clone_a(a, s: Str): Str {
     var slen = str_len(s);
     var buf = alloc_via(a, slen + 1);
     if (buf == 0) { return 0; }
@@ -131,7 +141,7 @@ fn str_clone_a(a, s) {
 }
 
 # Clone a Str (deep copy — new buffer). v5.8.35 wrapper.
-fn str_clone(s) {
+fn str_clone(s: Str): Str {
     return str_clone_a(default_alloc(), s);
 }
 
@@ -166,7 +176,7 @@ fn str_ends_with(s: Str, suffix: Str) {
 }
 
 # Find first occurrence of byte in Str, return index or -1
-fn str_index_of(s, ch) {
+fn str_index_of(s: Str, ch) {
     var slen = str_len(s);
     var sd = str_data(s);
     var fi = 0;
@@ -180,7 +190,7 @@ fn str_index_of(s, ch) {
 # v5.8.35 — Allocator-as-first-arg variant of str_from_int. Allocates
 # a 24-byte format buffer + the 16-byte Str header via `a`. Returns 0
 # on OOM.
-fn str_from_int_a(a, n) {
+fn str_from_int_a(a, n): Str {
     var buf = alloc_via(a, 24);
     if (buf == 0) { return 0; }
     var blen = fmt_int_buf(n, buf);
@@ -188,12 +198,12 @@ fn str_from_int_a(a, n) {
 }
 
 # Convert integer to Str. v5.8.35 wrapper.
-fn str_from_int(n) {
+fn str_from_int(n): Str {
     return str_from_int_a(default_alloc(), n);
 }
 
 # Parse integer from Str (returns 0 on invalid)
-fn str_to_int(s) {
+fn str_to_int(s: Str) {
     var slen = str_len(s);
     var sd = str_data(s);
     var result = 0;
@@ -217,7 +227,7 @@ fn str_to_int(s) {
 
 # v5.8.43 — Allocator-as-first-arg variant of str_trim. Routes the
 # str_sub allocation (Str header) through `a`. Returns 0 on OOM.
-fn str_trim_a(a, s) {
+fn str_trim_a(a, s: Str): Str {
     var slen = str_len(s);
     var sd = str_data(s);
     var start = 0;
@@ -237,7 +247,7 @@ fn str_trim_a(a, s) {
 
 # Trim leading and trailing whitespace (returns new Str). v5.8.43
 # wrapper.
-fn str_trim(s) {
+fn str_trim(s: Str): Str {
     return str_trim_a(default_alloc(), s);
 }
 
@@ -407,7 +417,7 @@ fn str_builder_add_int(sb, n) {
 # Allocates the permanent output buffer (`total + 1` bytes,
 # null-terminated) AND the 16-byte Str header via `a`. Returns
 # 0 on OOM.
-fn str_builder_build_a(a, sb) {
+fn str_builder_build_a(a, sb): Str {
     var buf = load64(sb);
     var total = load64(sb + 8);
     if (total == 0) { return str_from_a(a, ""); }
@@ -419,12 +429,12 @@ fn str_builder_build_a(a, sb) {
 }
 
 # Build final Str from the builder's buffer. v5.8.43 wrapper.
-fn str_builder_build(sb) {
+fn str_builder_build(sb): Str {
     return str_builder_build_a(default_alloc(), sb);
 }
 
 # Join a vec of Str with separator
-fn str_join(parts, sep: Str) {
+fn str_join(parts, sep: Str): Str {
     var plen = vec_len(parts);
     if (plen == 0) { return str_from(""); }
     var sb = str_builder_new();
@@ -442,7 +452,7 @@ fn str_join(parts, sep: Str) {
 # ================================================================
 
 # Create Str from raw buffer (copies data, adds null terminator)
-fn str_from_buf(ptr, len) {
+fn str_from_buf(ptr, len): Str {
     var buf = alloc(len + 1);
     memcpy(buf, ptr, len);
     store8(buf + len, 0);
@@ -467,7 +477,7 @@ fn str_cstr(s) {
 }
 
 # Substring by start and end index (returns new Str, shares data)
-fn str_substr(s, start, end) {
+fn str_substr(s: Str, start, end): Str {
     if (start < 0) { start = 0; }
     if (end > str_len(s)) { end = str_len(s); }
     if (start >= end) { return str_from(""); }

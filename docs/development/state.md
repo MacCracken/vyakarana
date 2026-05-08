@@ -4,13 +4,14 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.1.2 are
-> shipped. **2.1.2 adds Nix** (`.nix` — the NixOS /
-> home-manager configuration language) for 44 bundled
-> grammars total. As of 2026-05-08 the toolchain pin is
-> `cyrius = "5.10.0"`. 822/822 tests passing, 3/3 fuzz
-> harnesses passing. Next: 2.1.3 (Terraform / HCL). See
-> §Next up.
+> **Read this file before doing anything.** 1.0.0–2.1.3 are
+> shipped. **2.1.3 closes the 2.1.x grammar wave with
+> Terraform / HCL** (`.tf` / `.tfvars` / `.hcl`) for 45
+> bundled grammars total. The 2.1.x window added 7 grammars
+> (PowerShell, Crystal, Julia, Vue, Svelte, Nix, Terraform).
+> As of 2026-05-08 the toolchain pin is `cyrius = "5.10.0"`.
+> 830/830 tests passing, 3/3 fuzz harnesses passing. No
+> work currently in flight. See §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -30,8 +31,22 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `2.1.2` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `2.1.3` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`.
+- **What 2.1.3 added (Terraform / HCL):**
+  - **Terraform** (`.tf`, `.tfvars`, `.hcl`) — the HashiCorp
+    Configuration Language. Both `#` and `//` line comments
+    + `/* */` block. `=>` for-expressions, `...` spread,
+    kebab-case idents (`aws_s3_bucket`, `my-bucket`),
+    standard arithmetic/comparison/logical operators.
+    Block syntax (`resource "type" "name" { … }`) tokenizes
+    naturally without special-casing.
+  - 5 new tcyr probes; 1 new M3 corpus; bundle 44 → 45.
+  - Documented gaps: heredocs (`<<EOT`), `${}` interpolation,
+    splat shorthand.
+  - **Closes the 2.1.x grammar wave** — 7 grammars added
+    (38 → 45) across PowerShell / Crystal / Julia / Vue /
+    Svelte / Nix / Terraform.
 - **What 2.1.2 added (Nix):**
   - **Nix** (`.nix`) — functional config language for NixOS
     and home-manager. `//` set-merge (NOT line comment),
@@ -511,7 +526,8 @@ Now in flight — 2.1.x grammar batches:
 - **2.1.2 — Nix grammar.** Shipped (this cut). `//`
   set-merge, `++` list concat, `'`/`-` in idents,
   `''…''` indented strings.
-- **2.1.3 — Terraform / HCL grammar.** No work currently in
+- **2.1.3 — Terraform / HCL grammar.** Shipped (this cut).
+  Closes the 2.1.x wave. No work currently in
 flight. The post-streaming queue is open — nothing forces
 the next cut. Possible directions when work resumes:
 

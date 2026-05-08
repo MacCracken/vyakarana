@@ -6,6 +6,62 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [2.1.3] — 2026-05-08
+
+Final grammar batch of the 2.1.x window. **Terraform / HCL**
+(`.tf`, `.tfvars`, `.hcl`) — the HashiCorp Configuration
+Language Terraform / Packer / Vault / Nomad / Consul all
+consume. Bundled grammar count: 44 → 45. Closes the
+2.1.x grammar-batch wave.
+
+### Added
+
+- **`grammars/terraform.cyml`** + `tests/corpus/concept.tf`.
+  Named `terraform` because that's what most users will
+  search for, but the underlying language is HCL — same
+  grammar covers any HCL-consuming HashiCorp tool. Surface:
+  - **Both `#` and `//` line comments** + `/* … */` block
+    comments. The 2-byte `//` marker doesn't collide with
+    `/*` (line scanner checks the full marker length).
+  - **`=>` for-expression operator** (longest-match before
+    `=`), **`...` variadic / spread** as 3-byte op.
+  - **Kebab-case idents** via `-` in `ident_cont` —
+    `aws_s3_bucket`, `azurerm_role_assignment`, `my-bucket`.
+  - **Block syntax** `resource "type" "name" { ... }`
+    tokenizes naturally — ident + string + string + brace.
+    No special block-header token kind needed.
+  - Standard arithmetic / equality / comparison / logical /
+    ternary operators.
+- **5 new tcyr probes** — resource ident, kebab-case ident,
+  both comment markers (`#` + `//`), `=>` for-expression
+  operator, `...` spread. 822 → 830 passing.
+- **1 new M3 corpus** — Terraform config exercising
+  resource blocks, variables, locals, outputs, dynamic
+  blocks, `for` expressions, `for_each`, conditionals, both
+  comment forms, attribute/block distinction. Round-trips
+  with zero error tokens.
+- **Detection wired** — `.tf` (3-byte) → `_detect_short`,
+  `.hcl` (4-byte) → `_detect_4byte`, `.tfvars` (7-byte) →
+  `_detect_5plus`. All map to `terraform`.
+
+### Documented gaps
+
+- **Heredocs** `<<EOT … EOT` / `<<-EOT … EOT` — variable
+  terminator. Same scanner-shape gap as Lua / Ruby / PHP /
+  Crystal heredocs.
+- **String interpolation** `${expr}` — body tokenizes as
+  part of the surrounding string.
+- **Splat shorthand** `aws_instance.web.*.id` — `*`
+  tokenizes as a 1-byte op amidst dotted access; theme can
+  re-pair.
+
+### Status
+
+- **2.1.x grammar wave is closed.** PowerShell / Crystal /
+  Julia (2.1.0); Vue / Svelte SFC (2.1.1); Nix (2.1.2);
+  Terraform / HCL (2.1.3). 38 → 45 bundled grammars in the
+  2.1.x window — 7 new in four cuts.
+
 ## [2.1.2] — 2026-05-08
 
 Third grammar batch of the 2.1.x window. **Nix** language

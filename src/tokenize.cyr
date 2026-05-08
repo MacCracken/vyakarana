@@ -192,6 +192,8 @@ fn bootstrap_grammars() {
     if (gsvel != 0) { registry_add(gsvel); }
     var gnix = grammar_load("grammars/nix.cyml");
     if (gnix != 0) { registry_add(gnix); }
+    var gtf = grammar_load("grammars/terraform.cyml");
+    if (gtf != 0) { registry_add(gtf); }
     return 0;
 }
 
