@@ -6,6 +6,72 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [2.0.4] — 2026-05-08
+
+Closes the 2.0.x streaming wave with the **post-2.0
+security audit** (triggered by the 2026-05-09 1.13-closeout
+audit's recommendation to revisit buffer-bound semantics
+after streaming lands). Two LOW findings, both fixed in the
+audit pass. No public API change.
+
+### Fixed
+
+- **FINDING-008 (LOW, audit pass).** `_stream_grow` would
+  infinite-loop on a stream whose buffer cap was zero —
+  e.g., a freed stream whose pointer was reused (every
+  field zeroed by `_free`). The doubling loop
+  `new_cap = new_cap * 2` makes no progress when
+  `new_cap == 0`. Fix: explicit `if (cap <= 0) { return 0; }`
+  before the doubling. Use-after-free is clearly caller
+  error, but defending in depth is cheap.
+- **FINDING-009 (LOW, audit pass).**
+  `_stream_scan_close` would vacuously match at `from` if
+  the pair rule's end marker was empty (`elen == 0`),
+  emitting a zero-length token that violates the coverage
+  invariant. Cause: `memeq(buf + j, endp, 0)` returns 1
+  for any pointer pair. Fix: explicit
+  `if (elen <= 0) { return (0 - 1); }` short-circuit. The
+  CYML loader doesn't currently reject empty `end = ""`
+  markers — the runtime guard makes this a defense-in-depth
+  safety net rather than a load-time validation.
+
+### Added
+
+- **`docs/audit/2026-05-09-2.0.x-closeout-audit.md`** — full
+  surface review of every 2.0.x change. Per-function
+  bounds analysis on `_stream_grow`, `_stream_scan_close`,
+  `_stream_find_pair_rule`, `_stream_is_trailing_complete`,
+  the rolling-buffer drain, the pull adapter, and the
+  pending pair-rule fast path. Buffer-cap semantics
+  documented (`VYK_STREAM_CAP` caps live buffer, not total
+  input — design intent of streaming).
+  **0 CRITICAL / 0 HIGH / 0 MEDIUM / 2 LOW (both fixed
+  in-pass).**
+
+### Recommendations carried forward (not addressed in 2.0.4)
+
+- **CYML loader hardening.** Reject pair rules with empty
+  `start` / `end` markers at load time. Today the runtime
+  guard from FINDING-009 catches this; load-time rejection
+  is cleaner. Flagged for 2.1.x or sooner if a grammar
+  author trips it.
+- **Streaming-aware fuzz harness.** Random feed sequences
+  (varying chunk sizes, random splits across multi-byte
+  tokens) would catch pending-pair edge cases the current
+  corpus-based fuzz misses. Flagged for 2.1.x.
+- **Discardable pull-adapter staging.** For very long
+  streams the staging tokenbuf grows monotonically (~12 MB
+  per million tokens). Memory pressure, not security
+  finding; flagged in state.md.
+
+### Status
+
+- **2.0.x is closed.** Streaming-API surface (2.0.0),
+  rolling buffer (2.0.1), pull adapter (2.0.2), pending-pair
+  fast path (2.0.3), closeout audit (2.0.4). Ready for
+  the 2.1.x grammar-batch wave.
+- **Next: 2.1.0 — PowerShell / Crystal / Julia grammars.**
+
 ## [2.0.3] — 2026-05-08
 
 Streaming optimization cut. **Pending pair-rule tracking**

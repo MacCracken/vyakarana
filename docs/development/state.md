@@ -4,16 +4,16 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.0.3 are
-> shipped. 1.x closed at 1.13.3 with 0 audit findings. The
-> 2.0.x streaming wave: 2.0.0 API surface (push), 2.0.1
-> rolling buffer, 2.0.2 pull adapter, **2.0.3 pending
-> pair-rule fast path** (drops O(N²) → O(N) for big-partial
-> streams). As of 2026-05-08 the toolchain pin is `cyrius =
-> "5.10.0"`. 38 grammars bundled (unchanged), 778/778 tests
-> passing, 3/3 fuzz harnesses passing. Next: 2.0.4 closeout
-> audit, then 2.1.x grammar batches (PowerShell / Crystal /
-> Julia first). See §Next up.
+> **Read this file before doing anything.** 1.0.0–2.0.4 are
+> shipped. 1.x closed at 1.13.3 with 0 audit findings.
+> **2.0.x is closed** — streaming API surface (2.0.0),
+> rolling buffer (2.0.1), pull adapter (2.0.2), pending-pair
+> fast path (2.0.3), closeout audit (2.0.4 — 2 LOW findings
+> fixed in-pass). As of 2026-05-08 the toolchain pin is
+> `cyrius = "5.10.0"`. 38 grammars bundled (unchanged),
+> 778/778 tests passing, 3/3 fuzz harnesses passing. Next:
+> 2.1.x grammar batches starting with PowerShell / Crystal /
+> Julia. See §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -33,9 +33,22 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `2.0.3` in `VERSION`, `src/version_str.cyr`, and
-  `dist/vyakarana.cyr`. Full 1.x + 2.0.0–2.0.3 tag history in
+- **Version:** `2.0.4` in `VERSION`, `src/version_str.cyr`, and
+  `dist/vyakarana.cyr`. Full 1.x + 2.0.0–2.0.4 tag history in
   the CHANGELOG.
+- **What 2.0.4 added (closeout audit):**
+  - **`docs/audit/2026-05-09-2.0.x-closeout-audit.md`** —
+    full surface review of every 2.0.x change. Per-function
+    bounds analysis on `_stream_grow`,
+    `_stream_scan_close`, `_stream_find_pair_rule`,
+    `_stream_is_trailing_complete`, drain, pull adapter,
+    and pending-pair fast path. Buffer-cap semantics
+    documented. **0 CRITICAL / 0 HIGH / 0 MEDIUM / 2 LOW
+    (both fixed in-pass).**
+  - **FINDING-008 fix.** `_stream_grow` zero-cap
+    infinite-loop guard.
+  - **FINDING-009 fix.** `_stream_scan_close` zero-elen
+    vacuous match guard.
 - **What 2.0.3 added (streaming optimization):**
   - **Pending pair-rule fast path.** When drain detects a
     trailing partial pair-rule open (string / block
@@ -411,12 +424,19 @@ Still cosmetic-only and waiting on a future ADR:
   Helix/iTerm theme emitters, bench suite, error-message
   split, man page, compose_fenced rule + scanner step 0b,
   toolchain pin bump). 0 CRITICAL / 0 HIGH / 0 MEDIUM / 0
-  LOW. **No new findings.**
+  LOW. No new findings.
+- [2026-05-09 — 2.0.x closeout](../audit/2026-05-09-2.0.x-closeout-audit.md):
+  streaming surfaces (push primitive, rolling buffer, pull
+  adapter, pending-pair fast path). 0 CRITICAL / 0 HIGH /
+  0 MEDIUM / **2 LOW (FINDING-008, FINDING-009 — both
+  fixed in-pass).** Buffer-cap semantics documented;
+  `VYK_STREAM_CAP` caps live buffer not total input.
 
 See `SECURITY.md` for the living state of the audit findings.
-Next scheduled audit: 2.0.0 first cut (streaming tokenizer
-changes the buffer-bound semantics that the existing
-FINDING-002/003/004 mitigations are designed for).
+Next scheduled audit: 2.1.x closeout (after the four grammar
+batches land — surface additions are mostly declarative
+`.cyml` files; the audit confirms grammar-loader hardening
+didn't regress).
 
 ---
 
@@ -439,14 +459,8 @@ Closed waves:
   ADR 0017); rolling-buffer per-feed drainage (2.0.1);
   pull adapter (2.0.2).
 
-Now in flight (2.0.x closeout + 2.1.x grammar batches):
+2.0.x is closed. Now in flight — 2.1.x grammar batches:
 
-- **2.0.4 — Closeout security audit.** Post-2.0 audit
-  covering streaming surfaces (2.0.0 push primitive + 2.0.1
-  rolling buffer + 2.0.2 pull adapter + 2.0.3 pending-pair
-  optimization). Per the 2026-05-09 1.13-closeout audit's
-  recommendation, this is the dedicated audit triggered by
-  buffer-bound semantic changes from streaming.
 - **2.1.0 — PowerShell / Crystal / Julia grammars.** Three
   new general-purpose languages.
 - **2.1.1 — Vue / Svelte single-file components.** Both use
