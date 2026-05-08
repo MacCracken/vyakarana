@@ -7,6 +7,11 @@
 # Scope: covers what vidya's content/lexing_and_parsing/rust.rs
 # exercises.
 #
+# Macro metavariables: `$` is in `ident_start` so `$expr`, `$tok`,
+# `$crate`, etc. tokenize as a single `ident`. The bare `$` that
+# leads `$( ... )*` repetition tokenizes as a length-1 ident. See
+# [ADR 0007](../docs/adr/0007-rust-dollar-in-ident-start.md).
+#
 # Known gaps for future ADRs (not triggered by the vidya sample):
 #   - Block comments `/* ... */` (Rust's are nestable).
 #   - Raw strings `r"..."`, `r#"..."#`, `r##"..."##`, etc.
@@ -34,7 +39,7 @@ extensions = [".rs"]
 shebang = false
 whitespace = true
 
-ident_start = "A-Za-z_"
+ident_start = "A-Za-z_$"
 ident_cont  = "A-Za-z0-9_"
 
 number_decimal = true

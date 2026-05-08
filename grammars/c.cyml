@@ -6,12 +6,12 @@
 #
 # Corpus: tests/corpus/c.c (vidya-backed).
 #
+# Block comments `/* ... */` are recognised via a `match = "pair"`
+# rule below. C's block comments are non-nestable, so the simple
+# greedy match matches the spec. Triggered by `vidya/content/<topic>/c.c`
+# files that lead with a `/* Vidya — … */` header.
+#
 # Known gaps for future ADRs (not triggered by the vidya sample):
-#   - Block comments `/* ... */`. The vidya sample uses only `//`
-#     line comments. A language with `/* */` will force a `block`
-#     rule type (start/end pair spanning multiple lines without
-#     escape-aware content). ADR candidate when C's own test corpus
-#     or a future C sample includes them.
 #   - Char literals `'x'` split into three operator tokens. Same
 #     pattern as Rust; promoting to an ADR for a `char_literal`
 #     default with small lookahead is the likely fix.
@@ -38,6 +38,10 @@ number_0b      = false
 number_0o      = false
 
 special_vars = false
+
+# UTF-8 in `/* … */` and `//` comment text → one ident instead of
+# per-byte errors. See ADR 0009.
+unicode_ident = true
 
 # Operators in longest-match order. C-specific: `->` (struct deref),
 # `++` / `--` (increment), compound assignment, `&&`/`||`,
@@ -72,6 +76,17 @@ punctuation = [
 kind = "comment"
 match = "line"
 start = "//"
+
+
+# Block comments `/* … */`. C's block comments are non-nestable
+# (unlike Rust's), so the simple greedy match — close at the first
+# `*/` — matches the spec. No escape: `\` inside a comment is just
+# a backslash byte, not an escape.
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "/*"
+end = "*/"
 
 
 [[rules]]

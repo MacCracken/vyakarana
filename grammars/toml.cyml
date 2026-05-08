@@ -10,11 +10,18 @@
 # `[...]` / `[[...]]` / `{...}` / `,` punctuation, true/false/inf/nan
 # keywords.
 #
-# Out of scope for the first pass (not in the vidya corpus):
-#   - Multi-line strings """...""" / '''...'''
+# Multi-line strings: vidya's `concept.toml` files use `content =
+# '''…'''` for embedded prose blocks, so the triple-quoted forms
+# are scoped IN. `"""…"""` (basic, escape-aware) and `'''…'''`
+# (literal, no escapes) are ordered before the single-quoted rules
+# below — the pair-matcher takes the first rule whose start string
+# matches, so the longer prefix has to come first. See
+# [ADR 0008](../docs/adr/0008-toml-triple-quoted-strings.md).
+#
+# Out of scope (still no corpus):
 #   - Float literals (`3.14`)
 #   - Date/datetime literals (`1979-05-27T07:32:00Z`)
-# These are ADR candidates if a future corpus needs them.
+# Both remain ADR candidates if a future corpus needs them.
 
 [grammar]
 name = "toml"
@@ -66,6 +73,21 @@ punctuation = [
 kind = "comment"
 match = "line"
 start = "#"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\"\"\""
+end = "\"\"\""
+escape = "\\"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "'''"
+end = "'''"
 
 
 [[rules]]

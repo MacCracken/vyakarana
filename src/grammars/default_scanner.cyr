@@ -167,12 +167,23 @@ fn _ds_try_exact_list(list_vec, src, src_len, i) {
 }
 
 # Identifier run. Caller has already confirmed the first byte is in
-# ident_start. Returns len.
+# ident_start (or is a UTF-8 byte ≥0x80 with unicode_ident=true).
+# Returns len.
+#
+# When `unicode_ident = true`, any byte ≥0x80 is also accepted as
+# ident-cont so multi-byte UTF-8 sequences (em-dashes, smart
+# quotes, accented letters) coalesce into a single TK_IDENT instead
+# of fragmenting into per-byte TK_ERROR tokens. See
+# [ADR 0009](../docs/adr/0009-unicode-ident-default.md).
 fn _ds_scan_ident(g, src, src_len, i) {
     var cont_tbl = grammar_ident_cont(g);
+    var unicode_on = grammar_unicode_ident(g);
     var j = i + 1;
     while (j < src_len) {
-        if (char_class_match(cont_tbl, load8(src + j)) == 0) { return j - i; }
+        var b = load8(src + j);
+        var ok = char_class_match(cont_tbl, b);
+        if ((ok == 0) && (unicode_on == 1) && (b >= 128)) { ok = 1; }
+        if (ok == 0) { return j - i; }
         j = j + 1;
     }
     return src_len - i;
@@ -311,10 +322,18 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
             }
         }
 
-        # 6. Identifier / keyword
+        # 6. Identifier / keyword. With `unicode_ident = true`, any
+        # byte ≥0x80 also enters the ident scan (see ADR 0009).
         if (len == 0) {
             var start_tbl = grammar_ident_start(g);
+            var ident_ok = 0;
             if ((start_tbl != 0) && (char_class_match(start_tbl, b) == 1)) {
+                ident_ok = 1;
+            }
+            if ((ident_ok == 0) && (grammar_unicode_ident(g) == 1) && (b >= 128)) {
+                ident_ok = 1;
+            }
+            if (ident_ok == 1) {
                 len = _ds_scan_ident(g, src, src_len, i);
                 var kw_kind = _ds_lookup_keyword(g, src, i, len);
                 if (kw_kind >= 0) {

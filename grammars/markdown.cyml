@@ -45,6 +45,10 @@ number_0o      = false
 
 special_vars = false
 
+# UTF-8 in prose (em-dashes, smart quotes, accented characters)
+# coalesces into one ident instead of per-byte errors. See ADR 0009.
+unicode_ident = true
+
 # Operators in longest-match order. ATX-heading prefixes (1–6 `#`s),
 # setext-heading underlines (`===`/`---`), emphasis (`**`/`__`/
 # `*`/`_`), strikethrough (`~~`), horizontal rules, blockquote `>`,

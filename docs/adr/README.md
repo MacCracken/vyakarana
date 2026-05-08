@@ -15,6 +15,9 @@ Context → Decision → Consequences, with a Status line at the top.
 | 0004 | [Shell built-ins emit as `ident`, not `keyword`](0004-shell-builtins-as-ident.md)         | Accepted | 2026-04-23 |
 | 0005 | [M2 rule-type scope — narrow spec rules + configured default scanner](0005-m2-rule-type-scope.md) | Accepted | 2026-04-23 |
 | 0006 | [Stand-in corpus when vidya doesn't cover a bundled language](0006-standin-corpus-policy.md) | Accepted | 2026-04-23 |
+| 0007 | [Rust grammar treats `$` as `ident_start`](0007-rust-dollar-in-ident-start.md)            | Accepted | 2026-05-08 |
+| 0008 | [TOML grammar handles triple-quoted strings](0008-toml-triple-quoted-strings.md)         | Accepted | 2026-05-08 |
+| 0009 | [`unicode_ident` default + C block comments](0009-unicode-ident-default.md)               | Accepted | 2026-05-08 |
 
 ## Conventions
 

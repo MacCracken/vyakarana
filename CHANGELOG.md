@@ -4,6 +4,45 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+_No unreleased changes._
+
+## [1.1.0] — 2026-05-08
+
+### Added
+
+- **`unicode_ident` default + C block comments.** New
+  `[defaults] unicode_ident = true|false` flag (wired through
+  `Grammar` record at offset 136; `GRAMMAR_SIZE` 136 → 144),
+  CYML loader, and the default scanner — when on, bytes ≥0x80
+  are accepted as both `ident_start` and `ident_cont`, so
+  multi-byte UTF-8 sequences (em-dashes, smart quotes, accented
+  characters) coalesce into a single `TK_IDENT` instead of
+  fragmenting into per-byte `TK_ERROR`. Defaults off; enabled
+  per-grammar in `grammars/c.cyml` and `grammars/markdown.cyml`.
+  `grammars/c.cyml` also gains a `match = "pair"` rule for
+  `/* … */` block comments (non-nestable, simple greedy match).
+  Verified on `vidya/content/compression/c.c` (8 errors → 0)
+  plus six other vidya C samples (all 0). See [ADR
+  0009](docs/adr/0009-unicode-ident-default.md).
+- **TOML triple-quoted strings.** `grammars/toml.cyml` gains
+  `[[rules]]` entries for `"""…"""` (basic, escape-aware) and
+  `'''…'''` (literal, no escapes), ordered ahead of the
+  single-quoted rules so the longer prefix wins. Verified on
+  `vidya/content/compression/concept.toml` (188 `error` tokens
+  → 0); seven other vidya `concept.toml` samples likewise
+  come back at zero. Pure grammar-file change — no scanner code
+  was modified. See [ADR
+  0008](docs/adr/0008-toml-triple-quoted-strings.md).
+- **Rust macro metavariable support.** `grammars/rust.cyml` now
+  has `$` in `ident_start`, so `$expr`, `$tok`, `$crate`, etc.
+  tokenize as a single `ident`, and the bare `$` that leads
+  `$( … )*` repetition tokenizes as a length-1 ident. Verified
+  on `vidya/content/macro_systems/rust.rs` (79 `error` tokens →
+  0); 5 of 6 other vidya rust samples come back clean as well
+  (the sixth still hits the pre-existing byte-char-literal-with-
+  escape gap, unchanged by this commit). See [ADR
+  0007](docs/adr/0007-rust-dollar-in-ident-start.md).
+
 ### Changed
 
 - **Single source of truth for `vyk --version`.** The CLI version
