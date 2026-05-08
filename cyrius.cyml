@@ -34,6 +34,7 @@ modules = [
     "src/grammars/default_scanner.cyr",
     "src/grammars/shell.cyr",
     "src/tokenize.cyr",
+    "src/lsp.cyr",
 ]
 
 # Stdlib footprint chosen for the ROADMAP M0–M3 arc:

@@ -6,6 +6,70 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [1.11.0] — 2026-05-08
+
+Second pre-2.0 prep wave, first sub-cut. The 1.11.x window
+splits the original "external integrations" plan into three
+sequential cuts so each lands cleanly:
+- **1.11.0 — LSP semantic-tokens bridge (this cut).**
+- 1.11.1 — Grammar composition (embedded blocks) + theme
+  export.
+- 1.11.2 — Content-based language detection.
+
+### Added
+
+- **LSP semantic-tokens bridge.** New `src/lsp.cyr` module
+  with two pure functions:
+  - `lsp_kind_from_token_type(name)` — string lookup.
+  - `lsp_kind_from_standard_index(idx)` — integer-index
+    lookup using LSP 3.17's standard 23-entry legend.
+  Maps the LSP semantic-token taxonomy onto vyakarana's 10
+  TK_* kinds. Direct matches for `keyword` / `comment` /
+  `string` / `number` / `operator`; `regexp` collapses to
+  `TK_STRING`; `modifier` → `TK_KEYWORD`; `macro` and
+  `decorator` → `TK_PREPROCESSOR`; the 14 ident-flavoured
+  types (`function` / `method` / `variable` / `parameter` /
+  `class` / `interface` / `struct` / `enum` / `enumMember` /
+  `event` / `namespace` / `type` / `typeParameter` /
+  `property`) all → `TK_IDENT`. Unknown / extended-legend
+  names → `TK_IDENT` (safe default; never `TK_ERROR`).
+  Lets editor consumers (cyim, VS Code clients, future
+  AGNOS editors) present a unified palette regardless of
+  whether vyakarana or a Language Server (rust-analyzer,
+  gopls, pyright, clangd, etc.) classified the bytes.
+  Theme files index by `kind_name` strings per
+  [architecture note 004](docs/architecture/004-theme-palette-contract.md);
+  the bridge means LSP output flows through the same name
+  set without forking the theme. See [ADR
+  0012](docs/adr/0012-lsp-semantic-tokens-bridge.md).
+- **`src/lsp.cyr` is in `[lib] modules`** so it ships in
+  `dist/vyakarana.cyr`. Downstream consumers get the bridge
+  for free; there's no extra `[deps]` step beyond the
+  existing `[deps.vyakarana]` block.
+
+### Wiring
+
+- `cyrius.cyml` — `[lib] modules` extended with
+  `src/lsp.cyr`.
+- `tests/vyakarana.tcyr` — 38 new probe assertions covering
+  every standard LSP token type by name, the index-based
+  path, and the unknown-name / out-of-range fallbacks.
+  636 → 674 passing.
+
+### Out of scope (deliberately)
+
+- **JSON-RPC / wire-protocol decoding.** Consumers handle
+  their own LSP transport; vyakarana doesn't include an LSP
+  client.
+- **Encoded semantic-tokens stream decoding.** LSP's
+  `data: number[]` array is delta-encoded
+  `[deltaLine, deltaStart, length, tokenType, modifiers]`
+  per token. Consumers walk the array themselves and call
+  `lsp_kind_from_standard_index` (or the name-based path
+  via their legend).
+- **Reverse mapping (vyakarana → LSP).** Different design
+  space; not needed today.
+
 ## [1.10.0] — 2026-05-08
 
 First **pre-2.0 prep wave**. Different shape from the

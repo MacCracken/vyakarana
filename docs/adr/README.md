@@ -25,6 +25,7 @@ sub-blocks).
 | 0009 | [`unicode_ident` default + C block comments](0009-unicode-ident-default.md)               | Accepted | 2026-05-08 |
 | 0010 | [`char_literal` default](0010-char-literal-default.md)                                    | Accepted | 2026-05-08 |
 | 0011 | [`case_insensitive_keywords` default](0011-case-insensitive-keywords-default.md)         | Accepted | 2026-05-08 |
+| 0012 | [LSP semantic-tokens bridge mapping](0012-lsp-semantic-tokens-bridge.md)                  | Accepted | 2026-05-08 |
 
 ## Conventions
 

@@ -1,0 +1,147 @@
+# vyakarana — LSP semantic-tokens bridge
+#
+# Maps LSP standard `tokenType` values onto vyakarana's 10
+# token kinds. Lets editor consumers (cyim, VS Code, future
+# clients) surface vyakarana-quality colouring even when the
+# underlying classification came from a Language Server (rust-
+# analyzer, gopls, pyright, clangd, etc.) instead of vyakarana's
+# own grammar set.
+#
+# Mapping decisions live in
+# [docs/adr/0012-lsp-semantic-tokens-bridge.md](../docs/adr/0012-lsp-semantic-tokens-bridge.md).
+#
+# Scope:
+#   - Two pure functions: `lsp_kind_from_token_type(name)` and
+#     `lsp_kind_from_standard_index(idx)`. Both return one of
+#     the 10 TK_* constants from src/token.cyr.
+#   - No JSON-RPC, no semantic-tokens-stream decoding, no
+#     line/column → byte-offset arithmetic. Those are LSP-wire
+#     concerns the consumer handles. This module is pure name /
+#     index → kind translation.
+#   - The standard LSP 3.17 legend is hardcoded by index. Servers
+#     that ship custom legends (a handful of token types beyond
+#     the standard 22) should resolve the name themselves.
+#
+# Available via the distlib bundle (`[lib] modules` includes
+# this module).
+
+include "src/token.cyr"
+
+# Convert an LSP token-type NAME (e.g. "keyword", "function",
+# "variable", "string") to a vyakarana TK_* kind.
+#
+# The 22 standard LSP token types map as follows:
+#   "namespace"      → TK_IDENT
+#   "type"           → TK_IDENT       (type names are idents)
+#   "class"          → TK_IDENT
+#   "enum"           → TK_IDENT
+#   "interface"      → TK_IDENT
+#   "struct"         → TK_IDENT
+#   "typeParameter"  → TK_IDENT
+#   "parameter"      → TK_IDENT
+#   "variable"       → TK_IDENT
+#   "property"       → TK_IDENT
+#   "enumMember"     → TK_IDENT
+#   "event"          → TK_IDENT
+#   "function"       → TK_IDENT
+#   "method"         → TK_IDENT
+#   "modifier"       → TK_KEYWORD     (visibility / storage class)
+#   "macro"          → TK_PREPROCESSOR
+#   "decorator"      → TK_PREPROCESSOR (annotation-like)
+#   "keyword"        → TK_KEYWORD
+#   "comment"        → TK_COMMENT
+#   "string"         → TK_STRING
+#   "regexp"         → TK_STRING       (no separate regex kind)
+#   "number"         → TK_NUMBER
+#   "operator"       → TK_OPERATOR
+#
+# Unknown names → TK_IDENT (the safe default; servers can extend
+# the legend, but vyakarana's palette is the contract).
+fn lsp_kind_from_token_type(name) {
+    if (name == 0) { return TK_IDENT; }
+
+    # Direct hits — exact matches on standard names.
+    if (streq(name, "keyword") == 1)   { return TK_KEYWORD; }
+    if (streq(name, "comment") == 1)   { return TK_COMMENT; }
+    if (streq(name, "string") == 1)    { return TK_STRING; }
+    if (streq(name, "regexp") == 1)    { return TK_STRING; }
+    if (streq(name, "number") == 1)    { return TK_NUMBER; }
+    if (streq(name, "operator") == 1)  { return TK_OPERATOR; }
+    if (streq(name, "modifier") == 1)  { return TK_KEYWORD; }
+    if (streq(name, "macro") == 1)     { return TK_PREPROCESSOR; }
+    if (streq(name, "decorator") == 1) { return TK_PREPROCESSOR; }
+
+    # All ident-flavoured types collapse to TK_IDENT. Themes
+    # that want to distinguish `function` from `variable` from
+    # `class` apply secondary-palette rules per
+    # [ADR 0004](../docs/adr/0004-shell-builtins-as-ident.md) /
+    # [ADR 0007](../docs/adr/0007-rust-dollar-in-ident-start.md) —
+    # they pass through with their LSP type name preserved on
+    # the consumer side, vyakarana's kind palette stays at 10.
+    if (streq(name, "namespace") == 1)     { return TK_IDENT; }
+    if (streq(name, "type") == 1)          { return TK_IDENT; }
+    if (streq(name, "class") == 1)         { return TK_IDENT; }
+    if (streq(name, "enum") == 1)          { return TK_IDENT; }
+    if (streq(name, "interface") == 1)     { return TK_IDENT; }
+    if (streq(name, "struct") == 1)        { return TK_IDENT; }
+    if (streq(name, "typeParameter") == 1) { return TK_IDENT; }
+    if (streq(name, "parameter") == 1)     { return TK_IDENT; }
+    if (streq(name, "variable") == 1)      { return TK_IDENT; }
+    if (streq(name, "property") == 1)      { return TK_IDENT; }
+    if (streq(name, "enumMember") == 1)    { return TK_IDENT; }
+    if (streq(name, "event") == 1)         { return TK_IDENT; }
+    if (streq(name, "function") == 1)      { return TK_IDENT; }
+    if (streq(name, "method") == 1)        { return TK_IDENT; }
+
+    # Unknown / extended legend names — safe default.
+    return TK_IDENT;
+}
+
+# Convert an LSP token-type INDEX (0-based into the legend's
+# `tokenTypes` array) to a vyakarana TK_* kind. Uses the
+# standard LSP 3.17 legend order. Servers that ship a custom
+# legend (with extra tokenTypes appended after the standard 22)
+# should resolve the name first via their legend's `tokenTypes[idx]`
+# and call `lsp_kind_from_token_type(name)` instead.
+#
+# Standard 3.17 order:
+#   0  namespace      8  variable        16 macro
+#   1  type           9  property        17 keyword
+#   2  class         10  enumMember      18 modifier
+#   3  enum          11  event           19 comment
+#   4  interface     12  function        20 string
+#   5  struct        13  method          21 number
+#   6  typeParameter 14  decorator       22 regexp
+#   7  parameter     15  (reserved)      23 operator
+#
+# The "reserved" slot at 15 is a quirk of the spec history; the
+# common form has decorator at 14 and operator at 22. We follow
+# the *current* (3.17) order, which lists decorator as the most
+# recent addition at the end of the standard set. Out-of-range
+# indices return TK_IDENT.
+fn lsp_kind_from_standard_index(idx) {
+    if (idx == 0)  { return TK_IDENT; }         # namespace
+    if (idx == 1)  { return TK_IDENT; }         # type
+    if (idx == 2)  { return TK_IDENT; }         # class
+    if (idx == 3)  { return TK_IDENT; }         # enum
+    if (idx == 4)  { return TK_IDENT; }         # interface
+    if (idx == 5)  { return TK_IDENT; }         # struct
+    if (idx == 6)  { return TK_IDENT; }         # typeParameter
+    if (idx == 7)  { return TK_IDENT; }         # parameter
+    if (idx == 8)  { return TK_IDENT; }         # variable
+    if (idx == 9)  { return TK_IDENT; }         # property
+    if (idx == 10) { return TK_IDENT; }         # enumMember
+    if (idx == 11) { return TK_IDENT; }         # event
+    if (idx == 12) { return TK_IDENT; }         # function
+    if (idx == 13) { return TK_IDENT; }         # method
+    if (idx == 14) { return TK_KEYWORD; }       # modifier
+    if (idx == 15) { return TK_PREPROCESSOR; }  # macro
+    if (idx == 16) { return TK_PREPROCESSOR; }  # decorator (LSP 3.17 addition)
+    if (idx == 17) { return TK_KEYWORD; }       # keyword
+    if (idx == 18) { return TK_COMMENT; }       # comment
+    if (idx == 19) { return TK_STRING; }        # string
+    if (idx == 20) { return TK_NUMBER; }        # number
+    if (idx == 21) { return TK_STRING; }        # regexp
+    if (idx == 22) { return TK_OPERATOR; }      # operator
+    return TK_IDENT;
+}
