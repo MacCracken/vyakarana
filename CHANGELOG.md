@@ -6,6 +6,81 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [2.0.1] — 2026-05-08
+
+First sub-cut of the 2.0.x window. **Rolling-buffer
+streaming** lands — `drain()` actually drains tokens
+incrementally as they're committed, the buffer compacts
+after each commit so memory is bounded by the longest
+in-progress span instead of the total input size, and the
+1 MB cap on total input is gone.
+
+### Added
+
+- **Rolling-buffer scanner via rescan-and-commit.** Each
+  `tokenize_stream_drain(s, out_tb)` re-runs the existing
+  scanner over the current buffer, commits every token
+  whose extent is fully present, and compacts the buffer by
+  sliding unconsumed bytes to offset 0. `abs_offset`
+  tracks the absolute byte position of `buf_ptr[0]` so
+  token starts emit absolute (cumulative bytes since
+  stream creation), not buffer-relative.
+- **Trailing-complete heuristic** (`_stream_is_trailing_complete`).
+  A token whose end == buf_len is dropped in feed mode by
+  default — its bytes might extend with subsequent feeds,
+  changing the token's kind or length. Exception: pair-rule
+  tokens (TK_STRING / TK_COMMENT / TK_PREPROCESSOR) whose
+  trailing bytes match the rule's end marker are
+  definitively complete and commit early. Same for line-rule
+  tokens ending in LF. Operators / punctuation /
+  identifiers / keywords / numbers / whitespace are treated
+  conservatively as potentially-extending — they wait for
+  finish().
+- **12 new tcyr probes** in the `2.0.1 rolling-buffer
+  streaming — per-feed drainage` group:
+  - feed → drain → feed → finish; verifies absolute starts
+    after compaction.
+  - Block comment crossing a feed boundary; verifies the
+    comment commits as one TK_COMMENT spanning both
+    chunks.
+  - Byte-at-a-time stream (each byte in its own feed); the
+    final tokenbuf is byte-equivalent to a single-shot
+    feed of the same source.
+  746 → 758 passing.
+
+### Changed
+
+- **`VYK_STREAM_CAP`: 1 MB → 16 MB** (live-buffer cap, not
+  total input). The cap now bounds the longest in-progress
+  span — block comments, multi-line strings, fence bodies —
+  rather than the cumulative byte count. A 100 MB log file
+  with normal line-comment density streams comfortably
+  under 4 KB live buffer.
+- **Stream record: 48 → 56 bytes.** Replaced the 2.0.0
+  `drained` flag (offset 40) with `cursor`. Added
+  `abs_offset` at offset 48 — total bytes committed prior
+  to current buffer.
+- **`tokenize_stream_drain` semantics.** 2.0.0 returned 0
+  until finish; 2.0.1 returns the count appended by this
+  call. Drains can run between feeds; tokens land
+  incrementally.
+- **2.0.0 streaming probe updated** — the assertion that
+  drain-before-finish returns 0 was removed (was testing
+  the deferred 2.0.0 implementation). Replaced with checks
+  that drain emits some tokens early but holds the
+  trailing partial.
+- **Bench overhead per call:** ~10% regression on top of
+  2.0.0 (shell 19 → 21 µs, rust 28 → 30 µs, json 5 → 6 µs,
+  html-compose 10 → 11 µs). Cost of the per-drain rescan;
+  amortized away in true streaming use cases where drain
+  runs once per chunk rather than per token.
+
+### Status of 2.0.x followups
+
+- **2.0.2 — Pull adapter (`tokenize_stream_next`).** Now
+  meaningful because drain actually streams. Trivial
+  wrapper over the push primitive once it lands.
+
 ## [2.0.0] — 2026-05-08
 
 🎉 **First major version bump.** The 1.x line shipped 14

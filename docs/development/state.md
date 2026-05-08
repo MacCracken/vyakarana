@@ -4,18 +4,15 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.0.0 are
-> shipped. 🎉 **First major version bump.** 1.x closed at
-> 1.13.3 with 0 audit findings. **2.0.0 ships the streaming
-> tokenizer** that's been spec'd since M0 — the only
-> scheduled API break in the roadmap. As of 2026-05-08 the
-> toolchain pin is `cyrius = "5.10.0"`. 2.0.0 sub-cut: API
-> surface only (push-based primitive, `tokenize_stream_*`).
-> Internal scanner unchanged — feed() buffers, finish()
-> runs the existing pipeline. Real per-token-resume
-> streaming + pull adapter land in 2.0.1+. 38 grammars
-> bundled (unchanged), 746/746 tests passing, 3/3 fuzz
-> harnesses passing. See §Next up.
+> **Read this file before doing anything.** 1.0.0–2.0.1 are
+> shipped. 1.x closed at 1.13.3 with 0 audit findings. 2.0.0
+> shipped the streaming-API surface (push-based, `tokenize_stream_*`);
+> **2.0.1 delivers the rolling buffer** so drain actually
+> streams tokens per feed and the 1 MB total-input cap is
+> gone. As of 2026-05-08 the toolchain pin is `cyrius = "5.10.0"`.
+> 38 grammars bundled (unchanged), 758/758 tests passing,
+> 3/3 fuzz harnesses passing. Next is 2.0.2 (pull adapter,
+> `tokenize_stream_next`). See §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -35,9 +32,26 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `2.0.0` in `VERSION`, `src/version_str.cyr`, and
-  `dist/vyakarana.cyr`. Full 1.x + 2.0.0 tag history in the
-  CHANGELOG. **First 2.x cut.**
+- **Version:** `2.0.1` in `VERSION`, `src/version_str.cyr`, and
+  `dist/vyakarana.cyr`. Full 1.x + 2.0.0–2.0.1 tag history in
+  the CHANGELOG.
+- **What 2.0.1 added (rolling-buffer streaming):**
+  - **Per-feed drainage.** `tokenize_stream_drain(s, tb)`
+    re-runs the scanner over the current buffer, commits
+    every token whose extent is fully present, and
+    compacts unconsumed bytes to offset 0. `abs_offset`
+    keeps token starts absolute across compaction.
+  - **Trailing-complete heuristic** lets pair-rule tokens
+    (TK_STRING / TK_COMMENT / TK_PREPROCESSOR) commit
+    early when their close marker is at the tail. Other
+    kinds (operators, idents, numbers, whitespace) wait
+    for finish.
+  - **`VYK_STREAM_CAP` raised 1 MB → 16 MB** — and now
+    bounds the *live buffer* (longest in-progress span),
+    not the total input. 100 MB-class files stream
+    comfortably.
+  - 12 new tcyr probes including a byte-at-a-time stream
+    that's byte-equivalent to single-shot tokenize.
 - **What 2.0.0 added (streaming tokenizer):**
   - **Push-based streaming primitive
     ([ADR 0017](../adr/0017-streaming-api.md)).** Five
@@ -394,19 +408,13 @@ Closed waves:
 
 Now in flight:
 
-- **2.0.1+ — Pull adapter + per-token-resume scanner.**
-  Two pieces deferred from 2.0.0:
-  - Pull adapter (`tokenize_stream_next(s, out_token)`)
-    wraps the push primitive for iteration-style consumers.
-    Trivial once the per-token-resume scanner lands.
-  - Real streaming: scanner refactor to yield mid-token
-    across feed() calls. Rolling buffer with `MAX_TOKEN_LEN`
-    cap. `drain()` actually drains per-feed instead of
-    deferring to `finish()`. Removes the buffer-everything
-    model and the 1 MB cap.
-  May ship as 2.0.1 (combined) or as 2.0.1 (pull adapter)
-  + 2.0.2 (scanner refactor) — call to be made when work
-  starts.
+- **2.0.2 — Pull adapter (`tokenize_stream_next`).**
+  Wraps the 2.0.1 push primitive for iteration-style
+  consumers. Maintains a small per-stream tokenbuf that
+  drain() refills from the underlying stream; `_next`
+  returns the next entry by index and increments. EOF
+  signalled when finish has run and the internal tokenbuf
+  is exhausted. No new ADR — extends ADR 0017's design.
 
 After 2.0.x:
 

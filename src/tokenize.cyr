@@ -5,27 +5,40 @@
 # stream tied to a grammar, feeds chunks of bytes, and drains
 # tokens as they're available.
 #
-# 2.0.0 implementation note: feed() buffers all chunks into a
-# single contiguous source buffer. The scanner runs at finish()
-# time over the buffered bytes and emits all tokens at once. This
-# preserves the 1.x scanner behaviour exactly — no per-token-
-# resume, no rolling window. Real streaming (mid-token resume,
-# bounded buffer) lands in 2.0.1+. The public surface here is
-# stable across that transition; only internals change.
+# 2.0.1 implementation: rolling-buffer streaming via the
+# rescan-and-commit pattern. Each drain re-runs the existing
+# scanner over the current buffer, commits every token whose
+# extent is fully present (those whose end < buf_len plus any
+# trailing pair-rule token whose close marker is at its tail),
+# and compacts the buffer by sliding unconsumed bytes to offset
+# 0. abs_offset tracks how many bytes have already been
+# committed so token starts emit absolute. finish() lifts the
+# "drop trailing partial" rule and commits everything to EOF.
 #
-# A pull adapter (`tokenize_stream_next`) is queued for 2.0.1+
-# alongside the scanner refactor.
+# Cost: O(buf_len) scan per drain. For many small chunks that's
+# O(N²) total work over an N-byte stream — accept for 2.0.1's
+# minimal-state-machine implementation. A future optimization
+# would track scanner state explicitly so drain only scans new
+# bytes since the previous commit.
+#
+# A pull adapter (`tokenize_stream_next`) is queued for 2.0.2.
 #
 # Stream layout (heap-allocated; opaque to callers):
 #
 #    0  buf_ptr     ptr to growable byte buffer
-#    8  buf_len     i64 — bytes written so far
-#   16  buf_cap     i64 — current allocation size (max VYK_STREAM_CAP)
+#    8  buf_len     i64 — bytes written so far (relative to buf_ptr[0])
+#   16  buf_cap     i64 — current allocation size
 #   24  grammar     ptr to grammar record (looked up at _new)
 #   32  finished    i64  (0 / 1) — set by tokenize_stream_finish
-#   40  drained     i64  (0 / 1) — set when finish has been drained
+#   40  cursor      i64 — buffer-relative position of next byte to scan
+#                          (always 0 in 2.0.1 because compaction follows
+#                          every commit, but kept distinct for clarity)
+#   48  abs_offset  i64 — absolute offset of buf_ptr[0] in the original
+#                          stream. Increments by `consumed` after each
+#                          drain compaction. Tokens emit with
+#                          start = abs_offset + relative_start.
 #   -----
-#   48 bytes total
+#   56 bytes total
 #
 # Bundled into `dist/vyakarana.cyr`. Public symbols:
 #   tokenize_stream_new
@@ -49,14 +62,16 @@ include "src/grammar.cyr"
 include "src/grammars/shell.cyr"
 include "src/grammars/default_scanner.cyr"
 
-# Initial buffer allocation; doubles up to VYK_STREAM_CAP.
+# Initial buffer allocation; grows as needed.
 var VYK_STREAM_INIT_CAP = 4096;
-# Hard upper bound. 2.0.0 still buffers everything before
-# scanning, so the cap matches the 1.x VYK_SRC_CAP behaviour.
-# 2.0.1+ removes this with rolling-buffer streaming.
-var VYK_STREAM_CAP = 1048576;
+# Hard upper bound on the *live* (unconsumed) buffer at any one
+# point. 2.0.1's rolling buffer compacts after every drain, so
+# the cap effectively bounds the longest in-progress span (block
+# comment, multi-line string, fence body) rather than the total
+# input size. Total input can exceed this freely.
+var VYK_STREAM_CAP = 16777216;
 
-var STREAM_REC_SIZE = 48;
+var STREAM_REC_SIZE = 56;
 
 # Error codes returned by tokenize_stream_feed.
 var VYK_OK            = 0;
@@ -171,6 +186,7 @@ fn tokenize_stream_new(lang) {
     store64(s + 24, g);
     store64(s + 32, 0);
     store64(s + 40, 0);
+    store64(s + 48, 0);
     return s;
 }
 
@@ -217,43 +233,147 @@ fn tokenize_stream_feed(s, chunk, n) {
     return VYK_OK;
 }
 
-# Drain whatever tokens are available right now into `out_tb`.
-# In 2.0.0 the scanner only runs at finish() time, so drain is a
-# no-op until finish has been called. Returns the number of
-# tokens emitted by this call.
+# Returns 1 if the token at index `idx` of `temp_tb` (with src
+# bytes in `buf`) is definitively complete — i.e., its trailing
+# bytes are at a hard boundary (closing pair-rule marker, line
+# break, single-byte fallthrough) and so the token wouldn't
+# extend if more bytes arrived. Used by drain to decide whether
+# to commit the trailing token even though its end == buf_len.
+fn _stream_is_trailing_complete(g, buf, temp_tb, idx) {
+    var kind    = tokenbuf_kind(temp_tb, idx);
+    var t_start = tokenbuf_start(temp_tb, idx);
+    var t_len   = tokenbuf_len(temp_tb, idx);
+    # Only pair-rule kinds get the trailing-complete pass.
+    # Everything else — operators / punctuation (longest-match
+    # tables), idents / keywords / numbers (extending bytes
+    # could change the token), whitespace (more whitespace
+    # could follow) — must wait. The cost of being wrong on
+    # an extending case is mis-tokenization at chunk boundaries,
+    # so we err on the side of conservatism: only the pair-rule
+    # case (close marker is at the tail; no further bytes can
+    # change this token's extent) is safe to commit early.
+    if ((kind == TK_STRING) || (kind == TK_COMMENT) || (kind == TK_PREPROCESSOR)) {
+        var rules = grammar_pair_rules(g);
+        var n = vec_len(rules);
+        var i = 0;
+        while (i < n) {
+            var r = vec_get(rules, i);
+            if (pair_rule_kind(r) == kind) {
+                var endp = pair_rule_end(r);
+                var elen = strlen(endp);
+                if ((elen > 0) && (elen <= t_len)) {
+                    if (memeq(buf + t_start + t_len - elen, endp, elen) == 1) {
+                        return 1;
+                    }
+                }
+            }
+            i = i + 1;
+        }
+        # Line-rule kinds (line comments, shebang preprocessor):
+        # the LF is the unambiguous terminator. If the trailing
+        # token ends in LF, more bytes can't extend it.
+        if ((t_len > 0) && (load8(buf + t_start + t_len - 1) == 10)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+# Drain tokens whose spans are fully present in the buffer.
+# Re-scans the current buffer with `tokenize_with_grammar`,
+# commits all tokens whose end < buf_len (in feed mode) or every
+# token (in finish mode), then compacts the buffer by sliding
+# unconsumed bytes to offset 0. Returns the count appended to
+# `out_tb` by this call.
 #
-# 2.0.1+ will emit tokens for completed prefixes after each feed
-# (rolling-buffer streaming). The contract here doesn't change:
-# call drain repeatedly between feeds; the last drain always
-# happens after finish.
+# Why rescan-and-commit? It reuses the existing scanner without
+# requiring a state-machine refactor, at the cost of O(buf_len)
+# per drain. The trailing partial token (string with no close,
+# block comment without `*/`, etc.) is always dropped in feed
+# mode — its bytes stay in the buffer, gets re-scanned next
+# drain after more bytes arrive. finish() lifts this constraint
+# and commits everything including the tail.
 fn tokenize_stream_drain(s, out_tb) {
     if (s == 0) { return 0; }
-    if (load64(s + 32) == 0) { return 0; }   # not finished yet
-    if (load64(s + 40) == 1) { return 0; }   # already drained
-    store64(s + 40, 1);
     var buf = load64(s);
-    var len = load64(s + 8);
+    var buf_len = load64(s + 8);
     var g = load64(s + 24);
-    # NUL-terminate so tokenize_with_grammar's strlen-based
-    # callers see the right length. The cap math in feed()
-    # reserves the byte.
-    store8(buf + len, 0);
-    var before = tokenbuf_count(out_tb);
-    tokenize_with_grammar(g, buf, len, out_tb);
-    return tokenbuf_count(out_tb) - before;
+    var finishing = load64(s + 32);
+    var abs_offset = load64(s + 48);
+    if (buf_len == 0) { return 0; }
+    # NUL-terminate the live buffer so the inner scanner's
+    # strlen-shaped checks see the correct end.
+    store8(buf + buf_len, 0);
+    # Scan into a fresh tokenbuf so we can decide which tokens
+    # are safe to commit. The existing scanner emits tokens with
+    # starts relative to `buf`; we shift by abs_offset on copy.
+    var temp_tb = tokenbuf_new();
+    tokenize_with_grammar(g, buf, buf_len, temp_tb);
+    var n_temp = tokenbuf_count(temp_tb);
+    # Decide commit count: in feed mode, drop the trailing token
+    # (it might extend further in subsequent feeds). In finish
+    # mode, every token is committed.
+    var commit_count = n_temp;
+    if (finishing == 0) {
+        commit_count = 0;
+        var i = 0;
+        while (i < n_temp) {
+            var t_start = tokenbuf_start(temp_tb, i);
+            var t_len   = tokenbuf_len(temp_tb, i);
+            if (t_start + t_len < buf_len) { commit_count = i + 1; }
+            i = i + 1;
+        }
+        # If the trailing token is definitively complete (close
+        # marker present at its tail, LF terminator, etc.) we can
+        # commit it even though it ends at buf_len. Avoids waiting
+        # for finish() when the stream just happens to break at a
+        # hard boundary.
+        if ((commit_count < n_temp) && (n_temp > 0)) {
+            if (_stream_is_trailing_complete(g, buf, temp_tb, n_temp - 1) == 1) {
+                commit_count = n_temp;
+            }
+        }
+    }
+    # Push committed tokens to out_tb with abs_offset shift.
+    var emitted = 0;
+    var j = 0;
+    while (j < commit_count) {
+        tokenbuf_push(out_tb,
+        tokenbuf_kind(temp_tb, j),
+        abs_offset + tokenbuf_start(temp_tb, j),
+        tokenbuf_len(temp_tb, j));
+        emitted = emitted + 1;
+        j = j + 1;
+    }
+    # Compact: slide bytes [consumed, buf_len) to offset 0.
+    # Bytes 0..consumed are now permanently committed; their
+    # absolute positions live in abs_offset.
+    var consumed = 0;
+    if (commit_count > 0) {
+        var last = commit_count - 1;
+        consumed = tokenbuf_start(temp_tb, last) + tokenbuf_len(temp_tb, last);
+    }
+    if (consumed > 0) {
+        var k = consumed;
+        var dst = 0;
+        while (k < buf_len) {
+            store8(buf + dst, load8(buf + k));
+            dst = dst + 1;
+            k = k + 1;
+        }
+        store64(s + 8,  buf_len - consumed);
+        store64(s + 48, abs_offset + consumed);
+    }
+    return emitted;
 }
 
 # Mark the stream as finished and emit every remaining token
-# into `out_tb`. Returns the number of tokens emitted by this
-# call (combines any pending drain + any final-flush). After
-# finish, no further feed/drain is permitted (drain becomes a
-# no-op; feed returns VYK_ERR_FINISHED).
+# into `out_tb`. After finish, feed returns VYK_ERR_FINISHED;
+# drain becomes a no-op (cursor == buf_len after the final
+# compaction).
 fn tokenize_stream_finish(s, out_tb) {
     if (s == 0) { return 0; }
-    if (load64(s + 32) == 1) {
-        # Already finished — just drain whatever's still pending.
-        return tokenize_stream_drain(s, out_tb);
-    }
+    if (load64(s + 32) == 1) { return 0; }
     store64(s + 32, 1);
     return tokenize_stream_drain(s, out_tb);
 }
