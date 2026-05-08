@@ -9,9 +9,43 @@ _No unreleased changes._
 ## [1.11.1] — 2026-05-08
 
 Second sub-cut of the 1.11.x window. **Grammar composition**
-(embedded-block routing through inner grammars) and **theme
+(embedded-block routing through inner grammars), **theme
 export** (emit external editor theme files from the bundled
-themes). One new ADR (0013) and one new public CLI flag.
+themes), and a **self-contained dist bundle** (grammars
+inlined as Cyrius string literals so downstream `cyrius deps`
+consumers no longer need to vendor `grammars/`). Two new ADRs
+(0013, 0014) and one new public CLI flag.
+
+### Fixed
+
+- **`dist/vyakarana.cyr` is now actually self-contained
+  ([ADR 0014](docs/adr/0014-embedded-grammar-blobs.md)).**
+  Through 1.11.0 the bundle's `bootstrap_grammars()` called
+  `file_read_all("grammars/<name>.cyml")` 38 times — but
+  `cyrius deps` only vendors the bundle file, not the
+  `grammars/` dir. A consumer following the documented
+  integration path got a tokenizer that loaded zero
+  grammars and silently returned empty tokenbufs from
+  `tokenize_source`. Fixed by inlining each grammar as a
+  Cyrius string literal.
+  - New `scripts/embed-grammars.sh` — reads every
+    `grammars/*.cyml`, escapes content, writes
+    `src/grammar_blobs.cyr` (gitignored). Run before
+    `cyrius build` / `cyrius distlib`.
+  - New module `src/grammar_blobs.cyr` (generated; in
+    `[lib] modules` of `cyrius.cyml` so `cyrius distlib`
+    pulls it into the bundle).
+  - `grammar_load(path)` consults the blob registry first;
+    falls back to `file_read_all` for the grammar-author
+    dev workflow (`vyk path/to/foo.cyml`).
+  - New smoke probe runs `vyk` from a temp dir with no
+    `grammars/` reachable: 38 languages list, shell corpus
+    tokenizes to 1560 NDJSON lines. Locks the
+    self-contained guarantee against future regression.
+  - **Bundle size grew from 82KB to 253KB.** Acceptable
+    cost for a working integration path; the alternative
+    (downstream consumers maintain a `grammars/` mirror)
+    leaks vyakarana internals into every consumer's tree.
 
 ### Added
 

@@ -10,11 +10,35 @@ if [ ! -x "$BIN" ]; then
     exit 1
 fi
 
+# Resolve to absolute path so the isolated-dir probe further down
+# can invoke vyk after `cd`.
+case "$BIN" in
+    /*) ABS_BIN="$BIN" ;;
+    *)  ABS_BIN="$(pwd)/$BIN" ;;
+esac
+
 TMPDIR="${TMPDIR:-/tmp}/vyk-smoke-$$"
 mkdir -p "$TMPDIR"
 trap 'rm -rf "$TMPDIR"' EXIT INT TERM
 
 fail() { echo "smoke: FAIL — $1" >&2; exit 1; }
+
+# ============================================================
+# Self-contained-bundle probe (1.11.1+).
+# bootstrap_grammars must succeed without grammars/*.cyml on disk
+# — that's the contract for downstream `cyrius deps` consumers,
+# which only vendor dist/vyakarana.cyr (not the grammars/ dir).
+# Run vyk from a fresh dir where no `grammars/` is reachable.
+# ============================================================
+ISOLATE="$TMPDIR/isolate"
+mkdir -p "$ISOLATE"
+SHELL_CORPUS="$(pwd)/tests/corpus/shell.sh"
+isolated_count=$(cd "$ISOLATE" && "$ABS_BIN" --list-languages | wc -l)
+[ "$isolated_count" -ge 30 ] \
+    || fail "isolated --list-languages got $isolated_count grammars (expected ≥30; embedded blobs missing?)"
+isolated_tokens=$(cd "$ISOLATE" && "$ABS_BIN" --language=shell "$SHELL_CORPUS" | wc -l)
+[ "$isolated_tokens" -gt 100 ] \
+    || fail "isolated tokenize got $isolated_tokens tokens (expected >100; blob path broken?)"
 
 # ============================================================
 # M0 — version / help / list

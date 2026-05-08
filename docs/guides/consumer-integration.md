@@ -4,7 +4,7 @@ How to integrate vyakarana into a downstream Cyrius project
 (owl, cyim, agnoshi, vidya, or anything else that needs to
 tokenize source code).
 
-> **Last updated:** 2026-05-08 (1.10.0)
+> **Last updated:** 2026-05-08 (1.11.1)
 >
 > Audience: implementers writing the *renderer*, *editor*,
 > *theme*, or *content pipeline* that sits on top of vyakarana.
@@ -17,19 +17,27 @@ tokenize source code).
 ## What you depend on
 
 vyakarana ships a single concatenated distfile,
-`dist/vyakarana.cyr`, that bundles the public API and all 38
-grammars. Add to your project's `cyrius.cyml`:
+`dist/vyakarana.cyr`, that bundles the public API **and the 38
+grammars themselves** (inlined as Cyrius string literals — see
+[ADR 0014](../adr/0014-embedded-grammar-blobs.md)). Add to your
+project's `cyrius.cyml`:
 
 ```toml
 [deps.vyakarana]
 git     = "https://github.com/MacCracken/vyakarana.git"
-tag     = "1.10.0"
+tag     = "1.11.1"
 modules = ["dist/vyakarana.cyr"]
 ```
 
 `cyrius deps` will fetch the tag and copy the bundle into your
 `lib/`. Pin to a tag, not a branch — the bundle changes per
 release.
+
+> **1.11.0 and earlier are broken.** Through 1.11.0 the bundle
+> tried to read `grammars/<name>.cyml` from disk at runtime, but
+> `cyrius deps` only vendors the bundle file. Pin **1.11.1 or
+> later** for a working integration. Older tags will silently
+> register zero grammars and return empty tokenbufs.
 
 ## What you get
 

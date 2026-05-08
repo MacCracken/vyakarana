@@ -21,15 +21,23 @@ caller's buffer, fast and without surprises.
 ## Gates — run before trusting status
 
 ```sh
+sh scripts/embed-grammars.sh
 cyrius deps && cyrius build src/main.cyr build/vyk
 cyrius test tests/vyakarana.tcyr
 sh scripts/smoke.sh build/vyk
 ```
 
-Run all three on session entry. Don't take
+Run all four on session entry. Don't take
 `docs/development/state.md` / `README.md` claims of "green" at
 face value until you've seen the commands pass. Use `cyrius build`,
 never raw `cc3`/`cc5`.
+
+`scripts/embed-grammars.sh` regenerates `src/grammar_blobs.cyr`
+(gitignored — every fresh checkout needs this step before the
+first build). Inlines `grammars/*.cyml` into Cyrius string
+literals so `dist/vyakarana.cyr` is self-contained for `cyrius
+deps` consumers; also required before `cyrius distlib`. See
+ADR 0014.
 
 ## Work loop (continuous)
 

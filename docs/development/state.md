@@ -56,11 +56,24 @@
     forks). Pair with `--theme=<name>` to pick the source
     palette. Helix / iTerm formats deferred until a real
     consumer asks.
+  - **Self-contained dist bundle** (ADR 0014). Through
+    1.11.0 `dist/vyakarana.cyr` called `file_read_all` on
+    `grammars/<name>.cyml` at runtime — but `cyrius deps`
+    only vendors the bundle file. Consumers following the
+    documented integration path got an empty tokenizer with
+    no diagnostic. Fixed by inlining every grammar as a
+    Cyrius string literal via the new
+    `scripts/embed-grammars.sh` (writes
+    `src/grammar_blobs.cyr`, gitignored, regenerated on each
+    gate run). `grammar_load` consults the blob registry
+    first; file-load fallback retained for grammar-author
+    dev workflow. Bundle grew 82KB → 253KB.
 - **Test count:** 682/682 (was 674 at 1.11.0; 8 new compose
   probes — CSS body tokenization through `<style>`, JS body
   tokenization through `<script>`, marker emission as
   `TK_PUNCTUATION`, coverage invariant). 4 new theme-export
-  smoke probes.
+  smoke probes. 1 new isolated-dir smoke probe (verifies
+  bundle works without `grammars/` reachable).
 - **No new grammars** — 38 bundled, unchanged.
 
 ### 1.10.0 deliverables (recap)
