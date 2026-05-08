@@ -200,6 +200,165 @@ fn _ds_try_compose_rules(g, src, src_len, i, tb) {
     return 0;
 }
 
+# True if `b` is a tag-character (alphanumeric / `+` / `-` / `_`).
+# CommonMark info-string is liberal but for grammar-name lookup
+# we only care about the closed set [A-Za-z0-9_+-].
+fn _ds_is_tag_byte(b) {
+    if ((b >= 65) && (b <= 90))  { return 1; }     # A-Z
+    if ((b >= 97) && (b <= 122)) { return 1; }     # a-z
+    if ((b >= 48) && (b <= 57))  { return 1; }     # 0-9
+    if (b == 95) { return 1; }                     # _
+    if (b == 43) { return 1; }                     # +
+    if (b == 45) { return 1; }                     # -
+    return 0;
+}
+
+# Try each [[rules]] match="compose_fenced" at the cursor. Same
+# shape as compose, but the inner grammar is captured per-fence
+# from the bytes between `start` and the next newline (the
+# "info string" in CommonMark terms; we take the first
+# tag-character run as the language tag).
+#
+# Layout of a fence we recognize:
+#
+#     <start><tag><info-tail>\n<body>\n<end>
+#
+#   <start>      literal, e.g. "```"
+#   <tag>        [A-Za-z0-9_+-]+ (captured language identifier)
+#   <info-tail>  ignored bytes up to first \n
+#   <body>       routed through grammar named by <tag>
+#   <end>        literal, e.g. "```"; matches at start-of-line
+#                or end-of-buffer
+#
+# Pipeline placement: same step 0 region as compose, executed
+# before the regular pair / line / words steps so the outer
+# grammar's tokenizer doesn't eat the fence markers byte-by-byte.
+# See ADR 0016.
+# Walk forward from `start` while bytes are tag-characters.
+# Returns the offset just past the last tag byte (or `start` if
+# none). Bounded by `src_len`.
+fn _ds_scan_tag(src, src_len, start) {
+    var p = start;
+    var done = 0;
+    while ((p < src_len) && (done == 0)) {
+        if (_ds_is_tag_byte(load8(src + p)) == 1) { p = p + 1; }
+        if (_ds_is_tag_byte(load8(src + p)) == 0) { done = 1; }
+    }
+    return p;
+}
+
+# Walk forward from `start` until LF or end-of-buffer. Returns
+# the LF offset, or `src_len` if no LF before EOF.
+fn _ds_scan_to_lf(src, src_len, start) {
+    var p = start;
+    var done = 0;
+    while ((p < src_len) && (done == 0)) {
+        if (load8(src + p) == 10) { done = 1; }
+        if (load8(src + p) != 10) { p = p + 1; }
+    }
+    return p;
+}
+
+# Find the closing fence — earliest offset in [body_start, src_len)
+# where the end marker appears at start-of-line (or == body_start
+# for an empty-body fence). Returns the offset, or (0 - 1) if no
+# match.
+fn _ds_find_fenced_close(src, src_len, body_start, endp, elen) {
+    var close_pos = (0 - 1);
+    var j = body_start;
+    while ((j + elen <= src_len) && (close_pos < 0)) {
+        var line_start = 0;
+        if (j == body_start) { line_start = 1; }
+        if ((j > 0) && (load8(src + j - 1) == 10)) { line_start = 1; }
+        if ((line_start == 1) && (memeq(src + j, endp, elen) == 1)) {
+            close_pos = j;
+        }
+        if (close_pos < 0) { j = j + 1; }
+    }
+    return close_pos;
+}
+
+fn _ds_try_compose_fenced_rules(g, src, src_len, i, tb) {
+    var rules = grammar_compose_fenced_rules(g);
+    if (rules == 0) { return 0; }
+    var n = vec_len(rules);
+    var r_i = 0;
+    var result = 0;
+    while ((r_i < n) && (result == 0)) {
+        var r = vec_get(rules, r_i);
+        var start = compose_fenced_rule_start(r);
+        var slen = strlen(start);
+        var match_here = 0;
+        if (i + slen <= src_len) {
+            if (memeq(src + i, start, slen) == 1) { match_here = 1; }
+        }
+        if (match_here == 1) {
+            var tag_start = i + slen;
+            var tag_end = _ds_scan_tag(src, src_len, tag_start);
+            var nl_pos  = _ds_scan_to_lf(src, src_len, tag_end);
+
+            if (nl_pos < src_len) {
+                # Real fence: has a closing LF on the open line.
+                var body_start = nl_pos + 1;
+                var endp = compose_fenced_rule_end(r);
+                var elen = strlen(endp);
+                var close_pos = _ds_find_fenced_close(src, src_len,
+                body_start, endp, elen);
+                if (close_pos >= 0) {
+                    # Resolve inner grammar from captured tag.
+                    var tag_len = tag_end - tag_start;
+                    var inner_g = 0;
+                    if (tag_len > 0) {
+                        var tag_buf = alloc(tag_len + 1);
+                        var tk = 0;
+                        while (tk < tag_len) {
+                            store8(tag_buf + tk,
+                            load8(src + tag_start + tk));
+                            tk = tk + 1;
+                        }
+                        store8(tag_buf + tag_len, 0);
+                        inner_g = registry_find_by_name(tag_buf);
+                    }
+
+                    # Emit: open-marker (incl. info + LF), body,
+                    # close-marker.
+                    var open_len = body_start - i;
+                    tokenbuf_push(tb, TK_PUNCTUATION, i, open_len);
+
+                    var body_len = close_pos - body_start;
+                    if (body_len > 0) {
+                        if (inner_g != 0) {
+                            var inner_tb = tokenbuf_new();
+                            tokenize_with_grammar(inner_g,
+                            src + body_start,
+                            body_len, inner_tb);
+                            var k = 0;
+                            var nk = tokenbuf_count(inner_tb);
+                            while (k < nk) {
+                                tokenbuf_push(tb,
+                                tokenbuf_kind(inner_tb, k),
+                                tokenbuf_start(inner_tb, k) + body_start,
+                                tokenbuf_len(inner_tb, k));
+                                k = k + 1;
+                            }
+                        }
+                        if (inner_g == 0) {
+                            # No tag, or tag didn't resolve.
+                            tokenbuf_push(tb, TK_STRING,
+                            body_start, body_len);
+                        }
+                    }
+
+                    tokenbuf_push(tb, TK_PUNCTUATION, close_pos, elen);
+                    result = open_len + body_len + elen;
+                }
+            }
+        }
+        if (result == 0) { r_i = r_i + 1; }
+    }
+    return result;
+}
+
 # Try each [[rules]] match="pair". Returns packed (kind << 56) | len.
 fn _ds_try_pair_rules(g, src, src_len, i) {
     var rules = grammar_pair_rules(g);
@@ -470,6 +629,17 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
         var clen = _ds_try_compose_rules(g, src, src_len, i, tb);
         if (clen > 0) {
             i = i + clen;
+            continue;
+        }
+
+        # 0b. Compose-fenced rules (ADR 0016). Same shape but the
+        # inner grammar is captured per-fence from the bytes
+        # between the start marker and the next LF (the
+        # CommonMark "info string"). Markdown's ` ```rust ` →
+        # rust grammar; ` ```python ` → python.
+        var cflen = _ds_try_compose_fenced_rules(g, src, src_len, i, tb);
+        if (cflen > 0) {
+            i = i + cflen;
             continue;
         }
 

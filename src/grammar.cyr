@@ -40,10 +40,11 @@ var GRAMMAR_FILE_CAP = 32768;
 #  144  char_literal_on     i64  (0/1) — `'C'` / `'\C'` / `'\xHH'` as one TK_STRING
 #  152  case_insensitive_kw i64  (0/1) — keyword lookup folds A-Z to a-z
 #  160  compose_rules       Vec<ComposeRule> — embedded-grammar routing
+#  168  compose_fenced_rules Vec<ComposeFencedRule> — captured-tag routing (ADR 0016)
 #  -----
-#  168 bytes total
+#  176 bytes total
 
-var GRAMMAR_SIZE = 168;
+var GRAMMAR_SIZE = 176;
 
 fn grammar_new() {
     var g = alloc(GRAMMAR_SIZE);
@@ -60,6 +61,7 @@ fn grammar_new() {
     store64(g + 120, vec_new());   # pair_rules
     store64(g + 128, vec_new());   # words_rules
     store64(g + 160, vec_new());   # compose_rules
+    store64(g + 168, vec_new());   # compose_fenced_rules
     return g;
 }
 
@@ -83,7 +85,8 @@ fn grammar_words_rules(g)    { return load64(g + 128); }
 fn grammar_unicode_ident(g)  { return load64(g + 136); }
 fn grammar_char_literal(g)   { return load64(g + 144); }
 fn grammar_case_insensitive_kw(g) { return load64(g + 152); }
-fn grammar_compose_rules(g)       { return load64(g + 160); }
+fn grammar_compose_rules(g)        { return load64(g + 160); }
+fn grammar_compose_fenced_rules(g) { return load64(g + 168); }
 
 # ── Rule sub-records ────────────────────────
 
@@ -134,6 +137,20 @@ fn compose_rule_new(start, end, inner_name) {
 fn compose_rule_start(r) { return load64(r); }
 fn compose_rule_end(r)   { return load64(r + 8); }
 fn compose_rule_inner(r) { return load64(r + 16); }
+
+# Compose-fenced rule — same shape as ComposeRule minus the
+# `inner` field. The inner grammar is captured per-fence-
+# instance from the bytes between `start` and the next newline
+# (the "info string" in CommonMark terms). See ADR 0016.
+var COMPOSE_FENCED_RULE_SIZE = 16;
+fn compose_fenced_rule_new(start, end) {
+    var r = alloc(COMPOSE_FENCED_RULE_SIZE);
+    store64(r,     start);
+    store64(r + 8, end);
+    return r;
+}
+fn compose_fenced_rule_start(r) { return load64(r); }
+fn compose_fenced_rule_end(r)   { return load64(r + 8); }
 
 # ── Char-class lookup tables ────────────────
 # A 256-byte table indexed by byte; value is 0 or 1. Built from a
@@ -460,7 +477,8 @@ fn _gp_apply_kv(g, current_rule, section, buf, len, key_pos, key_len, value_pos)
             if (streq(mname, "line")    == 1) { mt = 1; }
             if (streq(mname, "pair")    == 1) { mt = 2; }
             if (streq(mname, "words")   == 1) { mt = 3; }
-            if (streq(mname, "compose") == 1) { mt = 4; }
+            if (streq(mname, "compose") == 1)        { mt = 4; }
+            if (streq(mname, "compose_fenced") == 1) { mt = 5; }
             store64(current_rule + 8, mt);
             return 0;
         }
@@ -547,6 +565,14 @@ fn _gp_close_rule(g, rule_acc) {
         # disambiguates).
         var inner = words;
         vec_push(grammar_compose_rules(g), compose_rule_new(start, endp, inner));
+        return 0;
+    }
+    if (mt == 5) {
+        # Compose-fenced: no `inner` — captured per-instance from
+        # the input bytes between `start` and the next newline.
+        # See ADR 0016.
+        vec_push(grammar_compose_fenced_rules(g),
+        compose_fenced_rule_new(start, endp));
         return 0;
     }
     return 0;

@@ -147,6 +147,30 @@ grep -q "^vyk: no grammar matched for" "$TMPDIR/err" \
 grep -q "run --list-languages" "$TMPDIR/err" \
     || fail "no-grammar missing --list-languages hint"
 
+# 1.13.2 — markdown fence routing (ADR 0016).
+# `vyk file.md` containing a ```rust fence: body should produce
+# at least one TK_KEYWORD (via the Rust inner grammar) and the
+# coverage invariant holds. Without compose_fenced this would be
+# a single TK_STRING.
+FENCE_FIXTURE="$TMPDIR/fence.md"
+printf 'Some text.\n\n```rust\nfn add(x: i64) -> i64 { x + 1 }\n```\n\nMore text.\n' > "$FENCE_FIXTURE"
+"$BIN" --language=markdown "$FENCE_FIXTURE" > "$TMPDIR/fence.ndjson" 2> "$TMPDIR/err" \
+    || fail "markdown fence: exit non-zero (stderr: $(cat "$TMPDIR/err"))"
+grep -q '"kind":"keyword","start":[0-9]*,"len":2' "$TMPDIR/fence.ndjson" \
+    || fail "markdown fence: rust 'fn' keyword not surfaced (compose_fenced not firing?)"
+fence_total=$(grep -oE '"len":[0-9]+' "$TMPDIR/fence.ndjson" | cut -d: -f2 \
+    | awk '{s+=$1} END {print s+0}')
+fence_bytes=$(wc -c < "$FENCE_FIXTURE" | tr -d ' ')
+[ "$fence_total" = "$fence_bytes" ] \
+    || fail "markdown fence: coverage broken ($fence_total != $fence_bytes)"
+
+# Unknown tag falls back to TK_STRING for the body.
+printf '```bogus\nplain body\n```\n' > "$TMPDIR/bogus.md"
+"$BIN" --language=markdown "$TMPDIR/bogus.md" > "$TMPDIR/bogus.ndjson" 2> "$TMPDIR/err" \
+    || fail "bogus-tag fence: exit non-zero"
+grep -q '"kind":"string","start":' "$TMPDIR/bogus.ndjson" \
+    || fail "bogus-tag fence: body not TK_STRING (graceful degrade broken?)"
+
 # --help mentions exit codes (1.13.1 audit).
 "$BIN" --help > "$TMPDIR/help" 2>&1
 grep -q "^Exit codes:" "$TMPDIR/help" \

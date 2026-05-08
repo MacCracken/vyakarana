@@ -4,17 +4,19 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–1.13.1 are
-> shipped. As of 2026-05-08 the toolchain pin is `cyrius = "5.9.36"`.
+> **Read this file before doing anything.** 1.0.0–1.13.2 are
+> shipped. As of 2026-05-08 the toolchain pin is `cyrius = "5.10.0"`.
 > 1.11.x closed the external-integrations wave; 1.12.x added
 > hardening + theme-export polish; 1.13.0 set the pre-2.0
-> performance baseline. **1.13.1 polishes the CLI surface**
-> — error messages split by failure class, `--help` gets
-> Exit-codes and Examples sections, and a real `vyk(1)` man
-> page ships under `docs/man/`. 38 grammars bundled
-> (unchanged), 717/717 tests passing, 3/3 fuzz harnesses
-> passing. Next is 1.13.2 (markdown fence routing) — see
-> §Next up.
+> performance baseline; 1.13.1 polished the CLI surface.
+> **1.13.2 ships markdown fence routing** — `match =
+> "compose_fenced"` rule type captures the language tag
+> from `` ```rust `` / `` ```python `` style fences and
+> routes the body through the named inner grammar.
+> 38 grammars bundled (unchanged), 731/731 tests passing,
+> 3/3 fuzz harnesses passing. Next is 1.13.3 (packaging +
+> 1.13.x security audit) — last cut before 2.0. See §Next
+> up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -34,8 +36,21 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `1.13.1` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `1.13.2` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`. Full 1.x tag history in the CHANGELOG.
+- **What 1.13.2 added (markdown fence routing):**
+  - **`match = "compose_fenced"` rule type
+    ([ADR 0016](../adr/0016-compose-fenced-rule.md)).**
+    Captures language tag from fence info-string
+    (`[A-Za-z0-9_+-]+`); routes body through the named
+    inner grammar. New scanner step 0b ahead of pair / line
+    / words. Falls back to TK_STRING on unknown tag, empty
+    tag, or unloaded grammar.
+  - **Markdown adopts it** — `` ```rust `` body produces
+    TK_KEYWORD for `fn`/`let`; `` ```python `` produces
+    TK_KEYWORD for `def`.
+  - **Toolchain pin bumped** to `cyrius = "5.10.0"` to
+    match local stdlib expectations.
 - **What 1.13.1 added (CLI polish cut):**
   - **Error messages split by failure class.**
     `unknown_option_error` / `bad_value_error` /
@@ -147,12 +162,11 @@
     gate run). `grammar_load` consults the blob registry
     first; file-load fallback retained for grammar-author
     dev workflow. Bundle grew 82KB → 253KB.
-- **Test count:** 717/717 (was 707 at 1.11.2; 10 new 1.12.0
-  stress probes covering pathological backtracking, runaway
-  pair openers, broken UTF-8 mid-ident, unclosed and
-  6×-nested compose, 4KB ident run). 3 fuzz harnesses pass
-  (`fuzz/tokenize.fcyr`, `fuzz/detect.fcyr`,
-  `fuzz/grammar_load.fcyr`).
+- **Test count:** 731/731 (was 717 at 1.13.1; 13 new 1.13.2
+  probes covering Rust + Python fence routing, unknown-tag
+  fallback, empty-tag fallback, unclosed-fence fall-through,
+  `c++` tag accepts; M3 markdown probe refreshed for the new
+  fence shape). 3 fuzz harnesses pass.
 - **No new grammars** — 38 bundled, unchanged.
 
 ### 1.10.0 deliverables (recap)
@@ -211,9 +225,9 @@ consumer guide here. No vyakarana cut needed.
   ruby, lua, swift, elixir, ocaml, haskell, sql, graphql,
   protobuf, html, xml, css, scss, dockerfile, makefile, ini,
   **cyml, llvm_ir**).
-- **Toolchain pin:** `cyrius = "5.9.36"` in `cyrius.cyml`
+- **Toolchain pin:** `cyrius = "5.10.0"` in `cyrius.cyml`
   (unchanged since 1.0.3).
-- **Build state: GREEN on cyrius 5.9.36.** `cyrius build`
+- **Build state: GREEN on cyrius 5.10.0.** `cyrius build`
   clean; `cyrius test tests/vyakarana.tcyr` 622/622;
   `sh scripts/smoke.sh build/vyk` reports M0+M1+M2+M3 passing
   at v1.9.0. `dist/vyakarana.cyr` regenerated.
@@ -262,9 +276,9 @@ The scanner has no variable-length-delimiter pair rule today;
 these all share the same scanner shape gap. If a real corpus
 forces one of them, expect a collective ADR + scanner extension
 that handles all four uniformly.
-- **Toolchain pin:** `cyrius = "5.9.36"` in `cyrius.cyml`
+- **Toolchain pin:** `cyrius = "5.10.0"` in `cyrius.cyml`
   (unchanged since 1.0.3).
-- **Build state: GREEN on cyrius 5.9.36.** `cyrius build` clean;
+- **Build state: GREEN on cyrius 5.10.0.** `cyrius build` clean;
   `cyrius test tests/vyakarana.tcyr` 431/431;
   `sh scripts/smoke.sh build/vyk` reports M0+M1+M2+M3 passing
   at v1.2.2. `dist/vyakarana.cyr` regenerated.
@@ -331,29 +345,25 @@ Closed waves:
   stress harness + post-1.11 audit (1.12.0); Helix + iTerm
   theme export (1.12.1).
 
-Now in flight (1.13.x sub-cut by area, like 1.11.x):
+1.13.x progress (sub-cut by area, like 1.11.x):
 
-- **1.13.0 — Binary size + startup benchmarks.** Measure
-  `build/vyk` and `dist/vyakarana.cyr` against the 300KB
-  soft target. Add `tests/bcyr/vyakarana.bcyr` covering
-  grammar bootstrap, first-tokenize latency, per-grammar
-  tokenize. Capture a baseline in CHANGELOG / state.md.
-  Soft cap — measure+report, don't block on overage.
+- **1.13.0 — Binary size + startup benchmarks.** Shipped.
 - **1.13.1 — Error messages + man page / --help audit.**
-  Every `EXIT_*` / `usage_error` / `no_grammar_error` /
-  `io_error` reads cleanly in isolation. Audit `vyk --help`
-  for completeness and accuracy. Optional man page.
-- **1.13.2 — Markdown fence routing.** Pulls the followup
-  deferred from ADR 0013. New `match = "compose_fenced"`
-  rule type with captured-tag dispatch — `` ```rust `` /
-  `` ```python `` etc. route the body through the named
-  inner grammar. Markdown grammar adopts it for code
-  fences. Same deferred-followup pattern as 1.12.1.
+  Shipped.
+- **1.13.2 — Markdown fence routing.** Shipped (this cut).
+  ADR 0016. `match = "compose_fenced"` captures the
+  language tag and routes the body through the named inner
+  grammar. Markdown adopts it. Toolchain pin bumped to
+  `5.10.0`.
+
+Now in flight:
+
 - **1.13.3 — Packaging + 1.13.x security audit.** AGNOS /
   Cyrius packaging via `cyrius package` — `.ark`
   distributable builds and runs. Post-1.12 audit doc
-  covering surfaces added in 1.12.x and 1.13.x. Last
-  release before 2.0.
+  covering surfaces added in 1.12.x and 1.13.x (LSP +
+  compose + theme export + content detect + bench harness
+  + error UX + compose_fenced). Last release before 2.0.
 
 After 1.13.x:
 

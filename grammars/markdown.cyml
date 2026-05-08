@@ -71,11 +71,16 @@ punctuation = [
 
 # ── Rules ──────────────────────────────────────────────────────────
 
-# Fenced code (`` ``` ... ``` ``) must match before inline code so
-# the 3-byte start wins the longest-match.
+# Fenced code (`` ```<lang>\n...\n``` ``). 1.13.2+: routes the
+# body through the inner grammar named by `<lang>` per ADR 0016.
+# Falls back to one TK_STRING for the body when no tag is given
+# or the tag doesn't match a registered grammar (graceful
+# degradation; same shape as the prior 1.7.0 behaviour). The
+# scanner pipeline runs `compose_fenced` at step 0b, ahead of
+# step 2 pair rules — the 3-byte ` ``` ` start would otherwise be
+# eaten as three separate ` ` ` (inline code) opens.
 [[rules]]
-kind = "string"
-match = "pair"
+match = "compose_fenced"
 start = "```"
 end = "```"
 

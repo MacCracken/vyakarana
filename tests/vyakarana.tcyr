@@ -498,14 +498,31 @@ fn main() {
     assert_eq(tokenbuf_kind(tb_m2, 0), TK_OPERATOR, "### heading 3");
     assert_eq(tokenbuf_len(tb_m2, 0),  3,           "### len 3");
 
-    # Fenced code block (triple-backtick pair) captures the full body
-    # including the language tag.
+    # Fenced code block (triple-backtick + language tag).
+    # 1.13.2+: routed through the inner grammar named by the
+    # info-string tag (ADR 0016). Tokens: open marker as
+    # TK_PUNCTUATION (incl. tag + LF), inner Rust tokens,
+    # close marker as TK_PUNCTUATION. See the dedicated
+    # 1.13.2 group below for full coverage; here we just
+    # check the shape didn't regress.
     var tb_m3 = tokenbuf_new();
     var src_m3 = "```rust\nfn x() {}\n```";
     tokenize_with_grammar(gmd, src_m3, strlen(src_m3), tb_m3);
-    assert_eq(tokenbuf_count(tb_m3), 1,            "fenced block is one token");
-    assert_eq(tokenbuf_kind(tb_m3, 0), TK_STRING,  "fenced block is string");
-    assert_eq(tokenbuf_len(tb_m3, 0),  strlen(src_m3), "fenced block covers input");
+    assert(tokenbuf_count(tb_m3) >= 3,
+           "fenced block: at least open + body + close");
+    assert_eq(tokenbuf_kind(tb_m3, 0), TK_PUNCTUATION,
+              "fenced block: open marker is punctuation");
+    var tb_m3_last = tokenbuf_count(tb_m3) - 1;
+    assert_eq(tokenbuf_kind(tb_m3, tb_m3_last), TK_PUNCTUATION,
+              "fenced block: close marker is punctuation");
+    var sum_m3 = 0;
+    var m3i = 0;
+    while (m3i < tokenbuf_count(tb_m3)) {
+        sum_m3 = sum_m3 + tokenbuf_len(tb_m3, m3i);
+        m3i = m3i + 1;
+    }
+    assert_eq(sum_m3, strlen(src_m3),
+              "fenced block: coverage invariant holds");
 
     # Inline code backticks.
     var tb_m4 = tokenbuf_new();
@@ -2178,6 +2195,123 @@ fn main() {
     tokenize_with_grammar(gc, st_long, 4000, tb_st7);
     assert_eq(tokenbuf_count(tb_st7), 1, "4KB ident run: one token");
     assert_eq(tokenbuf_len(tb_st7, 0), 4000, "4KB ident run: span covers everything");
+
+    test_group("1.13.2 markdown fence routing (ADR 0016)");
+
+    var gmd2 = registry_find_by_name("markdown");
+    if (gmd2 == 0) {
+        gmd2 = grammar_load("grammars/markdown.cyml");
+        registry_add(gmd2);
+    }
+    assert_neq(gmd2, 0, "markdown grammar reloads with compose_fenced");
+
+    # Make sure rust + python grammars are resolvable so the
+    # captured tags route correctly.
+    var grust2 = registry_find_by_name("rust");
+    if (grust2 == 0) {
+        grust2 = grammar_load("grammars/rust.cyml");
+        registry_add(grust2);
+    }
+    var gpy2 = registry_find_by_name("python");
+    if (gpy2 == 0) {
+        gpy2 = grammar_load("grammars/python.cyml");
+        registry_add(gpy2);
+    }
+
+    # Rust fence: body should produce a TK_KEYWORD for `fn` and
+    # `let` (rust-grammar specific). Coverage holds.
+    var tb_f1 = tokenbuf_new();
+    var src_f1 = "```rust\nfn f() { let x = 1; }\n```";
+    tokenize_with_grammar(gmd2, src_f1, strlen(src_f1), tb_f1);
+    var saw_fn_kw = 0;
+    var f1i = 0;
+    while (f1i < tokenbuf_count(tb_f1)) {
+        if (tokenbuf_kind(tb_f1, f1i) == TK_KEYWORD) {
+            if (tokenbuf_len(tb_f1, f1i) == 2) { saw_fn_kw = 1; }
+        }
+        f1i = f1i + 1;
+    }
+    assert_eq(saw_fn_kw, 1, "```rust body: fn keyword present");
+    assert_eq(tokenbuf_kind(tb_f1, 0), TK_PUNCTUATION,
+              "```rust: open marker is punctuation");
+    var f1_last = tokenbuf_count(tb_f1) - 1;
+    assert_eq(tokenbuf_kind(tb_f1, f1_last), TK_PUNCTUATION,
+              "```rust: close marker is punctuation");
+    var sum_f1 = 0;
+    var f1k = 0;
+    while (f1k < tokenbuf_count(tb_f1)) {
+        sum_f1 = sum_f1 + tokenbuf_len(tb_f1, f1k);
+        f1k = f1k + 1;
+    }
+    assert_eq(sum_f1, strlen(src_f1), "```rust: coverage holds");
+
+    # Python fence: body should produce TK_KEYWORD for `def`.
+    var tb_f2 = tokenbuf_new();
+    var src_f2 = "```python\ndef foo(): pass\n```";
+    tokenize_with_grammar(gmd2, src_f2, strlen(src_f2), tb_f2);
+    var saw_def_kw = 0;
+    var f2i = 0;
+    while (f2i < tokenbuf_count(tb_f2)) {
+        if (tokenbuf_kind(tb_f2, f2i) == TK_KEYWORD) {
+            if (tokenbuf_len(tb_f2, f2i) == 3) { saw_def_kw = 1; }
+        }
+        f2i = f2i + 1;
+    }
+    assert_eq(saw_def_kw, 1, "```python body: def keyword present");
+
+    # Unknown tag: body falls back to one TK_STRING.
+    var tb_f3 = tokenbuf_new();
+    var src_f3 = "```bogus\nplain body\n```";
+    tokenize_with_grammar(gmd2, src_f3, strlen(src_f3), tb_f3);
+    assert_eq(tokenbuf_count(tb_f3), 3,
+              "unknown tag: open + body + close (3 tokens)");
+    assert_eq(tokenbuf_kind(tb_f3, 1), TK_STRING,
+              "unknown tag: body falls back to TK_STRING");
+    var sum_f3 = 0;
+    var f3k = 0;
+    while (f3k < tokenbuf_count(tb_f3)) {
+        sum_f3 = sum_f3 + tokenbuf_len(tb_f3, f3k);
+        f3k = f3k + 1;
+    }
+    assert_eq(sum_f3, strlen(src_f3), "unknown tag: coverage holds");
+
+    # Empty tag (info string is just LF): body falls back too.
+    var tb_f4 = tokenbuf_new();
+    var src_f4 = "```\nx + y\n```";
+    tokenize_with_grammar(gmd2, src_f4, strlen(src_f4), tb_f4);
+    assert_eq(tokenbuf_count(tb_f4), 3,
+              "empty tag: open + body + close");
+    assert_eq(tokenbuf_kind(tb_f4, 1), TK_STRING,
+              "empty tag: body is TK_STRING");
+
+    # Unclosed fence: compose_fenced returns 0; outer pipeline
+    # tokenizes normally. Coverage still holds.
+    var tb_f5 = tokenbuf_new();
+    var src_f5 = "```rust\nlet x = 1;\nno closer ever\n";
+    tokenize_with_grammar(gmd2, src_f5, strlen(src_f5), tb_f5);
+    var sum_f5 = 0;
+    var f5k = 0;
+    while (f5k < tokenbuf_count(tb_f5)) {
+        sum_f5 = sum_f5 + tokenbuf_len(tb_f5, f5k);
+        f5k = f5k + 1;
+    }
+    assert_eq(sum_f5, strlen(src_f5),
+              "unclosed fence: coverage holds via fall-through");
+
+    # Tag with hyphen / digits — info-string accepts [A-Za-z0-9_+-]
+    # so `c++` and `python3` etc. parse cleanly. `c++` is not a
+    # registered grammar so falls back to TK_STRING; what we're
+    # verifying is the tag-scanner doesn't choke on `+`.
+    var tb_f6 = tokenbuf_new();
+    var src_f6 = "```c++\nint x = 1;\n```";
+    tokenize_with_grammar(gmd2, src_f6, strlen(src_f6), tb_f6);
+    var sum_f6 = 0;
+    var f6k = 0;
+    while (f6k < tokenbuf_count(tb_f6)) {
+        sum_f6 = sum_f6 + tokenbuf_len(tb_f6, f6k);
+        f6k = f6k + 1;
+    }
+    assert_eq(sum_f6, strlen(src_f6), "c++ tag: coverage holds");
 
     test_group("version string shape");
     # VYK_VERSION lives in src/version_str.cyr (auto-generated by

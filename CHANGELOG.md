@@ -6,6 +6,76 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [1.13.2] — 2026-05-08
+
+Third sub-cut of the 1.13.x RC-polish window. **Markdown
+fence routing** — pulls the followup deferred from ADR 0013.
+New `match = "compose_fenced"` rule type captures the
+language tag from the fence info-string and routes the body
+through the named inner grammar. Toolchain pin bumped to
+match the local stdlib expectations.
+
+### Added
+
+- **`match = "compose_fenced"` rule type
+  ([ADR 0016](docs/adr/0016-compose-fenced-rule.md)).** Same
+  shape as ADR 0013's compose rule, but the inner grammar is
+  captured per-fence-instance from the input bytes between
+  `start` and the next LF (the CommonMark "info string"). New
+  `Grammar` field `compose_fenced_rules` at offset 168
+  (`GRAMMAR_SIZE` 168 → 176). New scanner step **0b** in
+  `tokenize_with_grammar` — runs after compose (step 0) and
+  before pair / line / words steps so the ` ``` ` start marker
+  isn't eaten as inline code. Tag character class is
+  `[A-Za-z0-9_+-]+` — covers all bundled grammar names plus
+  common variants (`c++`, `python3`).
+- **Markdown adopts compose_fenced** for triple-backtick
+  fences. Verified: ` ```rust ` body now produces TK_KEYWORD
+  for `fn` / `let` via the Rust grammar; ` ```python ` body
+  produces TK_KEYWORD for `def`. Coverage invariant holds in
+  every fence shape (with tag, without, unknown tag,
+  unclosed).
+- **13 new tcyr probes** in the 1.13.2 markdown-fence-routing
+  group — Rust routing, Python routing, unknown-tag fallback,
+  empty-tag fallback, unclosed-fence fall-through, `c++` tag
+  accepts. 717 → 731 passing.
+- **2 new smoke probes** (CLI-level): `vyk file.md` with a
+  Rust fence surfaces the `fn` keyword; bogus tag falls back
+  to TK_STRING.
+
+### Changed
+
+- **Toolchain pin: `cyrius = "5.10.0"`** (was `5.9.36`).
+  Local cyrius and stdlib drift made 5.9.36 unbuildable on
+  systems with the newer toolchain — the `cyrius deps` resync
+  pulled stdlib that the older compiler couldn't validate.
+  Bumping the pin matches the active toolchain. CI's
+  install-toolchain step pulls 5.10.0's release tarball
+  automatically.
+- **`grammars/markdown.cyml`** — fence rule swapped from
+  `match = "pair"` (kind = "string", whole fence as one
+  TK_STRING) to `match = "compose_fenced"` (open marker as
+  TK_PUNCTUATION, inner-grammar tokens, close marker as
+  TK_PUNCTUATION). Existing markdown tests in
+  `tests/vyakarana.tcyr` updated to the new shape (≥3 tokens
+  per fence; coverage check unchanged).
+
+### Wiring
+
+- `src/grammar.cyr` — `compose_fenced_rules` field,
+  `compose_fenced_rule_*` accessors, `_gp_close_rule`
+  handles `mt = 5`.
+- `src/grammars/default_scanner.cyr` —
+  `_ds_try_compose_fenced_rules` helper plus four small
+  scanner utilities (`_ds_is_tag_byte`, `_ds_scan_tag`,
+  `_ds_scan_to_lf`, `_ds_find_fenced_close`). Wired as step
+  0b in `tokenize_with_grammar`.
+- `grammars/markdown.cyml` — fence rule type swap.
+- `tests/vyakarana.tcyr` — 1.13.2 group + M3 markdown probe
+  refreshed for the new shape.
+- `scripts/smoke.sh` — 2 fence probes (rust routing,
+  bogus-tag fallback).
+
 ## [1.13.1] — 2026-05-08
 
 Second sub-cut of the 1.13.x RC-polish window. **Error
