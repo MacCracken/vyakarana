@@ -98,6 +98,7 @@ fn _detect_4byte(path, n) {
         if (memeq(path + n - 4, ".cyr", 4) == 1) { return "cyrius"; }
         if (memeq(path + n - 4, ".zig", 4) == 1) { return "zig"; }
         if (memeq(path + n - 4, ".ps1", 4) == 1) { return "powershell"; }
+        if (memeq(path + n - 4, ".vue", 4) == 1) { return "vue"; }
     }
     if (n >= 3) {
         if (memeq(path + n - 3, ".cr", 3) == 1) { return "crystal"; }
@@ -124,6 +125,9 @@ fn _detect_5plus(path, n) {
     if (n >= 6) {
         if (memeq(path + n - 6, ".swift", 6) == 1) { return "swift"; }
         if (memeq(path + n - 6, ".proto", 6) == 1) { return "protobuf"; }
+    }
+    if (n >= 7) {
+        if (memeq(path + n - 7, ".svelte", 7) == 1) { return "svelte"; }
     }
     if (n >= 8) {
         if (memeq(path + n - 8, ".graphql", 8) == 1) { return "graphql"; }

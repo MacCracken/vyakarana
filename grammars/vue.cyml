@@ -1,0 +1,134 @@
+# vue — Vue.js single-file component (SFC) tokenizer grammar
+#
+# Rule scheme per ADR 0005. Vue SFCs (`.vue`) are HTML-shaped at
+# the outer layer: a single file holds three top-level blocks —
+# `<template>`, `<script>`, `<style>` — each delimited by their
+# matching close tag. The token-level surface is HTML's, plus
+# routing the script and style block bodies through the
+# JavaScript and CSS inner grammars (same compose-rule pattern
+# as HTML since 1.11.1).
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# `tests/corpus/concept.vue` exercises a typical SFC layout —
+# template with directives, script block (Composition API
+# style), scoped style block.
+#
+# Known gaps (Vue-specific bits the html-shaped tokenizer
+# doesn't model — coverage holds in every case; theme renderer
+# can re-pair by token text):
+#   - **Vue directives** (`v-if`, `v-for`, `v-else`, `v-show`,
+#     `v-bind`, `v-on`, `v-model`, `v-slot`). Tokenize as
+#     attribute-name idents (with `-` in `ident_cont` so
+#     `v-if` is one ident).
+#   - **Shorthand attribute prefixes** `:` (v-bind), `@` (v-on),
+#     `#` (v-slot). `:` and `#` are already in punctuation /
+#     operators; they tokenize as separate tokens before the
+#     attribute name.
+#   - **Mustache interpolation** `{{ expr }}` inside template
+#     content. Tokenizes as `{`, `{`, body tokens, `}`, `}`.
+#     Theme can re-pair on adjacent `{{`.
+#   - **Attribute-bearing block tags** like `<script lang="ts">`,
+#     `<style scoped>`, `<style lang="scss">`. The compose
+#     rule's start is a literal prefix `<script>` / `<style>`,
+#     so attribute-bearing forms fall back to plain HTML
+#     tokenization. Same documented limitation as
+#     ADR 0013 §When to revisit.
+#   - **Custom elements** (`<my-component>`). HTML5-compatible;
+#     tokenize as plain idents. Same as html grammar.
+
+[grammar]
+name = "vue"
+extensions = [".vue"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+# Tag/attribute names: `-` in ident_cont catches `v-if`,
+# `data-*`, custom-element names like `my-button`.
+ident_start = "A-Za-z_"
+ident_cont  = "A-Za-z0-9_-"
+
+number_decimal = true
+number_0x      = false
+number_0b      = false
+number_0o      = false
+
+special_vars = false
+unicode_ident = true
+char_literal  = false
+
+# HTML-shape operators plus Vue-shorthand prefixes.
+# `:` (v-bind), `@` (v-on), `#` (v-slot) — `:` lives in
+# punctuation; `@` and `#` here as 1-byte operators so the
+# attribute name following them tokenizes cleanly.
+# `+`, `-`, `*`, `/` cover JS expressions inside `{{ … }}`
+# mustache interpolations. `%` covers CSS percentages — note
+# `<style>` body routes through the CSS grammar, but tokens
+# emitted from the OUTER Vue scan path can still hit `%` in
+# attribute values like `width="100%"`.
+operators = [
+    "<", ">", "=", "/",
+    "&", "!", "?",
+    "@",
+    "#",
+    "+", "-", "*", "%",
+]
+
+punctuation = [
+    "(", ")", "[", "]", "{", "}",
+    ";", ",", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+# Compose rules run at scanner pipeline step 0, before any other
+# tokenization happens. `<script>` / `<style>` / `<template>`
+# bodies route through their inner grammars; markers emit as
+# punctuation. See ADR 0013.
+#
+# `<template>` body is HTML — including any nested `<script>` /
+# `<style>` (rare but valid). The recursion in
+# `_ds_try_compose_rules` handles arbitrarily deep nesting.
+
+# Note: `<template>` is NOT a compose rule. Routing the
+# template body through the html grammar would drop Vue-
+# specific operators (`@`, `#`, `:`-shorthand) that the html
+# grammar doesn't carry. The outer Vue tokenizer handles
+# template content directly.
+
+[[rules]]
+match = "compose"
+start = "<script>"
+end = "</script>"
+inner = "javascript"
+
+
+[[rules]]
+match = "compose"
+start = "<style>"
+end = "</style>"
+inner = "css"
+
+
+# HTML-style block comments inside the outer SFC scaffold.
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "<!--"
+end = "-->"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "'"
+end = "'"

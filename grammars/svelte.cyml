@@ -1,0 +1,128 @@
+# svelte — Svelte single-file component tokenizer grammar
+#
+# Rule scheme per ADR 0005. Svelte components (`.svelte`) are
+# HTML-shaped at the outer layer with a few framework-specific
+# constructs grafted on. Top-level blocks are `<script>`,
+# `<style>`, plus the rest-of-file template body. (Unlike Vue,
+# Svelte does NOT wrap the template in a `<template>` block —
+# template content is whatever's outside `<script>` and
+# `<style>`.)
+#
+# Compose rules route `<script>` and `<style>` bodies through
+# the JavaScript and CSS grammars respectively (ADR 0013 since
+# 1.11.1). Markers emit as `TK_PUNCTUATION`; bodies are
+# recursively re-tokenized.
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# `tests/corpus/concept.svelte` exercises a typical component
+# — script block, style block, template body with `{#if}` /
+# `{#each}` blocks, `{expression}` interpolation, `bind:` /
+# `on:` directives.
+#
+# Known gaps (Svelte-specific bits that fall back to HTML
+# tokenization — coverage holds; theme can re-pair):
+#   - **Logic blocks** `{#if cond}` / `{:else}` / `{/if}`,
+#     `{#each items as item}` / `{:then}` / `{:catch}`,
+#     `{#await promise}`. Tokenize as `{`, `#`, ident, body,
+#     `/` (or `:`), ident, `}`. Coverage holds.
+#   - **Single-brace interpolation** `{expression}`. The body
+#     between `{` and `}` tokenizes as ordinary template
+#     content — JS expressions inside brackets aren't routed
+#     through the JavaScript grammar (would require a
+#     compose-style rule with `{` and `}` markers, but those
+#     are also used by JS template literals etc., so naive
+#     routing would over-fire).
+#   - **Reactive declarations** `$:` prefix. `$` and `:` are
+#     separate tokens (operator + punctuation).
+#   - **Event handlers** `on:click`, **bindings** `bind:value`,
+#     **class directives** `class:active`, **action
+#     directives** `use:action`. All tokenize as ident + `:`
+#     + ident.
+#   - **Attribute-bearing block tags** like
+#     `<script lang="ts">`, `<style lang="scss">`. Same
+#     literal-prefix limitation as Vue / HTML; documented in
+#     ADR 0013 §When to revisit.
+
+[grammar]
+name = "svelte"
+extensions = [".svelte"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+# Tag/attribute names: `-` in ident_cont catches custom-element
+# names. `$` in ident_start would help reactive `$state` etc.
+# but the script-block contents go through JavaScript anyway —
+# only the template body sees these tokens, where they're rare.
+ident_start = "A-Za-z_"
+ident_cont  = "A-Za-z0-9_-"
+
+number_decimal = true
+number_0x      = false
+number_0b      = false
+number_0o      = false
+
+special_vars = false
+unicode_ident = true
+char_literal  = false
+
+# `$` for reactive declarations (`$:`); `+`/`-`/`*`/`%` for
+# JS expressions inside `{…}` interpolation in the template
+# body; `@` and `#` for HTML/email-attribute-style content.
+operators = [
+    "<", ">", "=", "/",
+    "&", "!", "?",
+    "@",
+    "#",
+    "$",
+    "+", "-", "*", "%",
+]
+
+punctuation = [
+    "(", ")", "[", "]", "{", "}",
+    ";", ",", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+# `<script>` and `<style>` blocks route bodies through their
+# inner grammars (ADR 0013 / 1.11.1). Compose rules run at
+# scanner pipeline step 0.
+
+[[rules]]
+match = "compose"
+start = "<script>"
+end = "</script>"
+inner = "javascript"
+
+
+[[rules]]
+match = "compose"
+start = "<style>"
+end = "</style>"
+inner = "css"
+
+
+# HTML-style block comments. Svelte uses the same `<!-- … -->`
+# shape inside the template body.
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "<!--"
+end = "-->"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "'"
+end = "'"

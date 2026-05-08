@@ -186,6 +186,10 @@ fn bootstrap_grammars() {
     if (gcr != 0) { registry_add(gcr); }
     var gjul = grammar_load("grammars/julia.cyml");
     if (gjul != 0) { registry_add(gjul); }
+    var gvue = grammar_load("grammars/vue.cyml");
+    if (gvue != 0) { registry_add(gvue); }
+    var gsvel = grammar_load("grammars/svelte.cyml");
+    if (gsvel != 0) { registry_add(gsvel); }
     return 0;
 }
 

@@ -4,14 +4,13 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.1.0 are
-> shipped. 1.x closed at 1.13.3 with 0 audit findings; 2.0.x
-> closed at 2.0.4 with 2 LOW findings fixed in-pass. **2.1.0
-> opens the 2.1.x grammar-batch wave with PowerShell, Crystal,
-> and Julia** (38 → 41 bundled). As of 2026-05-08 the
-> toolchain pin is `cyrius = "5.10.0"`. 799/799 tests
-> passing, 3/3 fuzz harnesses passing. Next: 2.1.1 (Vue /
-> Svelte SFC). See §Next up.
+> **Read this file before doing anything.** 1.0.0–2.1.1 are
+> shipped. **2.1.1 adds Vue and Svelte SFC grammars** (43
+> bundled total) — both prime compose-rule consumers,
+> routing `<script>` to JS and `<style>` to CSS. As of
+> 2026-05-08 the toolchain pin is `cyrius = "5.10.0"`.
+> 811/811 tests passing, 3/3 fuzz harnesses passing.
+> Next: 2.1.2 (Nix). See §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -31,8 +30,24 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `2.1.0` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `2.1.1` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`.
+- **What 2.1.1 added (Vue + Svelte SFC):**
+  - **Vue** (`.vue`) — HTML-shaped outer with `@` / `#`
+    Vue-shorthand operators. `<script>` → javascript and
+    `<style>` → css via compose rules. `<template>` body
+    handled by the outer Vue tokenizer (NOT routed through
+    html — would lose Vue's own operators).
+  - **Svelte** (`.svelte`) — same shape; no `<template>`
+    block (template lives at file top level). `$` in
+    operators for reactive declarations.
+  - **CSS missing `%` operator** fixed in passing — surfaced
+    via Vue's `width: 100%` test corpus.
+  - 9 new tcyr probes; 2 new M3 corpora; bundle 41 → 43.
+  - Documented limitations: Vue directives (`v-if`, `v-for`),
+    `{{ }}` mustache, Svelte logic blocks (`{#if}`, `{#each}`),
+    attribute-bearing block tags (`<script lang="ts">`) —
+    all fall back to outer-grammar tokenization.
 - **What 2.1.0 added (first grammar batch):**
   - **PowerShell** — `.ps1` / `.psm1` / `.psd1`. Cmdlet
     Verb-Noun idents (`-` in `ident_cont`), alphabetic
@@ -477,10 +492,12 @@ Closed waves:
 Now in flight — 2.1.x grammar batches:
 
 - **2.1.0 — PowerShell / Crystal / Julia grammars.**
-  Shipped (this cut).
-- **2.1.1 — Vue / Svelte single-file components.** Both use
-  `<template>` / `<script>` / `<style>` blocks — prime
-  use case for compose_fenced.
+  Shipped.
+- **2.1.1 — Vue / Svelte single-file components.**
+  Shipped (this cut). Both use compose rules to route
+  `<script>` / `<style>` bodies; attribute-bearing
+  variants (`<script lang="ts">`) fall back to outer
+  tokenization (documented limitation).
 - **2.1.2 — Nix grammar.**
 - **2.1.3 — Terraform / HCL grammar.** No work currently in
 flight. The post-streaming queue is open — nothing forces

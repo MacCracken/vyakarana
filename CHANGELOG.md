@@ -6,6 +6,62 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [2.1.1] — 2026-05-08
+
+Second grammar batch of the 2.1.x window. **Vue** and
+**Svelte** single-file components — both prime
+`compose`-rule consumers, routing `<script>` bodies through
+JavaScript and `<style>` bodies through CSS. Bundled
+grammar count: 41 → 43.
+
+### Added
+
+- **`grammars/vue.cyml`** + `tests/corpus/concept.vue`.
+  HTML-shaped outer tokenizer with Vue-shorthand prefixes
+  (`@` v-on, `#` v-slot) in operators. `<script>` →
+  javascript and `<style>` → css via compose rules.
+  `<template>` deliberately NOT a compose rule — routing
+  through html would drop Vue's own `@`/`#` operators on
+  the template content, so the outer Vue tokenizer handles
+  template bytes directly. Documented gaps: Vue directives
+  (`v-if`, `v-for`), `{{ … }}` mustache interpolation,
+  attribute-bearing block tags (`<script lang="ts">`).
+- **`grammars/svelte.cyml`** + `tests/corpus/concept.svelte`.
+  Same shape as Vue but no `<template>` block — Svelte's
+  template content lives at the top level of the file.
+  `$` in operators for reactive declarations (`$:`).
+  Documented gaps: logic blocks (`{#if}`, `{#each}`),
+  single-brace interpolation, reactive `$:` semantics,
+  bind/on/class/use directives.
+- **9 new tcyr probes** in the `2.1.1 Vue / Svelte SFC
+  grammars` group — Vue script routes to JS keyword, Vue
+  style routes to CSS hex-ident, Vue `@click` tokenizes via
+  outer grammar (not html-routed), Svelte script routes to
+  JS, Svelte `bind:value` tokenizes as ident-punct-ident.
+  799 → 811 passing.
+- **2 new M3 corpora** added to the smoke list — both
+  round-trip with zero error tokens, coverage invariant
+  satisfied.
+
+### Fixed
+
+- **CSS missing `%` operator.** Surfaced when adding Vue's
+  `concept.vue` corpus — `width: 100%;` in the `<style>`
+  block emitted a TK_ERROR for `%`. Added to css.cyml's
+  operator list. Same fix benefits any CSS / SCSS corpus
+  that uses percentage units.
+
+### Notes
+
+- The compose rules use literal start markers (`<script>`,
+  `<style>`); attribute-bearing forms (`<script lang="ts">`,
+  `<style scoped>`) fall back to plain outer-grammar
+  tokenization. Same documented limitation as ADR 0013
+  §When to revisit, now with one more consumer pushing on
+  it. A future cut could add captured-attribute composition
+  (similar to compose_fenced's tag capture) so
+  `<script lang="ts">` routes through TypeScript.
+
 ## [2.1.0] — 2026-05-08
 
 First grammar batch of the 2.1.x window. **PowerShell**,
