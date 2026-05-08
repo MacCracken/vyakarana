@@ -4,7 +4,11 @@ Thanks for wanting to help vyakarana see more grammar.
 
 ## Prerequisites
 
-- Cyrius toolchain 5.6.0+ (`cyrius` on `$PATH`) — <https://github.com/MacCracken/cyrius>
+- Cyrius toolchain at the version pinned in `cyrius.cyml`'s
+  `[package].cyrius` field (currently `5.9.36`; check the file
+  for the up-to-date pin). `cyriusly use <version>` if the
+  active toolchain doesn't match. `cyrius` must be on `$PATH` —
+  <https://github.com/MacCracken/cyrius>
 - A POSIX-ish host (Linux primary; macOS best-effort). vyakarana targets
   AGNOS long-term, but the development shape is portable.
 
@@ -16,6 +20,16 @@ Thanks for wanting to help vyakarana see more grammar.
 4. Make your change
 5. `sh scripts/smoke.sh build/vyk` and `cyrius test tests/vyakarana.tcyr` before opening a PR
 6. Reference the ROADMAP milestone your change belongs to
+
+## Bumping the version
+
+Use `sh scripts/version-bump.sh <new-version>` — it updates
+`VERSION`, regenerates `src/version_str.cyr` (the single source of
+truth for `vyk --version`), and inserts a new CHANGELOG header.
+The CHANGELOG body, the cyrius toolchain pin, and
+`dist/vyakarana.cyr` (via `cyrius distlib`) are still manual.
+See cyim's and cyrius's `version-bump.sh` for the canonical
+pattern this script follows.
 
 ## Build / Test / Smoke
 

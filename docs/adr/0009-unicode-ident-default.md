@@ -43,7 +43,7 @@ The 1.0.3 modernization survey verified an 8-error count in
 `vidya/content/compression/c.c` and high error rates in markdown
 prose samples. Both are cosmetic (`error` vs `ident` semantically)
 but the no-`error`-tokens invariant is the project's correctness
-contract per HANDOFF; we wanted it back.
+contract per `docs/development/state.md`; we wanted it back.
 
 ## Decision
 

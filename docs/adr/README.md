@@ -5,6 +5,11 @@ produced them. Format roughly follows the
 [Michael Nygard template](https://github.com/joelparkerhenderson/architecture-decision-record/blob/main/locales/en/templates/decision-record-template-by-michael-nygard/index.md):
 Context → Decision → Consequences, with a Status line at the top.
 
+Start a new ADR by copying [`template.md`](template.md) — it
+captures the section shape we use here (Context, Decision,
+Consequences with positive / negative / when-to-revisit
+sub-blocks).
+
 ## Index
 
 | #    | Title                                                                                     | Status   | Date       |

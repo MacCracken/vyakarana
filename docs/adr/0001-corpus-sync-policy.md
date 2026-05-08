@@ -19,7 +19,8 @@ rendering in M6). Tests need a deterministic handle on the sample
 file without introducing a dependency direction that doesn't exist
 at the package level.
 
-Four options were on the table in HANDOFF.md §Corpus:
+Four options were on the table in the early handoff doc (now
+`docs/development/state.md`) §Corpus:
 
 1. **Checked-in snapshot.** Copy the file into `tests/corpus/` at
    M1 time. Drifts from vidya unless periodically synced.

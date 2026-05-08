@@ -16,7 +16,8 @@ A grammar "passes" when:
 
 ## Sync policy
 
-**Checked-in snapshot** (HANDOFF option 1), decided 2026-04-23.
+**Checked-in snapshot** (option 1 from the choices captured in
+`docs/development/state.md`), decided 2026-04-23.
 See [ADR 0001](../../docs/adr/0001-corpus-sync-policy.md) for the
 reasoning and when to revisit.
 

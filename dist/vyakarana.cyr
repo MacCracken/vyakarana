@@ -1329,10 +1329,10 @@ fn is_shell_special_var(b) {
 }
 
 # ── Keyword lookup ──────────────────────────
-# Length-keyed if-ladder. The keyword set follows design-spec §3 and
-# HANDOFF §Landing-pad-files — core reserved words only; builtins
-# like `local`/`declare` are left as `ident` so theme authors can
-# style them distinctly via token-text rules.
+# Length-keyed if-ladder. The keyword set follows design-spec §3
+# and ADR 0004 — core reserved words only; builtins like
+# `local`/`declare` are left as `ident` so theme authors can style
+# them distinctly via token-text rules.
 
 fn is_shell_keyword(src, start, len) {
     if (len == 2) {

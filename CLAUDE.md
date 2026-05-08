@@ -1,6 +1,7 @@
 # vyakarana — agent working rules
 
-> **Picking this repo up?** Read [HANDOFF.md](./HANDOFF.md) first
+> **Picking this repo up?** Read
+> [docs/development/state.md](./docs/development/state.md) first
 > for where we are and what's next. Architecture decisions are ADRs
 > under [docs/adr/](./docs/adr/); design context is in
 > [vyakarana-design-spec.md](./vyakarana-design-spec.md); milestone
@@ -25,22 +26,23 @@ cyrius test tests/vyakarana.tcyr
 sh scripts/smoke.sh build/vyk
 ```
 
-Run all three on session entry. Don't take `HANDOFF.md` /
-`README.md` claims of "green" at face value until you've seen the
-commands pass. Use `cyrius build`, never raw `cc3`/`cc5`.
+Run all three on session entry. Don't take
+`docs/development/state.md` / `README.md` claims of "green" at
+face value until you've seen the commands pass. Use `cyrius build`,
+never raw `cc3`/`cc5`.
 
 ## Work loop (continuous)
 
 For every non-trivial change:
 
-1. Read HANDOFF and the relevant ADRs — know what was intended.
+1. Read `docs/development/state.md` and the relevant ADRs — know what was intended.
 2. Work phase — grammar, scanner tweak, test, docs fix.
 3. Build + test: `cyrius build` then `cyrius test`.
 4. Internal review — correctness, coverage invariant, zero-error
    bar on any corpus the change affects.
 5. Smoke check — `sh scripts/smoke.sh build/vyk` after changes
    that touch runtime or grammar surface.
-6. Documentation — update CHANGELOG `[Unreleased]`, HANDOFF if
+6. Documentation — update CHANGELOG `[Unreleased]`, `docs/development/state.md` if
    the status shifted, ROADMAP only on milestone boundaries.
 7. Version check — `VERSION`, `cyrius.cyml`, CHANGELOG header
    stay in sync.
@@ -52,7 +54,7 @@ Between work cycles, before diving into the next milestone, run a
 consolidation pass. This is the "slow down and take stock" step —
 catch drift before it compounds.
 
-1. Read HANDOFF, ROADMAP, CHANGELOG, and any open `TODO(M?)`
+1. Read `docs/development/state.md`, ROADMAP, CHANGELOG, and any open `TODO(M?)`
    markers — know what was intended.
 2. Cleanliness check: `cyrius build`, `cyrius lint src/*.cyr`,
    `cyrius test`, `sh scripts/smoke.sh build/vyk` — all green.
@@ -79,7 +81,7 @@ catch drift before it compounds.
    worth locking with an assertion or a stand-in probe.
 8. Post-review gate run — prove the hardening didn't regress
    anything: all three gates green again.
-9. Documentation audit — HANDOFF / ROADMAP / ADRs / grammar
+9. Documentation audit — `docs/development/state.md` / ROADMAP / ADRs / grammar
    headers reflect current reality; prune stale `TODO`s.
 10. Repeat if the audit turned up a lot. Don't start the next
     milestone until the hardening pass is quiet.
@@ -114,8 +116,9 @@ Run a closeout pass before the user cuts `0.Y.0` or `1.0.0`:
 4. Stale comment sweep — grep for old version refs, outdated
    `TODO(M?)` markers, ADR pointers to files that moved.
 5. Doc sync — CHANGELOG `[Unreleased]` collapses into the new
-   version header; HANDOFF's "Where we are" matches reality;
-   ROADMAP updated if the milestone boundary shifted.
+   version header; `docs/development/state.md`'s "Current status"
+   matches reality; ROADMAP updated if the milestone boundary
+   shifted.
 6. Clean build — `rm -rf build && cyrius deps && cyrius build`
    passes from scratch.
 7. Downstream check — `owl` (and any other consumer that has
@@ -184,5 +187,6 @@ Cyrius code. When dialect is unclear, read `cyrius/programs/*.cyr`
   Format: see [docs/adr/README.md](./docs/adr/README.md).
 - Small implementation notes (recognizer ordering, scope notes)
   go in the relevant source file's header comment, not an ADR.
-- CHANGELOG captures the *what*; ADRs capture the *why*; HANDOFF
-  captures the current transition — don't duplicate across them.
+- CHANGELOG captures the *what*; ADRs capture the *why*;
+  `docs/development/state.md` captures the current transition —
+  don't duplicate across them.

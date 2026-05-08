@@ -13,7 +13,7 @@ or the graph is flattened).
 
 | cyrius | `cyrius build src/main.cyr build/vyk` |
 |---|---|
-| 5.6.0 (last green per `HANDOFF.md`) | green (per `HANDOFF.md`; not re-validated locally — `cyriusly` does not have 5.6.x installed; earliest available is 5.7.35) |
+| 5.6.0 (last green per `docs/development/state.md` (formerly `docs/development/state.md`)) | green (per `docs/development/state.md`; not re-validated locally — `cyriusly` does not have 5.6.x installed; earliest available is 5.7.35) |
 | 5.9.32 | **FAIL** at `src/tokenize.cyr:16` — `expected '=', got string` |
 | 5.9.33 (in-flight, uncommitted in `cyrius/`) | **FAIL** identical |
 
@@ -174,7 +174,7 @@ The bisect favours (a): each file is individually clean.
 - **Pin bumped** in `cyrius.cyml`: `cyrius = "5.6.0"` →
   `cyrius = "5.9.32"`. Uncommitted (per CLAUDE.md the user
   handles git).
-- **Build remains red on 5.9.32.** `HANDOFF.md`'s "Gates are
+- **Build remains red on 5.9.32.** `docs/development/state.md` (formerly `docs/development/state.md`)'s "Gates are
   green" line refers to the 5.6.0 era and is now stale; will be
   refreshed once the upstream fix lands or after a graph
   flattening port (see Workaround below).
@@ -199,7 +199,7 @@ which is the convention sandhi / agnosys / yukti also use.
   reproducer with diagnostic, ruled-out hypotheses, and bisect
 - `/tmp/cyrius-nested-include-broken/bisect.sh` — bisect script
 - `vyakarana/cyrius.cyml` — pin `cyrius = "5.9.32"`
-- `vyakarana/HANDOFF.md` — claims 5.6.0-era green gates (stale)
+- `vyakarana/docs/development/state.md` — claims 5.6.0-era green gates (stale)
 - `vyakarana/src/{token,grammar,tokenize,grammars/{shell,default_scanner}}.cyr`
   — the include graph in question
 - `cyrius/programs/*.cyr` — canonical single-file include pattern

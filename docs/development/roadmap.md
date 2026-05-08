@@ -211,7 +211,7 @@ need them.
 
 Five vidya samples already sit in `content/lexing_and_parsing/`
 waiting for grammars. Each is a ~30-min `.cyml` + snapshot + wire
-session per the M3 recipe (HANDOFF §Where the code lives).
+session per the M3 recipe (`state.md` §What shipped).
 
 - `go` — C-like + goroutines, no surprises
 - `zig` — C-like + comptime, similar shape to Rust
