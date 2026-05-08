@@ -77,6 +77,14 @@ fn bootstrap_grammars() {
     if (gcpp != 0) { registry_add(gcpp); }
     var gcs = grammar_load("grammars/csharp.cyml");
     if (gcs != 0) { registry_add(gcs); }
+    var gphp = grammar_load("grammars/php.cyml");
+    if (gphp != 0) { registry_add(gphp); }
+    var grb = grammar_load("grammars/ruby.cyml");
+    if (grb != 0) { registry_add(grb); }
+    var glua = grammar_load("grammars/lua.cyml");
+    if (glua != 0) { registry_add(glua); }
+    var gswift = grammar_load("grammars/swift.cyml");
+    if (gswift != 0) { registry_add(gswift); }
     return 0;
 }
 

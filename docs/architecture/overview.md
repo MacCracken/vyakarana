@@ -160,6 +160,10 @@ grammar's `.cyml` is materially altered.
 | kotlin      | stand-in `concept.kt` (~4KB)        | 1320 | Added in 1.3.0. ADR 0006 stand-in. `@` and `$` in `ident_start`. Operators include `?:` (Elvis), `?.` (safe-call), `!!` (not-null assert), `..` (range), `===` / `!==` (referential). |
 | cpp         | stand-in `concept.cpp` (~5KB)       | 1686 | Added in 1.3.0. ADR 0006 stand-in. `::` scope-resolution, `<=>` three-way compare, `->*` / `.*` member-pointer, `...` parameter packs. Templates / generics handled by existing `<` `>` operator pair (consumer-side disambiguation). |
 | csharp      | stand-in `concept.cs` (~5KB)        | 1399 | Added in 1.3.0. ADR 0006 stand-in. `??=` / `??` / `?.` null-safety operators, `=>` (lambda / expression body / switch arms), `..` ranges. `@` and `$` as 1-byte operators (verbatim / interpolated string prefixes). |
+| php         | stand-in `concept.php` (~5KB)       | 1604 | Added in 1.4.0. ADR 0006 stand-in. `$` in `ident_start` (variables); `\` in operators (namespace separator); both `//` and `#` line comments; `?->` null-safe member access, `<=>` spaceship, `**`/`**=` power. |
+| ruby        | stand-in `concept.rb` (~3.5KB)      | 1111 | Added in 1.4.0. ADR 0006 stand-in. `@` and `$` in `ident_start`; `=begin`/`=end` block comments via pair rule (caveat: spec requires column-0; scanner has no column-state); `<=>`, `===`, `=~`/`!~`, `&.` safe-nav, `..`/`...` ranges. |
+| lua         | stand-in `concept.lua` (~5KB)       | 1713 | Added in 1.4.0. ADR 0006 stand-in. **Both comment forms expressed as pair rules** (`--[[…]]` and `--…\n`) so the longer prefix can win — line-rule pipeline step would otherwise eat `--` greedily before `--[[` could match. Variable-padded `[==[…]==]` deferred. |
+| swift       | stand-in `concept.swift` (~4KB)     | 1380 | Added in 1.4.0. ADR 0006 stand-in. `@` and `$` in `ident_start` (attributes / closure shorthand `$0`); `"""…"""` multi-line strings via pair rule ahead of `"…"`; `..<` half-open range, `&+`/`&-`/`&*` overflow ops, `===`/`!==` identity. |
 
 ---
 

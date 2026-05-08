@@ -4,17 +4,16 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–1.3.0 are
+> **Read this file before doing anything.** 1.0.0–1.4.0 are
 > shipped. As of 2026-05-08 the toolchain pin is `cyrius = "5.9.36"`.
-> The 1.2.x line closed at 1.2.4 (closeout audit clean).
-> **1.3.0 ships the JVM + C-family batch — Java, Kotlin, C++,
-> C# — all with ADR 0006 stand-in corpora since vidya doesn't
-> yet have reference samples for these languages.** Notably, no
-> new scanner extensions were needed: cpp (the most likely to
-> surface ADR work) was handled by the existing operator and
-> identifier machinery. 19 grammars bundled now, 463/463 tests
-> passing. Next: 1.4.0 — scripting + mobile (php/ruby/lua/swift)
-> — see §Next up.
+> 1.3.0 added Java, Kotlin, C++, C# (JVM + C-family batch);
+> **1.4.0 adds PHP, Ruby, Lua, Swift (scripting + mobile
+> batch)** — both via ADR 0006 stand-in corpora since vidya
+> doesn't yet ship reference samples. **23 grammars bundled
+> now, 495/495 tests passing.** No new scanner extensions
+> needed; one architectural finding (pair-vs-line-rule prefix
+> collision in Lua) documented in architecture note 003. Next:
+> 1.5.0 — functional tier (elixir/ocaml/haskell) — see §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -34,46 +33,64 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `1.3.0` in `VERSION`, `src/version_str.cyr`, and
-  `dist/vyakarana.cyr`. Full 1.x tag history through 1.2.4 in
-  the CHANGELOG.
-- **What 1.3.0 added:** four JVM + C-family grammars in one cut
-  — **Java, Kotlin, C++, C#**. All four ship with hand-rolled
-  stand-in corpora per
-  [ADR 0006](../adr/0006-standin-corpus-policy.md) since vidya
-  doesn't yet ship reference samples for these languages.
-  Token counts: java 1705, kotlin 1320, cpp 1686, csharp 1399
-  — all zero errors on canonical samples. **No new scanner
-  extensions were needed**: cpp handled templates / `::` /
-  generics / namespaces with existing operator + identifier
-  machinery. The 1.1.0 / 1.2.1 work (`unicode_ident`,
-  `char_literal`, block-comment pair rule) covered everything.
-- **Test count:** 463/463 (was 439 at 1.2.4 — added 24
-  assertions: 3 probes per grammar × 4 grammars = 12, plus
-  some auxiliary checks).
-- **Grammars:** 19 bundled (shell, toml, json, cyrius, rust,
+- **Version:** `1.4.0` in `VERSION`, `src/version_str.cyr`, and
+  `dist/vyakarana.cyr`. Full 1.x tag history in the CHANGELOG.
+- **What 1.4.0 added:** four scripting + mobile grammars in one
+  cut — **PHP, Ruby, Lua, Swift**. All four ship with hand-
+  rolled stand-in corpora per
+  [ADR 0006](../adr/0006-standin-corpus-policy.md). Token
+  counts: php 1604, ruby 1111, lua 1713, swift 1380 — zero
+  errors on canonical samples. **No new scanner extensions
+  needed.**
+- **Notable architectural finding (1.4.0):** Lua surfaced a
+  **pair-vs-line-rule prefix collision** that's now documented
+  in [architecture note 003](../architecture/003-pair-rule-ordering.md).
+  Line rules run at pipeline step 2 BEFORE pair rules at step
+  3, so when a grammar has both a `--` line comment and a
+  `--[[…]]` long comment, the line rule wins regardless of
+  grammar-file declaration order. Workaround: express both
+  forms as pair rules with the longer prefix first. The
+  scanner pipeline order itself stays normative.
+- **Test count:** 495/495 (was 463 at 1.3.0; added 32
+  assertions across 4 new grammars).
+- **Grammars:** 23 bundled (shell, toml, json, cyrius, rust,
   yaml, markdown, c, typescript, javascript, python, go, zig,
-  asm_x86_64, asm_aarch64, **java, kotlin, cpp, csharp**).
+  asm_x86_64, asm_aarch64, java, kotlin, cpp, csharp,
+  **php, ruby, lua, swift**).
 - **Toolchain pin:** `cyrius = "5.9.36"` in `cyrius.cyml`
   (unchanged since 1.0.3).
 - **Build state: GREEN on cyrius 5.9.36.** `cyrius build`
-  clean; `cyrius test tests/vyakarana.tcyr` 463/463;
+  clean; `cyrius test tests/vyakarana.tcyr` 495/495;
   `sh scripts/smoke.sh build/vyk` reports M0+M1+M2+M3 passing
-  at v1.3.0. `dist/vyakarana.cyr` regenerated.
+  at v1.4.0. `dist/vyakarana.cyr` regenerated.
 - **Consumer pressure:** unchanged. Public `tokenize_source` /
-  `tokenbuf` API is unchanged across 1.0.0 → 1.3.0. Grammar
-  record stayed at 152 bytes since 1.2.1. owl can bump its pin
-  to 1.3.0 to pick up the four new grammars.
+  `tokenbuf` API is unchanged across 1.0.0 → 1.4.0. Grammar
+  record stayed at 152 bytes since 1.2.1.
 
 ### Stand-in corpora — replace when vidya ships
 
-Per [ADR 0006](../adr/0006-standin-corpus-policy.md), the four
-1.3.0 grammars use hand-rolled `tests/corpus/concept.<ext>`
-samples. They're intentionally short (~150 lines each) and follow
-the lexer+parser theme that vidya's `lexing_and_parsing/`
-samples use. When vidya adds reference samples for any of these
-four languages, swap the stand-in for the vidya snapshot and
-update the corpus README.
+Per [ADR 0006](../adr/0006-standin-corpus-policy.md), eight
+grammars (json, yaml, markdown, javascript, java, kotlin, cpp,
+csharp, php, ruby, lua, swift) use hand-rolled
+`tests/corpus/concept.<ext>` samples. Each is ~150–250 lines
+following the lexer+parser theme. When vidya ships reference
+samples for any of them, swap the stand-in for the vidya
+snapshot and update the corpus README.
+
+### Variable-length-delimiter shapes — collective ADR pending
+
+Four grammars currently document variable-length terminator
+forms as deferred:
+
+- **Lua** `[==[ … ]==]` long brackets with `=` padding (1.4.0).
+- **Ruby** `<<~HEREDOC … HEREDOC` heredocs (1.4.0).
+- **PHP** `<<<EOT … EOT;` heredocs / nowdocs (1.4.0).
+- **Swift** `#"…"#`, `##"…"##` raw strings (1.4.0).
+
+The scanner has no variable-length-delimiter pair rule today;
+these all share the same scanner shape gap. If a real corpus
+forces one of them, expect a collective ADR + scanner extension
+that handles all four uniformly.
 - **Toolchain pin:** `cyrius = "5.9.36"` in `cyrius.cyml`
   (unchanged since 1.0.3).
 - **Build state: GREEN on cyrius 5.9.36.** `cyrius build` clean;
@@ -124,33 +141,31 @@ additions land).
 
 ---
 
-## Next up — 1.4.0 (Scripting + mobile)
+## Next up — 1.5.0 (Functional tier)
 
 Per the [roadmap](./roadmap.md), the next batch is
-**1.4.0 — scripting + mobile**: `php`, `ruby`,
-`lua`, `swift`. Same recipe as 1.3.0 — vidya likely doesn't
-have reference samples for these either, so plan on ADR 0006
-stand-ins.
+**1.5.0 — functional tier**: `elixir`, `ocaml`, `haskell`. ADR
+0006 stand-ins likely (no vidya reference samples).
 
 Surfaces to watch:
-- **Ruby** has `=begin`/`=end` block comments (different shape
-  from `/* */`), `<<~HEREDOC` heredocs (variable-length), and
-  string interpolation `#{expr}`. May surface scanner ADR work.
-- **Lua** has `--[[` long-comment markers and `[[…]]` long
-  strings — both with optional `=` padding for nested forms
-  (`[==[…]==]`). Variable-length-delimiter pair rules don't
-  exist in the scanner today. Possible ADR.
-- **Swift** has multi-line `"""…"""` strings (same shape as
-  TOML's [ADR 0008](../adr/0008-toml-triple-quoted-strings.md))
-  and string interpolation `\(expr)`.
-- **PHP** is mostly C-family at the token level; should be
-  the most mechanical of the four.
+- **Elixir** has `do … end` blocks, `~r/.../` sigils for
+  regex, atoms (`:foo`), pipe `|>`, pattern guards, and
+  `defmodule`/`def`/`defp` declaration heads.
+- **OCaml** has `(* … *)` block comments (nestable per spec
+  — same gap as Rust), `let rec`, `type` algebraic-data-type
+  declarations, and `match … with` pattern syntax. The `'a`
+  type-variable shape is similar to Rust lifetimes — char-
+  literal-vs-type-var ambiguity needs the same fall-through
+  pattern that ADR 0010 already implements.
+- **Haskell** has `--` line comments, `{- … -}` block
+  comments (also nestable in spec), layout-sensitive syntax
+  (do/where/let blocks), and rich operator surface (`>>=`,
+  `<$>`, `<*>`, `<>`, `:`, `++`, etc.).
 
-After 1.4.0, the roadmap continues with 1.5.0 (functional —
-elixir, ocaml, haskell), 1.6.0 (data/query/IDL), 1.7.0 (markup),
-1.8.0 (devops), 1.9.0 (AGNOS-native), then the pre-2.0 prep
-waves (1.10–1.13). 2.0.0 is the streaming-tokenizer break and
-the only release scheduled in the 2.x line.
+After 1.5.0, the roadmap continues with 1.6.0 (data/query/IDL),
+1.7.0 (markup), 1.8.0 (devops), 1.9.0 (AGNOS-native), then the
+pre-2.0 prep waves (1.10–1.13). 2.0.0 is the streaming-
+tokenizer break and the only release scheduled in the 2.x line.
 
 Each new grammar is a `grammars/<name>.cyml` plus a
 `tests/corpus/<name>.<ext>` (vidya snapshot per

@@ -1112,6 +1112,140 @@ fn main() {
     }
     assert_eq(saw_nca, 1, "??= null-coalesce-assign op");
 
+    test_group("1.4.0 php grammar — loads and tokenizes cleanly");
+    var gphp = grammar_load("grammars/php.cyml");
+    assert_neq(gphp, 0, "grammar_load php returned non-null");
+    assert_eq(streq(grammar_name(gphp), "php"), 1, "name is 'php'");
+
+    # `class` is a keyword.
+    var tb_php1 = tokenbuf_new();
+    var src_php1 = "final class Foo";
+    tokenize_with_grammar(gphp, src_php1, strlen(src_php1), tb_php1);
+    assert_eq(tokenbuf_kind(tb_php1, 0), TK_KEYWORD, "final keyword");
+    assert_eq(tokenbuf_kind(tb_php1, 2), TK_KEYWORD, "class keyword");
+
+    # `$variable` tokenizes as one ident (`$` in ident_start).
+    var tb_php2 = tokenbuf_new();
+    var src_php2 = "$source";
+    tokenize_with_grammar(gphp, src_php2, strlen(src_php2), tb_php2);
+    assert_eq(tokenbuf_count(tb_php2), 1,          "$source one token");
+    assert_eq(tokenbuf_kind(tb_php2, 0), TK_IDENT, "$source ident");
+    assert_eq(tokenbuf_len(tb_php2, 0),  7,        "$source len 7");
+
+    # Namespace separator `\` is an operator.
+    var tb_php3 = tokenbuf_new();
+    var src_php3 = "Foo\\Bar";
+    tokenize_with_grammar(gphp, src_php3, strlen(src_php3), tb_php3);
+    var saw_nssep = 0;
+    var php3i = 0;
+    while (php3i < tokenbuf_count(tb_php3)) {
+        if (tokenbuf_kind(tb_php3, php3i) == TK_OPERATOR) {
+            if (tokenbuf_len(tb_php3, php3i) == 1) {
+                var sphp = tokenbuf_start(tb_php3, php3i);
+                if (load8(src_php3 + sphp) == 92) { saw_nssep = 1; }
+            }
+        }
+        php3i = php3i + 1;
+    }
+    assert_eq(saw_nssep, 1, "\\ namespace separator op");
+
+    test_group("1.4.0 ruby grammar — loads and tokenizes cleanly");
+    var grb = grammar_load("grammars/ruby.cyml");
+    assert_neq(grb, 0, "grammar_load ruby returned non-null");
+    assert_eq(streq(grammar_name(grb), "ruby"), 1, "name is 'ruby'");
+
+    # `def` is a keyword.
+    var tb_rb1 = tokenbuf_new();
+    var src_rb1 = "def foo end";
+    tokenize_with_grammar(grb, src_rb1, strlen(src_rb1), tb_rb1);
+    assert_eq(tokenbuf_kind(tb_rb1, 0), TK_KEYWORD, "def keyword");
+    assert_eq(tokenbuf_kind(tb_rb1, 4), TK_KEYWORD, "end keyword");
+
+    # `=begin ... =end` block comment as one TK_COMMENT.
+    var tb_rb2 = tokenbuf_new();
+    var src_rb2 = "=begin\nbody\n=end";
+    tokenize_with_grammar(grb, src_rb2, strlen(src_rb2), tb_rb2);
+    assert_eq(tokenbuf_kind(tb_rb2, 0), TK_COMMENT, "=begin/=end is comment");
+    assert_eq(tokenbuf_len(tb_rb2, 0), strlen(src_rb2), "covers whole input");
+
+    # `@instance_var` and `$global` tokenize as one ident each.
+    var tb_rb3 = tokenbuf_new();
+    var src_rb3 = "@source";
+    tokenize_with_grammar(grb, src_rb3, strlen(src_rb3), tb_rb3);
+    assert_eq(tokenbuf_count(tb_rb3), 1,          "@source one token");
+    assert_eq(tokenbuf_kind(tb_rb3, 0), TK_IDENT, "@source ident");
+
+    test_group("1.4.0 lua grammar — loads and tokenizes cleanly");
+    var glua = grammar_load("grammars/lua.cyml");
+    assert_neq(glua, 0, "grammar_load lua returned non-null");
+    assert_eq(streq(grammar_name(glua), "lua"), 1, "name is 'lua'");
+
+    # `function` is a keyword; `local` is a keyword.
+    var tb_lua1 = tokenbuf_new();
+    var src_lua1 = "local function foo";
+    tokenize_with_grammar(glua, src_lua1, strlen(src_lua1), tb_lua1);
+    assert_eq(tokenbuf_kind(tb_lua1, 0), TK_KEYWORD, "local keyword");
+    assert_eq(tokenbuf_kind(tb_lua1, 2), TK_KEYWORD, "function keyword");
+
+    # `--[[ … ]]` long comment as one TK_COMMENT.
+    var tb_lua2 = tokenbuf_new();
+    var src_lua2 = "--[[block]]\nx";
+    tokenize_with_grammar(glua, src_lua2, strlen(src_lua2), tb_lua2);
+    assert_eq(tokenbuf_kind(tb_lua2, 0), TK_COMMENT, "--[[…]] long comment");
+    assert_eq(tokenbuf_len(tb_lua2, 0),  11,         "long comment len 11");
+
+    # `--` line comment now via pair-rule with end=\n; covers
+    # the trailing newline. Architecture note: two pair rules
+    # for comments because lua's longer prefix needs to win
+    # against the shorter `--` form.
+    var tb_lua3 = tokenbuf_new();
+    var src_lua3 = "-- line\nx";
+    tokenize_with_grammar(glua, src_lua3, strlen(src_lua3), tb_lua3);
+    assert_eq(tokenbuf_kind(tb_lua3, 0), TK_COMMENT, "-- line comment");
+
+    # `[[ … ]]` long string — uninterpreted, multi-line capable.
+    var tb_lua4 = tokenbuf_new();
+    var src_lua4 = "[[hello]]";
+    tokenize_with_grammar(glua, src_lua4, strlen(src_lua4), tb_lua4);
+    assert_eq(tokenbuf_kind(tb_lua4, 0), TK_STRING, "[[…]] long string");
+    assert_eq(tokenbuf_len(tb_lua4, 0),  9,         "long string len 9");
+
+    test_group("1.4.0 swift grammar — loads and tokenizes cleanly");
+    var gswift = grammar_load("grammars/swift.cyml");
+    assert_neq(gswift, 0, "grammar_load swift returned non-null");
+    assert_eq(streq(grammar_name(gswift), "swift"), 1, "name is 'swift'");
+
+    # `func` and `let` are keywords.
+    var tb_sw1 = tokenbuf_new();
+    var src_sw1 = "func foo() {}";
+    tokenize_with_grammar(gswift, src_sw1, strlen(src_sw1), tb_sw1);
+    assert_eq(tokenbuf_kind(tb_sw1, 0), TK_KEYWORD, "func keyword");
+
+    # `"""…"""` multi-line string as one TK_STRING.
+    var tb_sw2 = tokenbuf_new();
+    var src_sw2 = "\"\"\"hello\"\"\"";
+    tokenize_with_grammar(gswift, src_sw2, strlen(src_sw2), tb_sw2);
+    assert_eq(tokenbuf_count(tb_sw2), 1,          "triple-quoted one token");
+    assert_eq(tokenbuf_kind(tb_sw2, 0), TK_STRING, "triple-quoted is string");
+    assert_eq(tokenbuf_len(tb_sw2, 0), strlen(src_sw2), "covers whole input");
+
+    # `..<` half-open range op (Swift-specific, 3 bytes).
+    var tb_sw3 = tokenbuf_new();
+    var src_sw3 = "0..<10";
+    tokenize_with_grammar(gswift, src_sw3, strlen(src_sw3), tb_sw3);
+    var saw_halfopen = 0;
+    var sw3i = 0;
+    while (sw3i < tokenbuf_count(tb_sw3)) {
+        if (tokenbuf_kind(tb_sw3, sw3i) == TK_OPERATOR) {
+            if (tokenbuf_len(tb_sw3, sw3i) == 3) {
+                var ssw3 = tokenbuf_start(tb_sw3, sw3i);
+                if (memeq(src_sw3 + ssw3, "..<", 3) == 1) { saw_halfopen = 1; }
+            }
+        }
+        sw3i = sw3i + 1;
+    }
+    assert_eq(saw_halfopen, 1, "..< half-open range op");
+
     test_group("version string shape");
     # VYK_VERSION lives in src/version_str.cyr (auto-generated by
     # scripts/version-bump.sh). Asserting shape, not value, so the

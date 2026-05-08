@@ -151,6 +151,7 @@ fn detect_language(path) {
         if (memeq(path + n - 3, ".kt", 3) == 1) { return "kotlin"; }
         if (memeq(path + n - 3, ".cs", 3) == 1) { return "csharp"; }
         if (memeq(path + n - 3, ".cc", 3) == 1) { return "cpp"; }
+        if (memeq(path + n - 3, ".rb", 3) == 1) { return "ruby"; }
     }
     if (n >= 4) {
         if (memeq(path + n - 4, ".mjs", 4) == 1) { return "javascript"; }
@@ -160,6 +161,8 @@ fn detect_language(path) {
         if (memeq(path + n - 4, ".hpp", 4) == 1) { return "cpp"; }
         if (memeq(path + n - 4, ".hxx", 4) == 1) { return "cpp"; }
         if (memeq(path + n - 4, ".kts", 4) == 1) { return "kotlin"; }
+        if (memeq(path + n - 4, ".php", 4) == 1) { return "php"; }
+        if (memeq(path + n - 4, ".lua", 4) == 1) { return "lua"; }
     }
     if (n >= 4) {
         if (memeq(path + n - 4, ".yml", 4) == 1) { return "yaml"; }
@@ -183,6 +186,9 @@ fn detect_language(path) {
         # is TOML-shaped, optional `---`/markdown body follows. Route
         # to the TOML grammar for a best-effort tokenization.
         if (memeq(path + n - 5, ".cyml", 5) == 1) { return "toml"; }
+    }
+    if (n >= 6) {
+        if (memeq(path + n - 6, ".swift", 6) == 1) { return "swift"; }
     }
     return 0;
 }

@@ -1,0 +1,142 @@
+# lua — Lua tokenizer grammar
+#
+# Rule scheme per ADR 0005. Lua is the smallest grammar in this
+# batch — a handful of operators (`..`, `~=`, `//`, `<=`, `>=`,
+# `==`, `<<`, `>>`), about 22 reserved words, line comments via
+# `--`, and long-bracket forms `[[…]]` (string) / `--[[…]]`
+# (comment).
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# vidya doesn't ship a Lua reference sample yet. The local
+# `tests/corpus/concept.lua` mirrors the lexer+parser theme used
+# elsewhere, exercising metatables, `local function`, `--[[ … ]]`
+# block comments, table constructors, and the Lua keyword set.
+# Replace with a vidya snapshot when one ships.
+#
+# Long-bracket forms:
+#   - `[[ … ]]` long string (no escapes, embedded newlines OK)
+#     → matched by a `match = "pair"` rule below.
+#   - `--[[ … ]]` long comment → matched by another pair rule
+#     below, ordered ahead of the `--` line-comment rule so the
+#     longer prefix wins (per [architecture note 003](../docs/architecture/003-pair-rule-ordering.md)).
+#
+# Variable-padded forms `[==[ … ]==]` / `--[==[ … ]==]` are NOT
+# supported — variable-length terminators require a new scanner
+# shape. Documented as a 1.x.x backlog item alongside Ruby
+# heredocs, PHP heredocs, and a few other variable-delimiter
+# forms; collectively forces a future ADR if a real corpus
+# surfaces one.
+#
+# Known gaps (not triggered by the stand-in):
+#   - Variable-padded long brackets (see above).
+#   - Lua 5.3+ integer-division `//` IS in operators below.
+#   - Lua bitwise operators (`&`, `|`, `~`, `<<`, `>>`) IS in
+#     operators below; Lua 5.3+.
+
+[grammar]
+name = "lua"
+extensions = [".lua"]
+
+[defaults]
+shebang = true
+whitespace = true
+
+ident_start = "A-Za-z_"
+ident_cont  = "A-Za-z0-9_"
+
+number_decimal = true
+number_0x      = true
+number_0b      = false
+number_0o      = false
+
+special_vars = false
+unicode_ident = true
+char_literal  = true
+
+# Operators in longest-match order. Lua-specific: `..` (string
+# concat), `~=` (not equal), `//` (floor / integer division,
+# Lua 5.3+), `<<` / `>>` (bit shifts), `~` as both bit-not
+# (unary) and bit-xor (binary), `=` is assignment, `==` is
+# equality.
+operators = [
+    "<<", ">>",
+    "==", "~=", "<=", ">=",
+    "..", "//",
+    "=", "+", "-", "*", "/", "%", "^",
+    "&", "|", "~",
+    "#",
+    "<", ">",
+]
+
+punctuation = [
+    "(", ")", "{", "}", "[", "]",
+    ";", ",", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+# Lua comments. Both forms are expressed as pair rules so they
+# share a single dispatch step (pipeline step 3) — the line-rule
+# step (step 2) would match the `--` prefix greedily and never
+# let the longer `--[[` form win. Pair-rules iterate in
+# declaration order; the longer prefix MUST come first
+# (architecture note 003).
+#
+# Long comment `--[[ … ]]`.
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "--[["
+end = "]]"
+
+
+# Line comment `-- … \n`. The trailing newline is part of the
+# comment span (a slight cosmetic difference vs. the line-rule
+# shape, but coverage holds and themes don't care).
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "--"
+end = "\n"
+
+
+# `[[ … ]]` long string. No escape — Lua long strings are
+# uninterpreted.
+[[rules]]
+kind = "string"
+match = "pair"
+start = "[["
+end = "]]"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "'"
+end = "'"
+escape = "\\"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # Definition / scope
+    "function", "local", "return", "end",
+    # Control flow
+    "if", "then", "else", "elseif", "while", "do",
+    "for", "in", "repeat", "until", "break", "goto",
+    # Logical (Lua spells these as words)
+    "and", "or", "not",
+    # Reserved literals
+    "true", "false", "nil",
+]

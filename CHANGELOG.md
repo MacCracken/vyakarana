@@ -6,6 +6,90 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [1.4.0] — 2026-05-08
+
+Scripting + mobile language batch. Four new grammars in one cut:
+PHP, Ruby, Lua, Swift. All four ship with stand-in corpora per
+[ADR 0006](docs/adr/0006-standin-corpus-policy.md) — vidya
+doesn't yet ship reference samples for these languages. **No
+new scanner extensions were needed**; existing 1.1.0 / 1.2.1
+machinery handled everything except a pipeline-priority gotcha
+in Lua (now documented as architecture guidance).
+
+### Added
+
+- **PHP grammar.** New `grammars/php.cyml` +
+  `tests/corpus/concept.php` (1604 tokens, zero errors). `$` in
+  `ident_start` so `$variable`, `$source`, `$this->pos`
+  tokenize as a single ident. Operators include `->` (member
+  access), `=>` (array key/value, match arms), `::` (scope
+  resolution), `??` / `??=` (null-coalesce), `?->` (null-safe
+  member access, PHP 8), `<=>` (spaceship), `**` / `**=`
+  (power). **`\` added to operators** for namespace separator
+  (`Vyakarana\Concept\Foo`, `\RuntimeException`); the
+  string-pair `escape = "\\"` consumes `\<C>` inside string
+  spans, so `\` outside strings cleanly tokenizes as a 1-byte
+  op. Both `//` and `#` line comments. Keyword set covers PHP
+  8: `enum`, `readonly`, `match`, `fn`, `mixed`, `never`.
+- **Ruby grammar.** New `grammars/ruby.cyml` +
+  `tests/corpus/concept.rb` (1111 tokens, zero errors). `@`
+  and `$` in `ident_start` (instance/class vars, globals).
+  `=begin`/`=end` block comments via pair rule (caveat: spec
+  requires column-0; scanner has no column-state, documented
+  in grammar header). Operators include `<=>`, `===`, `=~`/
+  `!~` (regex match), `..`/`...` ranges, `&.` safe-nav, `**`/
+  `**=`. **`\` added to operators** for inline regex bodies
+  (`=~ /\s/`) and line-continuations.
+- **Lua grammar.** New `grammars/lua.cyml` +
+  `tests/corpus/concept.lua` (1713 tokens, zero errors).
+  Smallest grammar in the batch — 22 reserved words, `..`/
+  `~=`/`//` operators. **Both comment forms expressed as pair
+  rules** (`--[[…]]` long comment, `--…\n` line comment) so
+  the longer prefix can win — the scanner pipeline runs line
+  rules at step 2 BEFORE pair rules at step 3, so a line-rule
+  `--` would otherwise eat the `--` of `--[[` greedily.
+  Documented in [architecture note 003](docs/architecture/003-pair-rule-ordering.md)
+  with the workaround pattern for any future grammar that has
+  both line and pair forms with a shared prefix. Variable-
+  padded long brackets (`[==[…]==]`) deferred — would need a
+  variable-length-delimiter rule shape, tracked alongside Ruby
+  heredocs / PHP heredocs / Swift raw strings as a future ADR.
+- **Swift grammar.** New `grammars/swift.cyml` +
+  `tests/corpus/concept.swift` (1380 tokens, zero errors).
+  `@` and `$` in `ident_start` (attributes / closure shorthand
+  `$0`/`$1`). Multi-line strings `"""…"""` via pair rule
+  ahead of `"…"` (same shape as
+  [ADR 0008](docs/adr/0008-toml-triple-quoted-strings.md) for
+  TOML). Operators include `..<` (half-open range), `...`
+  (closed range), `??` (nil-coalesce), `?.` (optional chain),
+  `&+`/`&-`/`&*` (overflow-checked arithmetic), `===`/`!==`
+  (identity).
+
+### Changed
+
+- **Architecture note 003 expanded.** New "Pair-vs-line-rule
+  prefix collisions" section documents the Lua finding: line
+  rules run at pipeline step 2, pair rules at step 3, so a
+  shared prefix between the two means the line rule always
+  wins regardless of declaration order in the grammar file.
+  Workaround: express both as pair rules and order longer
+  prefix first. The architecture note 002 pipeline order stays
+  normative — this is grammar-author guidance, not a scanner
+  change.
+
+### Wiring
+
+- `src/tokenize.cyr` — all four added to `bootstrap_grammars()`
+  (now loads 23 grammars).
+- `src/main.cyr` — extension dispatch: `.php`/`.phtml`, `.rb`,
+  `.lua`, `.swift`.
+- `scripts/smoke.sh` — all four added to `--list-languages`
+  check (now 23 grammars) and the corpus round-trip loop.
+- `tests/vyakarana.tcyr` — three or four probe assertions per
+  grammar covering load + name + grammar-specific shapes
+  (variable interpolation, namespace separator, long comments,
+  long strings, half-open range, etc.). 463 → 495 passing.
+
 ## [1.3.0] — 2026-05-08
 
 JVM + C-family language batch. Four new grammars in one cut.
