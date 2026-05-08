@@ -1,0 +1,148 @@
+# nix — Nix expression language tokenizer grammar
+#
+# Rule scheme per ADR 0005. Nix is the functional configuration
+# language that powers NixOS, home-manager, and the broader Nix
+# ecosystem. Tokenizer surface:
+#
+#   - `#` line comments. `/* ... */` block comments.
+#   - Strings: `"..."` (with `\` escapes and `${expr}`
+#     interpolation) and `''...''` indented multi-line strings
+#     (Haskell-shaped, dedented at runtime, with `''$` and
+#     `'''` escapes).
+#   - Numbers: integers and floats only. No hex / binary / octal.
+#   - Identifiers: `[A-Za-z_][A-Za-z0-9_'-]*`. Both `'` (prime,
+#     from Haskell influence — `iter'`, `prev'`) and `-`
+#     (kebab-case — `nixpkgs-unstable`, `home-manager`) are
+#     legal in identifier continuation.
+#   - Keywords: `let` / `in`, `if` / `then` / `else`, `with`,
+#     `inherit`, `rec`, `import`, `assert`, `or`, `null`,
+#     `true`, `false`, `builtins`.
+#   - Operators: standard arithmetic + a handful Nix-specific:
+#     - `//` — **set merge / update**, NOT a line comment
+#       (Nix uses only `#` for line comments).
+#     - `++` — list concatenation.
+#     - `->` — boolean implication.
+#     - `?` — has-attribute test.
+#     - `@` — "as" pattern in function args (`{ pkgs, ... }@args:`).
+#   - Punctuation: brackets, `;`, `,`, `:`, `.` (attribute
+#     access).
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# `tests/corpus/concept.nix` exercises let-in, attribute sets,
+# inherit, recursive sets, with-scope, both string forms, both
+# comment forms, lambdas with set destructuring.
+#
+# Known gaps (corpus doesn't trigger; documented for future
+# iterations):
+#   - **String interpolation** `${expr}`. Interior bytes
+#     tokenize as part of the surrounding string. Same trade-
+#     off as Vue / JS template literals.
+#   - **Path literals** `./foo`, `~/cfg`, `/abs/path`,
+#     `<nixpkgs>`. Tokenize as separate punct + ident
+#     pieces — coverage holds; theme can re-pair on token
+#     adjacency.
+#   - **Indented-string escape sequences** `''$` / `'''` /
+#     `''\n`. The pair scanner closes at the first plain
+#     `''`; for our typical use case this is fine but a
+#     pathological doubled-`''` inside a body would break.
+#   - **URL literals** `https://foo`. Tokenize as schema
+#     ident + `:` + `//` op + path-shaped tail. Theme can
+#     re-pair.
+
+[grammar]
+name = "nix"
+extensions = [".nix"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+# `'` and `-` in ident_cont — both are legal Nix identifier
+# continuation bytes (Haskell-prime + kebab-case).
+ident_start = "A-Za-z_"
+ident_cont  = "A-Za-z0-9_'-"
+
+number_decimal = true
+number_0x      = false
+number_0b      = false
+number_0o      = false
+
+special_vars = false
+unicode_ident = true
+char_literal  = false
+
+# Operators in longest-match order. The unusual entries:
+#   `//` — set merge, NOT a line comment marker.
+#   `++` — list concatenation.
+#   `->` — implication.
+#   `?`  — has-attribute test (`set ? path`).
+#   `@`  — `@`-pattern in function args.
+#   `$`  — start of `${...}` interpolation; tokenizes as 1-byte
+#          op when not followed by `{` (interpolation body
+#          stays inside the surrounding string in 2.1.x).
+operators = [
+    "//", "++", "->",
+    "==", "!=", "<=", ">=",
+    "&&", "||",
+    "=", "+", "-", "*", "/",
+    "<", ">", "!",
+    "?", "@", "$",
+]
+
+punctuation = [
+    "(", ")", "[", "]", "{", "}",
+    ";", ",", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+# Block comment `/* ... */`. Pair rules run at scanner step 3,
+# before operators at step 8, so `/*` wins over `/` and `//`.
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "/*"
+end = "*/"
+
+
+# Line comment `#`.
+[[rules]]
+kind = "comment"
+match = "line"
+start = "#"
+
+
+# Indented multi-line string `''...''`. Pair rule with 2-byte
+# start/end. The scanner is greedy — closes at the first plain
+# `''`. Documented limitation: pathological `'''` (escape
+# sequence) inside a body would close early.
+[[rules]]
+kind = "string"
+match = "pair"
+start = "''"
+end = "''"
+
+
+# Double-quoted string with backslash escapes.
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    "let", "in",
+    "if", "then", "else",
+    "with", "inherit",
+    "rec",
+    "import", "assert",
+    "or",
+    "null", "true", "false",
+    "builtins",
+]

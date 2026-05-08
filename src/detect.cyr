@@ -75,6 +75,7 @@ fn _detect_4byte(path, n) {
         if (memeq(path + n - 4, ".exs", 4) == 1) { return "elixir"; }
         if (memeq(path + n - 4, ".mli", 4) == 1) { return "ocaml"; }
         if (memeq(path + n - 4, ".lhs", 4) == 1) { return "haskell"; }
+        if (memeq(path + n - 4, ".nix", 4) == 1) { return "nix"; }
         if (memeq(path + n - 4, ".htm", 4) == 1) { return "html"; }
         if (memeq(path + n - 4, ".css", 4) == 1) { return "css"; }
         if (memeq(path + n - 4, ".ini", 4) == 1) { return "ini"; }

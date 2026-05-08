@@ -4,13 +4,13 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.1.1 are
-> shipped. **2.1.1 adds Vue and Svelte SFC grammars** (43
-> bundled total) — both prime compose-rule consumers,
-> routing `<script>` to JS and `<style>` to CSS. As of
-> 2026-05-08 the toolchain pin is `cyrius = "5.10.0"`.
-> 811/811 tests passing, 3/3 fuzz harnesses passing.
-> Next: 2.1.2 (Nix). See §Next up.
+> **Read this file before doing anything.** 1.0.0–2.1.2 are
+> shipped. **2.1.2 adds Nix** (`.nix` — the NixOS /
+> home-manager configuration language) for 44 bundled
+> grammars total. As of 2026-05-08 the toolchain pin is
+> `cyrius = "5.10.0"`. 822/822 tests passing, 3/3 fuzz
+> harnesses passing. Next: 2.1.3 (Terraform / HCL). See
+> §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -30,8 +30,18 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `2.1.1` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `2.1.2` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`.
+- **What 2.1.2 added (Nix):**
+  - **Nix** (`.nix`) — functional config language for NixOS
+    and home-manager. `//` set-merge (NOT line comment),
+    `++` list concat, `->` implication, `@` "as" pattern,
+    `?` has-attribute. Idents accept `'` (Haskell-prime)
+    and `-` (kebab-case). `''…''` indented multi-line
+    strings as 2-byte pair. Block + line comments.
+  - 6 new tcyr probes; 1 new M3 corpus; bundle 43 → 44.
+  - Documented gaps: `${}` interpolation, path literals,
+    indented-string escapes.
 - **What 2.1.1 added (Vue + Svelte SFC):**
   - **Vue** (`.vue`) — HTML-shaped outer with `@` / `#`
     Vue-shorthand operators. `<script>` → javascript and
@@ -498,7 +508,9 @@ Now in flight — 2.1.x grammar batches:
   `<script>` / `<style>` bodies; attribute-bearing
   variants (`<script lang="ts">`) fall back to outer
   tokenization (documented limitation).
-- **2.1.2 — Nix grammar.**
+- **2.1.2 — Nix grammar.** Shipped (this cut). `//`
+  set-merge, `++` list concat, `'`/`-` in idents,
+  `''…''` indented strings.
 - **2.1.3 — Terraform / HCL grammar.** No work currently in
 flight. The post-streaming queue is open — nothing forces
 the next cut. Possible directions when work resumes:

@@ -6,6 +6,49 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [2.1.2] — 2026-05-08
+
+Third grammar batch of the 2.1.x window. **Nix** language
+(`.nix`) — the functional, lazy-evaluated configuration
+language behind NixOS, home-manager, and the Nix package
+ecosystem. Bundled grammar count: 43 → 44.
+
+### Added
+
+- **`grammars/nix.cyml`** + `tests/corpus/concept.nix`.
+  Nix-specific quirks handled:
+  - **`//` is set merge / update**, NOT a line comment.
+    Listed first in operators (longest-match) so `a // b`
+    tokenizes as ident + 2-byte op + ident, not as a line
+    comment of the rest of file.
+  - **`++` list concatenation** — Haskell-style; 2-byte op.
+  - **`->` implication**, **`?` has-attribute test**, **`@`**
+    "as" pattern in function args (`{ pkgs, ... }@args:`).
+  - **Idents accept `'` and `-`** — Haskell-prime (`iter'`,
+    `prev'`) and kebab-case (`home-manager`,
+    `nixpkgs-unstable`). Both in `ident_cont`.
+  - **`''…''` indented multi-line strings** — 2-byte pair
+    rule. Greedy match closes at first plain `''`.
+    Documented limitation: doubled `'''` (escape sequence)
+    inside a body would close early.
+  - **`/* … */` block + `#` line comments.**
+- **6 new tcyr probes** covering let-keyword, `//` set
+  merge, `++` list concat, prime-suffix idents,
+  kebab-case idents, indented strings. 811 → 822 passing.
+- **1 new M3 corpus** — round-trips with zero error tokens,
+  coverage invariant satisfied (2633 bytes / 596 tokens).
+
+### Documented gaps (corpus doesn't trigger)
+
+- String interpolation `${expr}` — body tokenizes as part of
+  the surrounding string. Same trade-off as Vue / JS template
+  literals.
+- Path literals (`./foo`, `~/cfg`, `<nixpkgs>`) — split into
+  separate punct + ident pieces; theme can re-pair on token
+  adjacency.
+- Indented-string escapes (`''$`, `'''`, `''\n`) — pathological
+  cases would close the pair early. Not in real-world corpora.
+
 ## [2.1.1] — 2026-05-08
 
 Second grammar batch of the 2.1.x window. **Vue** and

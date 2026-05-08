@@ -190,6 +190,8 @@ fn bootstrap_grammars() {
     if (gvue != 0) { registry_add(gvue); }
     var gsvel = grammar_load("grammars/svelte.cyml");
     if (gsvel != 0) { registry_add(gsvel); }
+    var gnix = grammar_load("grammars/nix.cyml");
+    if (gnix != 0) { registry_add(gnix); }
     return 0;
 }
 
