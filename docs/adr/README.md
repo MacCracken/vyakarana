@@ -23,6 +23,7 @@ sub-blocks).
 | 0007 | [Rust grammar treats `$` as `ident_start`](0007-rust-dollar-in-ident-start.md)            | Accepted | 2026-05-08 |
 | 0008 | [TOML grammar handles triple-quoted strings](0008-toml-triple-quoted-strings.md)         | Accepted | 2026-05-08 |
 | 0009 | [`unicode_ident` default + C block comments](0009-unicode-ident-default.md)               | Accepted | 2026-05-08 |
+| 0010 | [`char_literal` default](0010-char-literal-default.md)                                    | Accepted | 2026-05-08 |
 
 ## Conventions
 

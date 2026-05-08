@@ -8,23 +8,24 @@
 
 `tokenize_with_grammar` in `src/grammars/default_scanner.cyr`
 walks the source byte by byte. At each cursor position, it tries
-the following 11 steps in order. The first step that returns a
-non-zero `len` wins, sets the token's `kind`, and the cursor
-advances by `len`.
+the steps below in order. The first step that returns a non-zero
+`len` wins, sets the token's `kind`, and the cursor advances by
+`len`.
 
-| # | Step                                         | Source                                              |
-|---|----------------------------------------------|-----------------------------------------------------|
-| 1 | Shebang (`#!…\n` at file start)              | `[defaults] shebang = true`                         |
-| 2 | Line rules                                   | `[[rules]] match = "line"` (e.g. `#`, `//`)         |
-| 3 | Pair rules                                   | `[[rules]] match = "pair"` (strings, block comments)|
-| 4 | Special var `$X` (2-byte)                    | `[defaults] special_vars = true` (shell only)       |
-| 5 | Lone `$` operator (1-byte, shell-only)       | falls out of step 4                                 |
-| 6 | Identifier / keyword                         | `[defaults] ident_start` + `[[rules]] match="words"`|
-| 7 | Number                                       | `[defaults] number_decimal/0x/0b/0o`                |
-| 8 | Operator (longest-match)                     | `[defaults] operators = […]`                        |
-| 9 | Punctuation (longest-match)                  | `[defaults] punctuation = […]`                      |
-| 10| Whitespace                                   | `[defaults] whitespace = true`                      |
-| 11| Fallback `TK_ERROR + 1 byte`                 | always present (closes the coverage invariant)      |
+| #  | Step                                         | Source                                              |
+|----|----------------------------------------------|-----------------------------------------------------|
+| 1  | Shebang (`#!…\n` at file start)              | `[defaults] shebang = true`                         |
+| 2  | Line rules                                   | `[[rules]] match = "line"` (e.g. `#`, `//`)         |
+| 3  | Pair rules                                   | `[[rules]] match = "pair"` (strings, block comments)|
+| 4  | Special var `$X` (2-byte)                    | `[defaults] special_vars = true` (shell only)       |
+| 5  | Lone `$` operator (1-byte, shell-only)       | falls out of step 4                                 |
+| 6  | Identifier / keyword                         | `[defaults] ident_start` + `[[rules]] match="words"`|
+| 7  | Number                                       | `[defaults] number_decimal/0x/0b/0o`                |
+| 7b | Char literal `'C'` / `'\C'` / `'\xHH'`       | `[defaults] char_literal = true` (C/Rust/Go/Zig)    |
+| 8  | Operator (longest-match)                     | `[defaults] operators = […]`                        |
+| 9  | Punctuation (longest-match)                  | `[defaults] punctuation = […]`                      |
+| 10 | Whitespace                                   | `[defaults] whitespace = true`                      |
+| 11 | Fallback `TK_ERROR + 1 byte`                 | always present (closes the coverage invariant)      |
 
 ## Why this order is normative, not incidental
 
@@ -44,6 +45,12 @@ ambiguities:
 - **Ident before number.** Otherwise `e1` (a perfectly valid
   ident in most languages) would match number-with-exponent
   rules. Numbers only enter when the cursor sits on a digit.
+- **Char literal before operator.** Step 7b is the only step
+  that can claim a `'` byte; the operator step would otherwise
+  take it as a 1-character operator. Step 7b returns 0 (yields)
+  when there's no closing `'` at the right offset, which is what
+  preserves Rust's lifetime tokenization (`'a`, `'static`). See
+  [ADR 0010](../adr/0010-char-literal-default.md).
 - **Operator before punctuation.** Operators and punctuation
   share a longest-match dispatch (`_ds_try_exact_list`); putting
   operators first means a token like `,` (operator in some

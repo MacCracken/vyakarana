@@ -43,6 +43,10 @@ special_vars = false
 # per-byte errors. See ADR 0009.
 unicode_ident = true
 
+# `'C'` / `'\C'` / `'\xHH'` tokenize as a single TK_STRING
+# instead of fragmenting into op/body/op. See ADR 0010.
+char_literal = true
+
 # Operators in longest-match order. C-specific: `->` (struct deref),
 # `++` / `--` (increment), compound assignment, `&&`/`||`,
 # comparison, bit shifts, `?` for ternary, `'` for char-lit (splits

@@ -49,6 +49,13 @@ number_0o      = true
 
 special_vars = false
 
+# `'C'` / `'\C'` / `'\xHH'` (and 2/3/4-byte UTF-8 bodies) tokenize
+# as a single TK_STRING. Lifetimes like `'a` / `'static` / `'_`
+# still work — they fall through this step (no closing quote at
+# the right offset) and tokenize as `'` operator + ident. See
+# ADR 0010.
+char_literal = true
+
 # Operators in longest-match order. Rust-specific: `=>` (match arm),
 # `->` (return-type arrow), `::` (path separator), `..=` and `..`
 # (range), `?` (try), `&&`/`||` (logical), bit shifts, plus the

@@ -50,6 +50,10 @@ special_vars = false
 # per-byte errors. Same call as ADR 0009.
 unicode_ident = true
 
+# Rune literals `'C'` / `'\C'` tokenize as a single TK_STRING.
+# See ADR 0010.
+char_literal = true
+
 # Operators in longest-match order. Go-specific: `:=` (short var
 # decl), `<-` (channel send/recv), `...` (variadic / spread),
 # `&^` and `&^=` (bit-clear), `++` / `--` (statement-only but at

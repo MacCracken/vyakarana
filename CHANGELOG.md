@@ -6,6 +6,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [1.2.1] — 2026-05-08
+
+### Added
+
+- **`char_literal` default flag.** New `[defaults] char_literal
+  = true|false` (wired through `Grammar` at offset 144;
+  `GRAMMAR_SIZE` 144 → 152), CYML loader, and a new step **7b**
+  in the scanner pipeline (between Number and Operator). When on,
+  the scanner recognises four char-literal shapes as a single
+  `TK_STRING`: `'C'` (3 bytes), `'\C'` (4 bytes simple escape),
+  `'\xHH'` (6 bytes hex escape), and 4-/5-/6-byte UTF-8 bodies.
+  Returns 0 (yields to the operator step) when no closing `'`
+  lands at the right offset, which is what preserves Rust
+  lifetimes (`'a`, `'static`, `'_`) — they have no closing quote
+  and tokenize as `'` operator + ident as before. Defaults off;
+  enabled per-grammar in `grammars/c.cyml`, `grammars/rust.cyml`,
+  `grammars/go.cyml`, and `grammars/zig.cyml`. Closes the only
+  remaining gap that was producing `TK_ERROR` tokens in the
+  vidya corpus: 4 known-failing samples
+  (`vidya/content/binary_formats/rust.rs`,
+  `vidya/content/error_handling/{rust.rs,go.go,zig.zig}`) all
+  drop to zero errors. Five new probe assertions in
+  `tests/vyakarana.tcyr` (422 total passing). See [ADR
+  0010](docs/adr/0010-char-literal-default.md).
+- **Architecture note 002 updated** with the new step 7b row in
+  the pipeline-order table and the reasoning for why char-literal
+  must precede operator (the lifetime-preservation argument).
+
 ## [1.2.0] — 2026-05-08
 
 ### Added
