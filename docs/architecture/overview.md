@@ -154,9 +154,10 @@ grammar's `.cyml` is materially altered.
 | python      | vidya `python.py` (8528B)           | 1790 | triple-quoted + walrus. |
 | go          | vidya `go.go` (7402B)               | 2151 | Added in 1.2.0. `:=`, `<-`, `...`, `&^`; `/* … */` block comments. |
 | zig         | vidya `zig.zig` (~6500B)            | 2279 | Added in 1.2.0. `@`-builtins via `ident_start`; `=>`, `**`, `++`, saturating/wrapping ops. |
+| asm_x86_64  | vidya `asm_x86_64.s` (8167B)        | 1655 | Added in 1.2.2. Intel syntax; `.`-prefixed directives via `ident_start`; opcodes/registers as ident per ADR 0004. AT&T syntax (`%rax`, `$1`) deferred. |
 
-Remaining 1.2.x candidates: `asm_x86_64` / `asm_aarch64` and
-`openqasm` — see `../development/state.md` "Next up."
+Remaining 1.2.x candidates: `asm_aarch64` and `openqasm` — see
+`../development/state.md` "Next up."
 
 ---
 

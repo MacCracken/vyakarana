@@ -54,6 +54,8 @@ fn bootstrap_grammars() {
     if (ggo != 0) { registry_add(ggo); }
     var gzig = grammar_load("grammars/zig.cyml");
     if (gzig != 0) { registry_add(gzig); }
+    var gasm86 = grammar_load("grammars/asm_x86_64.cyml");
+    if (gasm86 != 0) { registry_add(gasm86); }
     return 0;
 }
 

@@ -6,6 +6,50 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [1.2.2] — 2026-05-08
+
+### Added
+
+- **`asm_x86_64` grammar.** New `grammars/asm_x86_64.cyml` +
+  `tests/corpus/asm_x86_64.s` (snapshot of
+  `vidya/content/lexing_and_parsing/asm_x86_64.s`, 8167 B,
+  1655 tokens at zero `error` kinds). Intel-syntax assembly
+  (`.intel_syntax noprefix` declared at the top of the canonical
+  sample). `.` is in `ident_start` so `.intel_syntax`,
+  `.global`, `.is_digit_yes` (local label), and bare `.`
+  (current-address marker) all tokenize as a single ident; the
+  `[[rules]] match = "words"` lookup then promotes ~50 known
+  GAS directives (`.section`, `.text`, `.global`, `.ascii`,
+  `.skip`, `.align`, `.byte`/`.word`/`.long`/`.quad`,
+  `.macro`/`.endm`, `.cfi_*`, etc.) to `TK_KEYWORD`. Opcodes
+  (`mov`, `call`, `jne`, `xor`, `syscall`, …) and registers
+  (`rax`, `rdi`, `eax`, `dil`, …) deliberately stay `TK_IDENT`
+  per the [ADR 0004](docs/adr/0004-shell-builtins-as-ident.md)
+  pattern — the x86_64 instruction set is too large to enumerate,
+  and theme renderers can secondary-palette opcodes via
+  token-text rules. `unicode_ident` and `char_literal` are both
+  on; line comments are GAS-style `#`. Spot-check: 6 of 7 vidya
+  `asm_x86_64.s` samples come back at zero errors. The seventh
+  (`binary_formats/asm_x86_64.s`) uses **AT&T syntax**
+  (`mov $1, %rax`); the `$` and `%` operand sigils aren't yet
+  in any rule. AT&T support is documented in the grammar header
+  as a future ADR candidate. Wired into `bootstrap_grammars`,
+  `detect_language` (`.s` and `.S` default to `asm_x86_64`; ARM
+  users pass `--language=asm_aarch64` explicitly), the smoke
+  loop, and four probe assertions in `tests/vyakarana.tcyr`.
+
+### Changed
+
+- **Smoke corpus loop now passes `--language=` explicitly.**
+  `scripts/smoke.sh` was previously testing extension dispatch
+  alongside the grammar's correctness on its corpus. Splitting
+  those concerns: the existing `--list-languages` loop still
+  exercises name registration; the corpus round-trip now uses
+  the explicit flag so it works for languages that share an
+  extension (`.s` belongs to both `asm_x86_64` and the upcoming
+  `asm_aarch64`). Behaviourally equivalent for the 13 grammars
+  whose extensions don't collide.
+
 ## [1.2.1] — 2026-05-08
 
 ### Added

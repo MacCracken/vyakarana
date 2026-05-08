@@ -136,6 +136,11 @@ fn detect_language(path) {
     if (n >= 2) {
         if (memeq(path + n - 2, ".c", 2) == 1) { return "c"; }
         if (memeq(path + n - 2, ".h", 2) == 1) { return "c"; }
+        # `.s` / `.S` ambiguous between asm_x86_64 and asm_aarch64.
+        # Default to x86_64 (more common); ARM users pass
+        # --language=asm_aarch64 explicitly.
+        if (memeq(path + n - 2, ".s", 2) == 1) { return "asm_x86_64"; }
+        if (memeq(path + n - 2, ".S", 2) == 1) { return "asm_x86_64"; }
     }
     if (n >= 3) {
         if (memeq(path + n - 3, ".rs", 3) == 1) { return "rust"; }

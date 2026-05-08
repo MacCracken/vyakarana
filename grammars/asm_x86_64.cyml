@@ -1,0 +1,142 @@
+# asm_x86_64 — x86_64 assembly tokenizer grammar (GAS / AT&T-or-Intel)
+#
+# Rule scheme per ADR 0005. Asm is structurally simple at the token
+# level (line comments, identifiers, numbers, registers, char/string
+# literals) but visually dense — a tokenizer's job here is to give
+# theme renderers enough kinds to colour opcodes vs. registers vs.
+# directives vs. labels.
+#
+# Scope: covers what vidya's content/lexing_and_parsing/asm_x86_64.s
+# exercises (`.intel_syntax noprefix` declared, GAS line comments
+# `#`, char literals `'0'`/`'9'`/`'a'`/etc., decimal numbers, the
+# common `.section` / `.text` / `.global` / `.ascii` / `.skip`
+# directive set, opcodes and registers as plain idents).
+#
+# Directives as idents: `.` is in `ident_start` so `.intel_syntax`,
+# `.global`, `.is_digit_yes` (local label), and even bare `.`
+# (current-address marker) all tokenize as a single ident. The
+# `[[rules]] match = "words"` keyword list then promotes the
+# *known* directives to `TK_KEYWORD`; everything else (local
+# labels, anonymous markers) stays `TK_IDENT`. Same call as
+# [ADR 0007](../docs/adr/0007-rust-dollar-in-ident-start.md) for
+# Rust `$` and Zig's `@`.
+#
+# Opcodes (`mov`, `call`, `jne`, `xor`, `syscall`, `ret`, `cmp`,
+# `lea`, `movzx`, …) tokenize as `TK_IDENT`, NOT `TK_KEYWORD`.
+# x86_64 has ~1000 instructions plus SSE/AVX/AVX-512 extensions —
+# the keyword list approach doesn't scale, and per
+# [ADR 0004](../docs/adr/0004-shell-builtins-as-ident.md) the
+# right place to colour opcodes-vs-other-idents is the theme
+# renderer's secondary palette (token-text rule), not the
+# tokenizer.
+#
+# Registers (`rax`, `rdi`, `eax`, `dil`, `r8`, `xmm0`, …) — same
+# story. `TK_IDENT`; theme handles the colouring.
+#
+# Known gaps (not triggered by the vidya sample):
+#   - Float literals (`1.5`). With `.` in ident_start, `1.5`
+#     tokenizes as `number(1)` + `ident(.5)`. Asm samples typically
+#     use `.float 1.5` directive form anyway; if a corpus emerges
+#     that needs raw `1.5`, the fix is grammar-specific.
+#   - AT&T-syntax operand sigils (`%rax`, `$0x10`). The canonical
+#     sample uses Intel syntax (`mov rax, 1`); AT&T-flavoured asm
+#     would need `%` and `$` either as `special_vars` or in
+#     ident_start. Punted to a future ADR if a real AT&T corpus
+#     surfaces.
+#   - `;` line comments (NASM/MASM convention). GAS uses `#`,
+#     which is what vidya's sample uses; if a NASM corpus shows
+#     up, switch the line-comment rule.
+
+[grammar]
+name = "asm_x86_64"
+extensions = [".s", ".S", ".asm"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+# `.` in ident_start so `.text`, `.global`, `.is_digit_yes` (local
+# label), and bare `.` (current-address) all tokenize as ident.
+ident_start = "A-Za-z_."
+ident_cont  = "A-Za-z0-9_"
+
+number_decimal = true
+number_0x      = true
+number_0b      = false
+number_0o      = false
+
+special_vars = false
+
+# UTF-8 in `#` comment text → one ident instead of per-byte
+# errors. Matches ADR 0009 pattern.
+unicode_ident = true
+
+# Char literals `'0'`, `'a'`, etc. — common in asm immediates and
+# operand fields. ADR 0010.
+char_literal = true
+
+# Operators in longest-match order. Asm uses these mostly inside
+# expressions (`input_len = . - input`, `[rdi + 8]`,
+# `dword ptr [rdi + 16 + 8]`).
+operators = [
+    "==", "!=",
+    "<<", ">>",
+    "<=", ">=",
+    "=", "+", "-", "*", "/", "%",
+    "&", "|", "^", "~",
+    "<", ">",
+]
+
+# Punctuation, longest-match. `:` is the label terminator.
+punctuation = [
+    "(", ")", "[", "]", "{", "}",
+    ";", ",", ":",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+# GAS line comments. NASM-style `;` could be added in a fork.
+[[rules]]
+kind = "comment"
+match = "line"
+start = "#"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+# Known GAS directives. Promoted from ident → keyword via the
+# words-rule lookup. See header for why opcodes/registers are
+# deliberately NOT here.
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # Section / linkage
+    ".section", ".text", ".data", ".bss", ".rodata",
+    ".global", ".globl", ".local", ".extern", ".weak",
+    # Syntax / format
+    ".intel_syntax", ".att_syntax",
+    ".code16", ".code32", ".code64",
+    # Data emit
+    ".byte", ".word", ".short", ".long", ".int", ".quad",
+    ".ascii", ".asciz", ".string", ".float", ".double",
+    ".skip", ".zero", ".fill", ".space",
+    # Alignment / layout
+    ".align", ".balign", ".p2align", ".org",
+    # Symbol manipulation
+    ".set", ".equ", ".equiv", ".size", ".type",
+    # Conditional / macro
+    ".if", ".ifdef", ".ifndef", ".else", ".elseif", ".endif",
+    ".macro", ".endm", ".include",
+    # Debug / DWARF
+    ".file", ".loc",
+    ".cfi_startproc", ".cfi_endproc", ".cfi_def_cfa",
+    ".cfi_offset", ".cfi_restore",
+]

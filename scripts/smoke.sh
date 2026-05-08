@@ -49,7 +49,7 @@ done
 # src/tokenize.cyr). Assert presence rather than exact order so that
 # adding grammars in M3 is a one-line change here.
 llist=$("$BIN" --list-languages)
-for lang in shell toml json cyrius rust yaml markdown c typescript javascript python go zig; do
+for lang in shell toml json cyrius rust yaml markdown c typescript javascript python go zig asm_x86_64; do
     printf '%s\n' "$llist" | grep -q "^$lang\$" \
         || fail "--list-languages missing '$lang': '$llist'"
 done
@@ -165,6 +165,7 @@ javascript:tests/corpus/concept.js
 python:tests/corpus/python.py
 go:tests/corpus/go.go
 zig:tests/corpus/zig.zig
+asm_x86_64:tests/corpus/asm_x86_64.s
 "
 
 for entry in $M3_CORPUS_ENTRIES; do
@@ -172,12 +173,17 @@ for entry in $M3_CORPUS_ENTRIES; do
     corpus="${entry##*:}"
     [ -f "$corpus" ] || fail "M3 corpus missing: $corpus"
 
+    # Pass --language= explicitly so the corpus round-trip test is
+    # deterministic. Extension dispatch is covered by the
+    # --list-languages probe earlier; here we want to verify the
+    # grammar itself, especially for languages that share an
+    # extension (`.s` for both asm_x86_64 and asm_aarch64).
     set +e
-    "$BIN" "$corpus" > "$TMPDIR/$lang.ndjson" 2> "$TMPDIR/err"
+    "$BIN" --language="$lang" "$corpus" > "$TMPDIR/$lang.ndjson" 2> "$TMPDIR/err"
     rc=$?
     set -e
     [ "$rc" = "0" ] \
-        || fail "vyk $corpus ($lang): exit $rc (expected 0); stderr: $(cat "$TMPDIR/err")"
+        || fail "vyk --language=$lang $corpus: exit $rc (expected 0); stderr: $(cat "$TMPDIR/err")"
     [ -s "$TMPDIR/$lang.ndjson" ] \
         || fail "vyk $corpus ($lang): empty NDJSON"
 
