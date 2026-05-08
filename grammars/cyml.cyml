@@ -1,0 +1,140 @@
+# cyml — CYML tokenizer grammar (vyakarana's own format)
+#
+# Rule scheme per ADR 0005. CYML is the format vyakarana itself
+# uses for grammar files (`grammars/*.cyml`), yukti's config
+# (`yukti.cyml`), and vidya's content corpus
+# (`vidya/content/<topic>/*.cyml`). Self-hosting payoff: 1.9.0
+# is the first release where vyakarana can colour its own
+# grammar files with its own grammar.
+#
+# The format is a TOML-shaped header optionally followed by
+# `---`-delimited markdown bodies, repeating:
+#
+#   [package]                    | TOML header
+#   name = "vyakarana"           |
+#                                |
+#   [[entries]]                  |
+#   name = "x"                   |
+#   ---                          | 3-byte separator
+#   Free-form markdown text      | Body (between separators)
+#   with `inline code` and       |
+#   **bold** etc.                |
+#   ---                          |
+#   [[entries]]                  | Next header block...
+#
+# A proper grammar would route header bytes to TOML and body
+# bytes to Markdown via grammar composition (1.11.0). For 1.9.0
+# we tokenize both halves with a single rule set tuned for the
+# union: TOML's strings + section headers + assignments, plus
+# backtick inline code, `**`/`*`/`_` emphasis, and the `---`
+# separator. Coverage holds; downstream consumers that want
+# distinct colouring per half can switch by tracking which side
+# of the most recent `---` they're on.
+#
+# Stand-in corpus: NOT a stand-in! `tests/corpus/dependencies.cyml`
+# is a real vidya snapshot from
+# `vidya/content/cyrius/dependencies.cyml` (233 lines). First
+# bundled grammar where vidya already shipped a sample for the
+# language.
+#
+# Known gaps (not triggered by the corpus):
+#   - Multi-line TOML strings `"""…"""`. Not in the sample.
+#     If a real CYML uses them, add the same pair rule
+#     [ADR 0008](../docs/adr/0008-toml-triple-quoted-strings.md)
+#     introduced for TOML.
+#   - Markdown-style code fences ``` ``` ```. Tokenize as three
+#     ` operators; cosmetic.
+#   - Setext-heading underlines `===` (markdown-body level).
+#     The `---` separator would also match a setext underline,
+#     but the convention is that `---` lives between header
+#     and body, not within body markdown. If a real corpus
+#     surfaces a setext in body, the divider becomes ambiguous.
+
+[grammar]
+name = "cyml"
+extensions = [".cyml"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+# Section / key names use letters / underscore; `-` and `.` in
+# `ident_cont` for things like `cfi-startproc`-style or
+# `auth.providers.github` nested keys (TOML allows them).
+ident_start = "A-Za-z_"
+ident_cont  = "A-Za-z0-9_.-"
+
+number_decimal = true
+number_0x      = true
+number_0b      = true
+number_0o      = true
+
+special_vars = false
+unicode_ident = true
+char_literal  = false
+
+# Operators in longest-match order. CYML-specific: `---` (3-byte
+# separator between TOML header and markdown body), `**` (markdown
+# bold marker — body level), plus the standard TOML / markdown
+# punctuation surface.
+operators = [
+    "---",
+    "**",
+    "==", "!=", "<=", ">=",
+    "=", "+", "-", "*", "/", "%",
+    "<", ">",
+    "&", "|", "^", "~",
+    "!", "?",
+    "@",
+]
+
+# Punctuation. `[[` and `[` need to come before `[` in the
+# longest-match order — they're matched in declaration order.
+punctuation = [
+    "[[", "]]",
+    "(", ")", "{", "}", "[", "]",
+    ";", ",", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+[[rules]]
+kind = "comment"
+match = "line"
+start = "#"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "'"
+end = "'"
+
+
+# Markdown inline code: `…`. Backticks are common in CYML
+# bodies (referring to commands, file paths, identifiers).
+# Pair rule with no escape — backtick spans don't have
+# embedded escape handling.
+[[rules]]
+kind = "string"
+match = "pair"
+start = "`"
+end = "`"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # Literal values (TOML)
+    "true", "false", "inf", "nan",
+]

@@ -6,6 +6,67 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [1.9.0] — 2026-05-08
+
+AGNOS-native language batch. Two new grammars in one cut: CYML
+and LLVM-IR. **Self-hosting payoff at this cut** — vyakarana
+can now tokenize its own grammar files (`grammars/*.cyml`) with
+its own grammar. The CYML corpus is the **first non-stand-in
+sample for a 1.x post-M3 grammar**: vidya already ships
+`content/cyrius/dependencies.cyml`, so we snapshotted that
+directly. No new scanner extensions needed; the multi-byte
+operator (`---`) and the now-familiar sigil-in-`ident_start`
+trick (this time for `@`/`%`/`!` in LLVM-IR) cover both.
+
+### Added
+
+- **CYML grammar.** New `grammars/cyml.cyml` +
+  `tests/corpus/dependencies.cyml` (vidya snapshot of
+  `vidya/content/cyrius/dependencies.cyml`, 10644 B, 659
+  tokens at zero errors). The format is a TOML-shaped header
+  optionally followed by `---`-delimited markdown bodies, in
+  alternation. **`---` is a 3-byte operator**; backtick spans
+  `` `…` `` are pair rules emitting `TK_STRING`. Otherwise the
+  grammar reuses TOML's surface (`[section]`, `[[array]]`,
+  `key = value`, single + double-quoted strings, `#` line
+  comments, decimal / hex / octal / binary numbers).
+  **Self-hosting:** `build/vyk grammars/cyml.cyml` produces
+  zero errors — vyakarana can now colour its own grammar
+  files, yukti config, and vidya content samples through one
+  bundled grammar. Also: `detect_language` now routes `.cyml`
+  to the `cyml` grammar (previously routed to `toml` as a
+  best-effort fallback per the old comment in `src/main.cyr`).
+- **LLVM-IR grammar.** New `grammars/llvm_ir.cyml` +
+  `tests/corpus/concept.ll` (1194 tokens, zero errors).
+  ADR 0006 stand-in. **`@`, `%`, `!` in `ident_start`** so
+  `@global_count`, `%struct.Token`, `!llvm.module.flags` all
+  tokenize as one ident — the same pragmatic move that's
+  paid forward across Java annotations (1.3.0), Zig builtins
+  (1.2.0), Rust macros ([ADR 0007](docs/adr/0007-rust-dollar-in-ident-start.md)),
+  Elixir module attributes (1.5.0), and PHP variables
+  (1.4.0). `;` line comments. Comprehensive keyword list
+  covering type literals (`i8`/`i32`/`i64`/`ptr`/`void`/
+  `label`/`metadata`), the LLVM instruction set
+  (terminators, unary/binary/atomic/cast/memory ops),
+  function attributes, parameter attributes, calling
+  conventions, comparison predicates (`eq`/`ne`/`ult`/`uge`/
+  `slt`/`sge`/`ord`/`oeq`/etc.), and reserved literals
+  (`null`/`undef`/`poison`/`zeroinitializer`).
+
+### Wiring
+
+- `src/tokenize.cyr` — both added to `bootstrap_grammars()`
+  (now loads 38 grammars).
+- `src/main.cyr` — `.cyml` redirected from `toml` to `cyml`;
+  `.ll` added for LLVM-IR.
+- `scripts/smoke.sh` — both added to `--list-languages` check
+  (now 38 grammars) and the corpus round-trip loop.
+- `tests/vyakarana.tcyr` — three CYML probes (`[[array]]`
+  table header, `---` 3-byte operator, backtick string),
+  five LLVM-IR probes (`define` keyword, `i32` type keyword,
+  `@global` ident, `%struct.Token` ident, `!llvm.module.flags`
+  ident, `getelementptr` keyword). 599 → 622 passing.
+
 ## [1.8.0] — 2026-05-08
 
 DevOps + infrastructure language batch. Three new grammars in

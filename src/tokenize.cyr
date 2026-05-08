@@ -111,6 +111,10 @@ fn bootstrap_grammars() {
     if (gmk != 0) { registry_add(gmk); }
     var gini = grammar_load("grammars/ini.cyml");
     if (gini != 0) { registry_add(gini); }
+    var gcyml = grammar_load("grammars/cyml.cyml");
+    if (gcyml != 0) { registry_add(gcyml); }
+    var gll = grammar_load("grammars/llvm_ir.cyml");
+    if (gll != 0) { registry_add(gll); }
     return 0;
 }
 

@@ -143,6 +143,7 @@ fn detect_language(path) {
     }
     if (n >= 3) {
         if (memeq(path + n - 3, ".hs", 3) == 1) { return "haskell"; }
+        if (memeq(path + n - 3, ".ll", 3) == 1) { return "llvm_ir"; }
         if (memeq(path + n - 3, ".rs", 3) == 1) { return "rust"; }
         if (memeq(path + n - 3, ".md", 3) == 1) { return "markdown"; }
         if (memeq(path + n - 3, ".ts", 3) == 1) { return "typescript"; }
@@ -207,10 +208,11 @@ fn detect_language(path) {
         if (memeq(path + n - 5, ".toml", 5) == 1) { return "toml"; }
         if (memeq(path + n - 5, ".json", 5) == 1) { return "json"; }
         if (memeq(path + n - 5, ".java", 5) == 1) { return "java"; }
-        # `.cyml` is Cyrius's TOML-ish config/grammar format — header
-        # is TOML-shaped, optional `---`/markdown body follows. Route
-        # to the TOML grammar for a best-effort tokenization.
-        if (memeq(path + n - 5, ".cyml", 5) == 1) { return "toml"; }
+        # `.cyml` is vyakarana's own format — TOML-shaped header
+        # plus optional `---`/markdown body. The cyml.cyml grammar
+        # (1.9.0+) handles both halves; before that, .cyml routed
+        # to the toml grammar.
+        if (memeq(path + n - 5, ".cyml", 5) == 1) { return "cyml"; }
     }
     if (n >= 6) {
         if (memeq(path + n - 6, ".swift", 6) == 1) { return "swift"; }

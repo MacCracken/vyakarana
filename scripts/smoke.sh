@@ -49,7 +49,7 @@ done
 # src/tokenize.cyr). Assert presence rather than exact order so that
 # adding a new grammar is a one-line change here.
 llist=$("$BIN" --list-languages)
-for lang in shell toml json cyrius rust yaml markdown c typescript javascript python go zig asm_x86_64 asm_aarch64 java kotlin cpp csharp php ruby lua swift elixir ocaml haskell sql graphql protobuf html xml css scss dockerfile makefile ini; do
+for lang in shell toml json cyrius rust yaml markdown c typescript javascript python go zig asm_x86_64 asm_aarch64 java kotlin cpp csharp php ruby lua swift elixir ocaml haskell sql graphql protobuf html xml css scss dockerfile makefile ini cyml llvm_ir; do
     printf '%s\n' "$llist" | grep -q "^$lang\$" \
         || fail "--list-languages missing '$lang': '$llist'"
 done
@@ -188,6 +188,8 @@ scss:tests/corpus/concept.scss
 dockerfile:tests/corpus/Dockerfile
 makefile:tests/corpus/Makefile
 ini:tests/corpus/concept.ini
+cyml:tests/corpus/dependencies.cyml
+llvm_ir:tests/corpus/concept.ll
 "
 
 for entry in $M3_CORPUS_ENTRIES; do

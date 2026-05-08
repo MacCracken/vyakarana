@@ -1,0 +1,188 @@
+# llvm_ir — LLVM-IR (textual) tokenizer grammar
+#
+# Rule scheme per ADR 0005. LLVM-IR's textual form has a few
+# distinctive sigils:
+#   - `;` line comments.
+#   - `@global` / `@function` — module-level names.
+#   - `%local` / `%struct` — function-local virtual registers
+#     and struct type names.
+#   - `!metadata` — metadata references (`!llvm.module.flags`,
+#     numeric `!0`, named `!"…"`).
+#   - `#0`/`#1`/etc. — function-attribute group references.
+#
+# `@`/`%`/`!` in `ident_start` so each sigil + name form
+# tokenizes as a single ident — same pattern used for Java
+# annotations (1.3.0), Zig builtins (1.2.0), Rust macros
+# ([ADR 0007](../docs/adr/0007-rust-dollar-in-ident-start.md)),
+# Elixir module attributes (1.5.0), and PHP variables (1.4.0).
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# vidya doesn't ship an LLVM-IR sample yet. The local
+# `tests/corpus/concept.ll` covers the textual-IR surface that
+# typically appears in compiler-output debugging:
+# `target datalayout`/`target triple`/`source_filename`,
+# named struct types, globals (private/internal/dso_local),
+# function definitions with attributes, basic-block labels
+# (`entry:`/`grow:`/`store:`), the common instruction set
+# (`alloca` not used here but `malloc`/`load`/`store`/`getelementptr`/
+# `bitcast`/`shl`/`mul`/`select`/`icmp`/`br`/`ret`/`call`/`tail call`),
+# attribute groups, and module-level `!metadata` blocks.
+# Replace with a vidya snapshot when one ships.
+#
+# `#0` etc. for attribute groups: `#` is in operators (not
+# ident_start) so `#0` tokenizes as `#` op + `0` number. That's
+# correct: the `#` is a sigil, the number is the group index.
+# Theme can re-pair if it wants the unified `#0` form.
+#
+# Known gaps (not triggered by the stand-in):
+#   - `c"…\00"` C-string syntax with `\xx` byte escapes — body
+#     of the string contains bytes the regular `"…"` pair rule
+#     handles uniformly via the `\\` escape.
+#   - Aggregate constants `<{ … }>` (packed structs). The
+#     `<{` and `}>` aren't in operators; would tokenize as
+#     `<` op + `{` punct + body + `}` punct + `>` op. Cosmetic.
+#   - Vector types `<4 x i32>` use `<` `x` `>`. Tokenizes as
+#     op + ident + ident + op + op. Cosmetic.
+
+[grammar]
+name = "llvm_ir"
+extensions = [".ll"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+# `@` for global / function names, `%` for locals, `!` for
+# metadata. `.` permitted mid-ident for names like
+# `llvm.module.flags` and `.str.empty`.
+ident_start = "A-Za-z_@%!."
+ident_cont  = "A-Za-z0-9_."
+
+number_decimal = true
+number_0x      = true
+number_0b      = false
+number_0o      = false
+
+special_vars = false
+unicode_ident = true
+char_literal  = false
+
+# Operators in longest-match order. LLVM-IR has very few real
+# operators outside of mnemonics — most "operations" are
+# instruction names that tokenize as ident (then promoted to
+# keyword via the words rule below).
+operators = [
+    "==", "!=",
+    "=", "+", "-", "*",
+    "<", ">",
+    "&", "|", "^", "~",
+    "?", "#",
+]
+
+punctuation = [
+    "(", ")", "{", "}", "[", "]",
+    ";", ",", ":",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+[[rules]]
+kind = "comment"
+match = "line"
+start = ";"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # Module-level declaration heads
+    "target", "datalayout", "triple", "source_filename",
+    "module", "asm",
+    # Linkage / visibility / DLL storage / preemption
+    "private", "internal", "available_externally",
+    "linkonce", "weak", "common", "appending",
+    "extern_weak", "linkonce_odr", "weak_odr", "external",
+    "dso_local", "dso_preemptable",
+    "default", "hidden", "protected",
+    "dllimport", "dllexport",
+    "thread_local",
+    "unnamed_addr", "local_unnamed_addr",
+    # Storage attributes
+    "constant", "global", "alias", "ifunc",
+    # Function definition heads
+    "declare", "define",
+    # Calling conventions
+    "ccc", "fastcc", "coldcc",
+    "anyregcc", "preserve_mostcc", "preserve_allcc",
+    # Parameter attributes
+    "zeroext", "signext", "inreg", "byval", "byref",
+    "preallocated", "inalloca", "sret",
+    "elementtype", "align", "noalias", "nocapture",
+    "nofree", "nonnull", "dereferenceable", "noundef",
+    "returned", "swiftself", "swiftasync", "swifterror",
+    "immarg", "writeonly", "readonly", "readnone",
+    "alignstack", "noimplicitfloat", "uwtable",
+    "willreturn", "norecurse", "nounwind", "nosanitize",
+    # Function attributes
+    "alwaysinline", "argmemonly", "allocsize",
+    "builtin", "cold", "convergent",
+    "hot", "inaccessiblememonly", "inlinehint",
+    "jumptable", "minsize", "naked", "noduplicate",
+    "noinline", "noredzone", "noreturn",
+    "optimize", "optsize", "speculatable",
+    "ssp", "sspreq", "sspstrong",
+    "strictfp", "uwtable",
+    # Types (frequent enough to keyword)
+    "void", "ptr", "label", "token", "metadata",
+    "i1", "i8", "i16", "i32", "i64", "i128",
+    "half", "float", "double", "fp128",
+    "x86_fp80", "ppc_fp128", "x86_mmx",
+    "type",
+    # Instructions — terminator
+    "ret", "br", "switch", "indirectbr",
+    "invoke", "callbr", "resume", "catchswitch",
+    "catchret", "cleanupret", "unreachable",
+    # Instructions — unary / binary
+    "fneg",
+    "add", "fadd", "sub", "fsub", "mul", "fmul",
+    "udiv", "sdiv", "fdiv", "urem", "srem", "frem",
+    "shl", "lshr", "ashr",
+    "and", "or", "xor",
+    # Instructions — vector / aggregate
+    "extractelement", "insertelement", "shufflevector",
+    "extractvalue", "insertvalue",
+    # Instructions — memory access
+    "alloca", "load", "store",
+    "fence", "cmpxchg", "atomicrmw",
+    "getelementptr", "inbounds",
+    # Instructions — casts
+    "trunc", "zext", "sext",
+    "fptrunc", "fpext", "fptoui", "fptosi", "uitofp", "sitofp",
+    "ptrtoint", "inttoptr", "bitcast", "addrspacecast",
+    # Instructions — other
+    "icmp", "fcmp", "phi", "select", "freeze",
+    "call", "tail", "musttail", "notail",
+    "va_arg", "landingpad", "catchpad", "cleanuppad",
+    # Comparison predicates
+    "eq", "ne", "ugt", "uge", "ult", "ule",
+    "sgt", "sge", "slt", "sle",
+    "oeq", "ogt", "oge", "olt", "ole", "one", "ord",
+    "ueq", "une", "uno",
+    # Atomic ordering
+    "acquire", "release", "acq_rel", "seq_cst",
+    "monotonic", "unordered", "syncscope",
+    "atomic", "volatile",
+    # Boolean / null literals
+    "true", "false", "null", "undef", "poison", "none",
+    "zeroinitializer",
+]
