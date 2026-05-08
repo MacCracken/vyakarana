@@ -4,16 +4,14 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.0.4 are
-> shipped. 1.x closed at 1.13.3 with 0 audit findings.
-> **2.0.x is closed** — streaming API surface (2.0.0),
-> rolling buffer (2.0.1), pull adapter (2.0.2), pending-pair
-> fast path (2.0.3), closeout audit (2.0.4 — 2 LOW findings
-> fixed in-pass). As of 2026-05-08 the toolchain pin is
-> `cyrius = "5.10.0"`. 38 grammars bundled (unchanged),
-> 778/778 tests passing, 3/3 fuzz harnesses passing. Next:
-> 2.1.x grammar batches starting with PowerShell / Crystal /
-> Julia. See §Next up.
+> **Read this file before doing anything.** 1.0.0–2.1.0 are
+> shipped. 1.x closed at 1.13.3 with 0 audit findings; 2.0.x
+> closed at 2.0.4 with 2 LOW findings fixed in-pass. **2.1.0
+> opens the 2.1.x grammar-batch wave with PowerShell, Crystal,
+> and Julia** (38 → 41 bundled). As of 2026-05-08 the
+> toolchain pin is `cyrius = "5.10.0"`. 799/799 tests
+> passing, 3/3 fuzz harnesses passing. Next: 2.1.1 (Vue /
+> Svelte SFC). See §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -33,9 +31,26 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `2.0.4` in `VERSION`, `src/version_str.cyr`, and
-  `dist/vyakarana.cyr`. Full 1.x + 2.0.0–2.0.4 tag history in
-  the CHANGELOG.
+- **Version:** `2.1.0` in `VERSION`, `src/version_str.cyr`, and
+  `dist/vyakarana.cyr`.
+- **What 2.1.0 added (first grammar batch):**
+  - **PowerShell** — `.ps1` / `.psm1` / `.psd1`. Cmdlet
+    Verb-Noun idents (`-` in `ident_cont`), alphabetic
+    operators (`-eq` / `-and`), variables via `$` in
+    `ident_start`, both string forms, block + line
+    comments, case-insensitive keywords.
+  - **Crystal** — `.cr`. Ruby-shaped with `?`/`!` in
+    `ident_cont` (`empty?`, `push!`), `@` in `ident_start`
+    for instance vars.
+  - **Julia** — `.jl`. `@` in `ident_start` for macros,
+    `!` in `ident_cont` for mutating methods, `::` type
+    annotations, triple-quoted strings + backtick command
+    literals. Block + line comments expressed as pair
+    rules to dodge the `#`/`#=` longest-prefix collision.
+  - **`detect_language` refactored** into length-bucket
+    helpers (Cyrius caps per-function returns at 64; the
+    extension list outgrew it).
+  - 15 new tcyr probes; 3 new M3 corpora; bundle 38 → 41.
 - **What 2.0.4 added (closeout audit):**
   - **`docs/audit/2026-05-09-2.0.x-closeout-audit.md`** —
     full surface review of every 2.0.x change. Per-function
@@ -459,10 +474,10 @@ Closed waves:
   ADR 0017); rolling-buffer per-feed drainage (2.0.1);
   pull adapter (2.0.2).
 
-2.0.x is closed. Now in flight — 2.1.x grammar batches:
+Now in flight — 2.1.x grammar batches:
 
-- **2.1.0 — PowerShell / Crystal / Julia grammars.** Three
-  new general-purpose languages.
+- **2.1.0 — PowerShell / Crystal / Julia grammars.**
+  Shipped (this cut).
 - **2.1.1 — Vue / Svelte single-file components.** Both use
   `<template>` / `<script>` / `<style>` blocks — prime
   use case for compose_fenced.

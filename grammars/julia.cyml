@@ -1,0 +1,169 @@
+# julia — Julia tokenizer grammar
+#
+# Rule scheme per ADR 0005. Julia is a multi-paradigm language
+# heavy on scientific computing. Tokenizer surface:
+#
+#   - `#` line comments. `#= ... =#` block comments (nestable
+#     in spec; we treat as flat — see Known gaps).
+#   - Strings: `"..."` with `$var` / `$(expr)` interpolation
+#     and `\` escapes; `"""..."""` triple-quoted multi-line
+#     strings — must longest-match before single `"..."`.
+#   - Char literals: `'a'`, `'∀'`, `'é'`. ADR 0010's
+#     char_literal default. Julia chars are full Unicode code
+#     points (4 bytes UTF-8 max), so the char-literal scanner
+#     accepts the multi-byte body.
+#   - Macros: `@show`, `@time`, `@inbounds`. `@` is in
+#     ident_start so `@time` tokenizes as one ident.
+#   - Symbols: `:foo`, `:(expr)`. `:foo` tokenizes as `:` punct
+#     + ident; theme can re-pair.
+#   - Method names ending in `!`: `push!`, `sort!`, `pop!`.
+#     `!` is in ident_cont so the whole name is one token.
+#   - Type annotations: `x::Int64`, `f(x::Float32) -> Float32`.
+#     `::` is in operators.
+#   - Range: `1:10` — `:` is punctuation; tokenizes as
+#     `1`, `:`, `10`. Theme can re-pair.
+#   - Pipe: `|>` and `<|`. Pair / Function-arrow: `=>` / `->`.
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# `tests/corpus/concept.jl` exercises functions, structs,
+# control flow, broadcasting, comprehensions, macros.
+#
+# Known gaps:
+#   - **Nested block comments** `#= a #= b =# c =#`. Spec says
+#     they nest; our pair scanner is greedy and closes at the
+#     first `=#`. Outer `c =#` becomes stray tokens. Same
+#     scanner-shape limitation as Lua's `[==[...]==]` long
+#     brackets. Documented; revisit if a corpus surfaces real
+#     nesting.
+#   - **Unicode operators** like `≠`, `≤`, `≥`, `∈`, `∪`. Tokenize
+#     as TK_IDENT (since unicode_ident=true). Theme can re-pair
+#     by token text.
+#   - **String interpolation** `$var` / `$(expr)` — body
+#     tokenizes as part of the surrounding string.
+#   - **Raw strings** `raw"..."` — the `raw` prefix tokenizes
+#     as a separate ident; the string itself tokenizes
+#     normally without the no-escape semantics.
+
+[grammar]
+name = "julia"
+extensions = [".jl"]
+
+[defaults]
+shebang = true
+whitespace = true
+
+# `@` in ident_start: macros (`@show`, `@time`).
+# `!` in ident_cont: mutating-method suffix (`push!`).
+ident_start = "A-Za-z_@"
+ident_cont  = "A-Za-z0-9_!"
+
+number_decimal = true
+number_0x      = true
+number_0b      = true
+number_0o      = true
+
+special_vars = false
+
+unicode_ident = true
+char_literal  = true
+
+operators = [
+    "===", "!==",
+    "==", "!=", "<=", ">=",
+    "<<", ">>", ">>>",
+    "&&", "||",
+    "|>", "<|",
+    "->", "=>",
+    "+=", "-=", "*=", "/=", "%=", "^=",
+    "//",
+    "...",
+    "::",
+    "=", "+", "-", "*", "/", "%", "^",
+    "&", "|", "~", "!",
+    "<", ">", "?",
+    "$", "\\",
+]
+
+punctuation = [
+    "(", ")", "[", "]", "{", "}",
+    ";", ",", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+# Block comment `#= ... =#` and line comment `#`. Both
+# expressed as pair rules so the longer `#=` start wins over
+# `#` — line rules run at scanner step 2 (before step 3 pair
+# rules), so a line-rule `#` would otherwise eat the first
+# byte of `#=`. Same pair-vs-line-prefix collision as Lua's
+# `--` / `--[[`. See architecture note 003.
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "#="
+end = "=#"
+
+
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "#"
+end = "\n"
+
+
+# Triple-quoted string `"""..."""`. MUST come before the
+# single-quoted pair so the 3-byte start wins on longest-match.
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\"\"\""
+end = "\"\"\""
+
+
+# Double-quoted string.
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+# Backtick command literal. Julia uses `cmd args` to construct
+# a Cmd object for shelling out (like Ruby's `cmd` syntax).
+# Treated as TK_STRING — the inner content is shell-shaped.
+[[rules]]
+kind = "string"
+match = "pair"
+start = "`"
+end = "`"
+escape = "\\"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # Declarations
+    "function", "macro", "module", "baremodule",
+    "struct", "mutable", "abstract", "primitive", "type",
+    "let", "local", "global", "const",
+    "using", "import", "export",
+    # Control flow
+    "if", "elseif", "else", "end",
+    "while", "for", "do",
+    "try", "catch", "finally", "throw", "rethrow",
+    "break", "continue", "return", "yield",
+    "begin", "quote",
+    # Where-clauses (parametric types)
+    "where",
+    # Boolean / null
+    "true", "false", "nothing", "missing",
+    # Membership / type-testing operators (alphabetic)
+    "in", "isa", "as",
+    # Logical (Julia accepts `&&` / `||` operators too)
+    "and", "or", "not",
+    # FFI
+    "ccall",
+]

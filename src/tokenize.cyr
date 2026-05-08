@@ -180,6 +180,12 @@ fn bootstrap_grammars() {
     if (gcyml != 0) { registry_add(gcyml); }
     var gll = grammar_load("grammars/llvm_ir.cyml");
     if (gll != 0) { registry_add(gll); }
+    var gps = grammar_load("grammars/powershell.cyml");
+    if (gps != 0) { registry_add(gps); }
+    var gcr = grammar_load("grammars/crystal.cyml");
+    if (gcr != 0) { registry_add(gcr); }
+    var gjul = grammar_load("grammars/julia.cyml");
+    if (gjul != 0) { registry_add(gjul); }
     return 0;
 }
 

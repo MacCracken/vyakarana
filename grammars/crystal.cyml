@@ -1,0 +1,128 @@
+# crystal — Crystal tokenizer grammar
+#
+# Rule scheme per ADR 0005. Crystal is a Ruby-shaped language
+# with static types and ahead-of-time compilation. Tokenizer
+# surface:
+#
+#   - `#` line comments. (No block comments — Crystal follows
+#     Ruby's "no /* */" convention.)
+#   - Strings: `"..."` with `#{expr}` interpolation, `\` escapes.
+#   - Char literals: `'C'`, `'\n'`, `'\u{e9}'` — single Unicode
+#     code point. ADR 0010's char_literal default.
+#   - Symbols: `:foo`, `:hello world` (rare quoted form).
+#     Tokenize as `:` punct + ident; theme can re-pair.
+#   - Methods/idents end in `?` or `!` by convention
+#     (`empty?`, `nil?`, `push!`). `?` and `!` go in
+#     ident_cont so the whole name is one token.
+#   - Type literals: `Array(Int32)`, `Hash(String, Int32)`.
+#     Tokenize as ident + paren + ident — same shape as method
+#     calls; coverage holds.
+#   - Tuples: `{1, 2, 3}` — `{` `}` are punctuation.
+#   - Macros: `macro foo(...) ... end` and `{% ... %}` /
+#     `{{ ... }}` for ECR-style metaprogramming. `{%` and
+#     `{{` markers are short pair rules; we don't model them
+#     yet (would need pair rules).  Documented limitation.
+#   - Instance / class vars: `@var`, `@@var`, `@@@const`.
+#     `@` is in ident_start so `@var` tokenizes as one ident.
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# `tests/corpus/concept.cr` exercises classes, modules,
+# generics, blocks, control flow, all literal forms.
+#
+# Known gaps:
+#   - **Heredocs** `<<-EOF ... EOF`. Variable terminator,
+#     same scanner-shape gap as Lua / Ruby / PHP.
+#   - **String interpolation** `#{expr}` — body tokenizes as
+#     part of the surrounding string. Same trade-off as JS
+#     template literals.
+#   - **Macro markers** `{% %}` and `{{ }}`.
+
+[grammar]
+name = "crystal"
+extensions = [".cr"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+# `@` in ident_start: instance vars (`@x`, `@@y`).
+# `?` and `!` in ident_cont: method-name suffixes
+# (`is_a?`, `push!`).
+ident_start = "A-Za-z_@"
+ident_cont  = "A-Za-z0-9_?!"
+
+number_decimal = true
+number_0x      = true
+number_0b      = true
+number_0o      = true
+
+special_vars = false
+
+unicode_ident = true
+char_literal  = true
+
+operators = [
+    "<=>", "===",
+    "==", "!=", "=~", "!~",
+    "<=", ">=", "<<", ">>",
+    "&&", "||",
+    "+=", "-=", "*=", "/=", "%=",
+    "**=", "<<=", ">>=", "&&=", "||=",
+    "**",
+    "->", "=>",
+    "...", "..",
+    "::",
+    "=", "+", "-", "*", "/", "%",
+    "<", ">", "!", "~",
+    "&", "|", "^",
+    "?",
+]
+
+punctuation = [
+    "(", ")", "[", "]", "{", "}",
+    ";", ",", ".", ":",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+[[rules]]
+kind = "comment"
+match = "line"
+start = "#"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # Declarations
+    "def", "class", "module", "struct", "enum", "lib", "fun",
+    "alias", "macro", "type",
+    "abstract", "private", "protected",
+    "getter", "setter", "property",
+    "extend", "include", "require",
+    # Control flow
+    "if", "unless", "else", "elsif", "end",
+    "while", "until", "case", "when", "then", "do", "loop",
+    "begin", "rescue", "ensure", "raise", "return", "yield",
+    "break", "next", "redo", "retry",
+    # Boolean / nil
+    "true", "false", "nil",
+    "self", "super",
+    # Type-introspection keywords
+    "as", "is_a?", "nil?", "responds_to?",
+    "typeof", "sizeof", "pointerof", "instance_sizeof",
+    "uninitialized", "out", "of",
+    # Logical (Crystal also accepts `&&` / `||` operators)
+    "and", "or", "not",
+    "in",
+]

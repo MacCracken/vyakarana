@@ -6,6 +6,79 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [2.1.0] — 2026-05-08
+
+First grammar batch of the 2.1.x window. **PowerShell**,
+**Crystal**, and **Julia** grammars added — three new
+general-purpose languages, no breaking changes. Bundled
+grammar count: 38 → 41.
+
+### Added
+
+- **`grammars/powershell.cyml`** + `tests/corpus/concept.ps1`.
+  Verb-Noun cmdlets tokenize as one ident (`-` in
+  `ident_cont`); alphabetic operators (`-eq` / `-and` /
+  `-match` / etc.) longest-match before bare `-`. Variables
+  via `$` in `ident_start`. Block + line comments. Both
+  string forms (single literal, double interpolated). Case-
+  insensitive keywords. Extensions: `.ps1` / `.psm1` /
+  `.psd1`. Shebangs: `pwsh`, `powershell`. Documented
+  limitations: here-strings (`@'…'@`), string interpolation
+  body, cmdlet-parameter context.
+- **`grammars/crystal.cyml`** + `tests/corpus/concept.cr`.
+  Ruby-shaped tokenizer with `?` and `!` in `ident_cont`
+  (predicate-style and mutating-method names — `empty?`,
+  `push!`, `is_a?`). `@` in `ident_start` for instance
+  vars. `<=>`, `===`, `=~`, range `..`/`...`, splat `**`
+  operators. Documented limitations: heredocs, string
+  interpolation, macro markers (`{% %}` / `{{ }}`).
+- **`grammars/julia.cyml`** + `tests/corpus/concept.jl`.
+  `@` in `ident_start` for macros (`@show`, `@time`,
+  `@inbounds`). `!` in `ident_cont` for mutating-method
+  names (`push!`, `sort!`). `::` type annotations. Triple-
+  quoted strings (`"""..."""`) and backtick command
+  literals. Block comments (`#=...=#`) and line comments
+  (`#`) — both expressed as pair rules so the longer `#=`
+  wins over `#`, mirroring the Lua `--`/`--[[` pair-vs-line
+  collision pattern (architecture note 003). Documented
+  limitations: nested block comments (greedy match closes
+  at first `=#`), Unicode operators (tokenize as ident).
+- **15 new tcyr probes** in three groups: PowerShell
+  basic shapes (cmdlet ident, alphabetic operator,
+  variable-as-ident, block comment); Crystal basic shapes
+  (predicate ident with `?`, instance var with `@`);
+  Julia basic shapes (function keyword, type annotation,
+  macro and mutating idents, triple-quoted string).
+  778 → 799 passing.
+- **3 new smoke corpora** added to the M3 list: clean-tokenize
+  with zero error tokens, coverage invariant satisfied
+  (corpus byte count == sum of token lengths).
+
+### Changed
+
+- **`detect_language` refactored into length-bucket helpers.**
+  Cyrius caps return statements per function at 64; the
+  growing extension list pushed past that. Split into
+  `_detect_short` / `_detect_4byte` / `_detect_5plus` /
+  `_detect_basename` helpers, each well under the cap.
+  `detect_language` becomes a 4-call dispatcher preserving
+  first-match-wins ordering.
+- **`fuzz/grammar_load.fcyr` blob-count assertion updated**
+  from 38 → 41 to match the new bundled count.
+- **Bundle size** (`dist/vyakarana.cyr`): grew with the three
+  inlined grammars per ADR 0014.
+
+### Notes
+
+- PowerShell's `special_vars` flag is **off** (unlike shell):
+  the shell-pipeline lone-`$` step at scanner stage 5 emits
+  `$` as a 1-byte operator before stage-6 ident scan can fire,
+  splitting `$args` into `$` op + `args` ident. With
+  `special_vars = false` and `$` in `ident_start`, `$args`
+  tokenizes as one 5-byte ident. Trade-off: `$?` / `$$`
+  no longer get the shell-style 2-byte operator emission and
+  split as `$` ident + `?` op (theme can re-pair).
+
 ## [2.0.4] — 2026-05-08
 
 Closes the 2.0.x streaming wave with the **post-2.0

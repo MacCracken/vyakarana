@@ -1,0 +1,174 @@
+# powershell — Windows PowerShell / pwsh tokenizer grammar
+#
+# Rule scheme per ADR 0005. PowerShell's tokenizer surface:
+#
+#   - `#` line comments. `<# ... #>` block comments.
+#   - Strings: `'...'` (literal), `"..."` (interpolated).
+#     Backtick `` ` `` is the escape character (not backslash —
+#     PowerShell's bash-shaped origin diverges here).
+#   - Variables: `$var`, `$_`, `$?`, `$args`, `${name}`, scope-
+#     prefixed `$global:x`, `$env:PATH`. We handle the common
+#     `$ident` form; `$env:PATH` tokenizes as `$env`, `:`, `PATH`
+#     and theme can re-pair.
+#   - Cmdlets: `Verb-Noun` syntax like `Get-Process`,
+#     `Set-Location`. `-` is in `ident_cont` so the whole name
+#     is one ident.
+#   - Operators: PowerShell's signature alphabetic-operator set
+#     — `-eq`, `-ne`, `-lt`, `-gt`, `-and`, `-or`, `-not`,
+#     `-match`, `-replace`, `-in`, `-contains`, etc. These need
+#     to longest-match before bare `-`. Listed first in the
+#     operators array.
+#   - Cmdlet *parameters* also start with `-` (e.g. `Get-Item
+#     -Path 'foo'`). Bare `-Path` after whitespace tokenizes as
+#     operator `-` then ident `Path`. Theme can re-pair when
+#     it sees `-` followed by a Pascal-case ident at a known
+#     argument position. Documented limitation; same trade-off
+#     as cmdlet name highlighting (ADR 0004).
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# `tests/corpus/concept.ps1` exercises every grammar feature
+# (cmdlets, variables, parameter splatting, type literals,
+# control flow, both string forms, both comment forms).
+#
+# Known gaps (not triggered by the stand-in):
+#   - **Here-strings** `@'...'@` and `@"..."@`. Multi-line
+#     pair markers; same scanner-shape limitation as Lua's
+#     `[==[...]==]` long brackets and Ruby heredocs.
+#   - **String interpolation** in `"..."` — the `$var` /
+#     `$(expr)` forms inside strings tokenize as the string
+#     wrapping them; the renderer doesn't see the inner
+#     variable. Same trade-off as JS template literals.
+#   - **Cmdlet-parameter context** (see header). `-Path`,
+#     `-Recurse`, etc. tokenize as `-` + ident.
+
+[grammar]
+name = "powershell"
+extensions = [".ps1", ".psm1", ".psd1"]
+shebangs = ["pwsh", "powershell"]
+
+[defaults]
+shebang = true
+whitespace = true
+
+# `$` in ident_start: variables (`$var`, `$_`, `$args`).
+# `-` in ident_cont: cmdlet names (`Get-Process`).
+ident_start = "A-Za-z_$"
+ident_cont  = "A-Za-z0-9_-"
+
+number_decimal = true
+number_0x      = true
+number_0b      = false
+number_0o      = false
+
+# `$` lives in `ident_start` so `$args`, `$var`, `$_` all
+# tokenize as one ident. Disabling `special_vars` because the
+# shell-shaped pipeline runs lone-`$` (step 5) BEFORE ident
+# scan (step 6); with special_vars on, the lone `$` emits as
+# a 1-byte operator and the ident-start-with-`$` rule never
+# fires. Trade-off: `$?` / `$$` lose the shell-style 2-byte
+# operator emission and split as `$` ident + `?` op (theme can
+# re-pair).
+special_vars = false
+
+# UTF-8 in strings / comments → one ident instead of per-byte
+# errors.
+unicode_ident = true
+
+char_literal = false   # PowerShell `'C'` is a 1-char string
+
+# PowerShell keywords fold case (`if` / `IF` / `If` all work).
+case_insensitive_keywords = true
+
+# Operators — alphabetic `-foo` operators MUST come first in
+# longest-match order. PowerShell's `-eq` etc. would otherwise
+# tokenize as `-` op + `eq` ident.
+operators = [
+    "-eq", "-ne", "-lt", "-gt", "-le", "-ge",
+    "-match", "-notmatch", "-replace", "-split", "-join",
+    "-like", "-notlike",
+    "-contains", "-notcontains", "-in", "-notin",
+    "-band", "-bor", "-bxor", "-bnot",
+    "-shl", "-shr",
+    "-and", "-or", "-not", "-xor",
+    "-is", "-isnot", "-as",
+    "-f",
+    "+=", "-=", "*=", "/=", "%=",
+    "==", "!=", "<=", ">=",
+    "++", "--",
+    "::",
+    "&&", "||",
+    "->",
+    "=", "+", "-", "*", "/", "%",
+    "<", ">", "!", "~",
+    "&", "|", "^",
+    "?",
+    "@",
+    "`",
+]
+
+punctuation = [
+    "(", ")", "[", "]", "{", "}",
+    ";", ",", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+# Block comment `<# ... #>`. Pair rules fire at step 3, after
+# line rules at step 2 — but the line-rule for `#` only matches
+# when the cursor is at `#`, not `<#`, so `<#` always wins.
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "<#"
+end = "#>"
+
+
+# Line comment `#`.
+[[rules]]
+kind = "comment"
+match = "line"
+start = "#"
+
+
+# Double-quoted string. Backtick is the escape character (`n,
+# `t, `0, etc.) — not backslash. The `escape` field is a single
+# byte; ` is byte 96.
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "`"
+
+
+# Single-quoted (literal, no interpolation). No escapes inside —
+# `'` itself is escaped by doubling (`''`); we don't model that
+# yet, treating `''` as two empty strings (same trade-off as
+# SQL's `''` quote-escape since 1.6.0).
+[[rules]]
+kind = "string"
+match = "pair"
+start = "'"
+end = "'"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # Control flow
+    "if", "else", "elseif", "switch",
+    "while", "for", "foreach", "do", "until",
+    "break", "continue", "return", "exit",
+    # Exception handling
+    "try", "catch", "finally", "throw", "trap",
+    # Declarations
+    "function", "filter", "param",
+    "begin", "process", "end",
+    "class", "enum", "data",
+    # Module / dot-source
+    "using",
+    # Boolean / dynamic-language reserved
+    "in",
+]

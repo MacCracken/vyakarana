@@ -31,8 +31,14 @@ include "src/token.cyr"
 # ── Path dispatch ───────────────────────────
 # Extension and basename matching. Pure cstr suffix tests; no I/O.
 
-fn detect_language(path) {
-    var n = strlen(path);
+# Length-bucketed helpers — Cyrius caps each function at 64
+# returns; splitting by suffix length keeps every helper well
+# under the cap while preserving first-match-wins ordering.
+# The dispatcher in `detect_language` calls them in length order
+# matching the original sequence (longest extensions first
+# would alter behaviour for `.markdown` vs `.md`, etc.).
+
+fn _detect_short(path, n) {
     if (n >= 3) {
         if (memeq(path + n - 3, ".sh", 3) == 1) { return "shell"; }
     }
@@ -61,12 +67,14 @@ fn detect_language(path) {
         if (memeq(path + n - 3, ".ex", 3) == 1) { return "elixir"; }
         if (memeq(path + n - 3, ".ml", 3) == 1) { return "ocaml"; }
     }
+    return 0;
+}
+
+fn _detect_4byte(path, n) {
     if (n >= 4) {
         if (memeq(path + n - 4, ".exs", 4) == 1) { return "elixir"; }
         if (memeq(path + n - 4, ".mli", 4) == 1) { return "ocaml"; }
         if (memeq(path + n - 4, ".lhs", 4) == 1) { return "haskell"; }
-    }
-    if (n >= 4) {
         if (memeq(path + n - 4, ".htm", 4) == 1) { return "html"; }
         if (memeq(path + n - 4, ".css", 4) == 1) { return "css"; }
         if (memeq(path + n - 4, ".ini", 4) == 1) { return "ini"; }
@@ -86,23 +94,19 @@ fn detect_language(path) {
         if (memeq(path + n - 4, ".kts", 4) == 1) { return "kotlin"; }
         if (memeq(path + n - 4, ".php", 4) == 1) { return "php"; }
         if (memeq(path + n - 4, ".lua", 4) == 1) { return "lua"; }
-    }
-    if (n >= 4) {
         if (memeq(path + n - 4, ".yml", 4) == 1) { return "yaml"; }
-    }
-    if (n >= 8) {
-        if (memeq(path + n - 8, ".graphql", 8) == 1) { return "graphql"; }
-    }
-    if (n >= 9) {
-        if (memeq(path + n - 9, ".markdown", 9) == 1) { return "markdown"; }
-    }
-    if (n >= 5) {
-        if (memeq(path + n - 5, ".yaml", 5) == 1) { return "yaml"; }
-    }
-    if (n >= 4) {
         if (memeq(path + n - 4, ".cyr", 4) == 1) { return "cyrius"; }
         if (memeq(path + n - 4, ".zig", 4) == 1) { return "zig"; }
+        if (memeq(path + n - 4, ".ps1", 4) == 1) { return "powershell"; }
     }
+    if (n >= 3) {
+        if (memeq(path + n - 3, ".cr", 3) == 1) { return "crystal"; }
+        if (memeq(path + n - 3, ".jl", 3) == 1) { return "julia"; }
+    }
+    return 0;
+}
+
+fn _detect_5plus(path, n) {
     if (n >= 5) {
         if (memeq(path + n - 5, ".html", 5) == 1) { return "html"; }
         if (memeq(path + n - 5, ".scss", 5) == 1) { return "scss"; }
@@ -113,11 +117,24 @@ fn detect_language(path) {
         if (memeq(path + n - 5, ".json", 5) == 1) { return "json"; }
         if (memeq(path + n - 5, ".java", 5) == 1) { return "java"; }
         if (memeq(path + n - 5, ".cyml", 5) == 1) { return "cyml"; }
+        if (memeq(path + n - 5, ".yaml", 5) == 1) { return "yaml"; }
+        if (memeq(path + n - 5, ".psm1", 5) == 1) { return "powershell"; }
+        if (memeq(path + n - 5, ".psd1", 5) == 1) { return "powershell"; }
     }
     if (n >= 6) {
         if (memeq(path + n - 6, ".swift", 6) == 1) { return "swift"; }
         if (memeq(path + n - 6, ".proto", 6) == 1) { return "protobuf"; }
     }
+    if (n >= 8) {
+        if (memeq(path + n - 8, ".graphql", 8) == 1) { return "graphql"; }
+    }
+    if (n >= 9) {
+        if (memeq(path + n - 9, ".markdown", 9) == 1) { return "markdown"; }
+    }
+    return 0;
+}
+
+fn _detect_basename(path, n) {
     if (n >= 10) {
         if (memeq(path + n - 10, "Dockerfile", 10) == 1) { return "dockerfile"; }
     }
@@ -132,6 +149,17 @@ fn detect_language(path) {
         if (memeq(path + n - 11, "GNUmakefile", 11) == 1) { return "makefile"; }
     }
     return 0;
+}
+
+fn detect_language(path) {
+    var n = strlen(path);
+    var r = _detect_short(path, n);
+    if (r != 0) { return r; }
+    r = _detect_4byte(path, n);
+    if (r != 0) { return r; }
+    r = _detect_5plus(path, n);
+    if (r != 0) { return r; }
+    return _detect_basename(path, n);
 }
 
 # ── Content sniffing ────────────────────────
