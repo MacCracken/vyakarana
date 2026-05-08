@@ -4,16 +4,16 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.0.2 are
+> **Read this file before doing anything.** 1.0.0–2.0.3 are
 > shipped. 1.x closed at 1.13.3 with 0 audit findings. The
-> 2.0.x prep wave is complete: 2.0.0 shipped the streaming-
-> API surface (push), 2.0.1 the rolling buffer (per-feed
-> drainage), **2.0.2 the pull adapter (`tokenize_stream_next`
-> iterator-style API)**. As of 2026-05-08 the toolchain pin
-> is `cyrius = "5.10.0"`. 38 grammars bundled (unchanged),
-> 769/769 tests passing, 3/3 fuzz harnesses passing. Next:
-> the post-streaming queue is open; nothing forced. See
-> §Next up.
+> 2.0.x streaming wave: 2.0.0 API surface (push), 2.0.1
+> rolling buffer, 2.0.2 pull adapter, **2.0.3 pending
+> pair-rule fast path** (drops O(N²) → O(N) for big-partial
+> streams). As of 2026-05-08 the toolchain pin is `cyrius =
+> "5.10.0"`. 38 grammars bundled (unchanged), 778/778 tests
+> passing, 3/3 fuzz harnesses passing. Next: 2.0.4 closeout
+> audit, then 2.1.x grammar batches (PowerShell / Crystal /
+> Julia first). See §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -33,9 +33,22 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `2.0.2` in `VERSION`, `src/version_str.cyr`, and
-  `dist/vyakarana.cyr`. Full 1.x + 2.0.0–2.0.2 tag history in
+- **Version:** `2.0.3` in `VERSION`, `src/version_str.cyr`, and
+  `dist/vyakarana.cyr`. Full 1.x + 2.0.0–2.0.3 tag history in
   the CHANGELOG.
+- **What 2.0.3 added (streaming optimization):**
+  - **Pending pair-rule fast path.** When drain detects a
+    trailing partial pair-rule open (string / block
+    comment / preprocessor directive crossing chunk
+    boundaries), the stream caches `(rule_idx, scan_resume)`
+    and subsequent drains skip the full scanner — looking
+    only for the close marker, advancing `scan_resume`
+    past already-checked body bytes. Pathological case
+    (1 MB string in 1 KB chunks) drops O(N×K) → O(N).
+  - Stream record: 72 → 88 bytes (`pending_idx` + `scan_resume`).
+  - 9 new probes: 100×10-byte chunks inside an open block
+    comment; close marker straddling two feeds; pending
+    state clears after close.
 - **What 2.0.2 added (pull adapter):**
   - **`tokenize_stream_next(s)`** — iterator-style cursor;
     advances and returns 1, or 0 when exhausted. Refills
@@ -426,7 +439,21 @@ Closed waves:
   ADR 0017); rolling-buffer per-feed drainage (2.0.1);
   pull adapter (2.0.2).
 
-**No work currently in flight.** No work currently in
+Now in flight (2.0.x closeout + 2.1.x grammar batches):
+
+- **2.0.4 — Closeout security audit.** Post-2.0 audit
+  covering streaming surfaces (2.0.0 push primitive + 2.0.1
+  rolling buffer + 2.0.2 pull adapter + 2.0.3 pending-pair
+  optimization). Per the 2026-05-09 1.13-closeout audit's
+  recommendation, this is the dedicated audit triggered by
+  buffer-bound semantic changes from streaming.
+- **2.1.0 — PowerShell / Crystal / Julia grammars.** Three
+  new general-purpose languages.
+- **2.1.1 — Vue / Svelte single-file components.** Both use
+  `<template>` / `<script>` / `<style>` blocks — prime
+  use case for compose_fenced.
+- **2.1.2 — Nix grammar.**
+- **2.1.3 — Terraform / HCL grammar.** No work currently in
 flight. The post-streaming queue is open — nothing forces
 the next cut. Possible directions when work resumes:
 

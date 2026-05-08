@@ -6,6 +6,79 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [2.0.3] — 2026-05-08
+
+Streaming optimization cut. **Pending pair-rule tracking**
+drops O(N²) → O(N) for the pathological "long open span
+across many chunks" case. No public API change.
+
+### Added
+
+- **Pending pair-rule fast path in `tokenize_stream_drain`.**
+  When a drain detects an uncommitted trailing pair-rule
+  partial (open string / block comment / preprocessor
+  directive), the stream saves `(rule_idx, scan_resume)`.
+  Subsequent drains skip the full scanner and look directly
+  for the close marker, advancing `scan_resume` so body
+  bytes already proven not to contain the close are never
+  re-scanned. Drops total work for an N-byte open span
+  spread across K chunks from O(N×K) to O(N).
+- **Two new helper functions in `src/tokenize.cyr`:**
+  - `_stream_find_pair_rule(g, buf, start, len, kind)` —
+    matches a partial token's leading bytes against the
+    grammar's pair rules to find which one was open.
+  - `_stream_scan_close(buf, buf_len, from, endp, elen, escape)`
+    — bounded close-marker scan honouring the rule's
+    escape byte.
+- **Stream record: 72 → 88 bytes.** New fields
+  `pending_idx` (offset 72; -1 = no pending) and
+  `scan_resume` (offset 80; bytes already known not to
+  contain the close).
+- **9 new tcyr probes** in the `2.0.3 streaming
+  optimization — pending pair-rule fast path` group:
+  - 100 chunks of 10 bytes each fed inside an open block
+    comment; after the close arrives, drain emits one
+    TK_COMMENT spanning all 1006 bytes.
+  - Close marker straddling two feeds (`*` then `/`); the
+    `elen - 1` back-off in `scan_resume` ensures it's
+    found.
+  - Pending state clears after the close — post-comment
+    idents tokenize normally.
+  769 → 778 passing.
+
+### Changed
+
+- **No public-API change.** `tokenize_stream_*` and
+  `tokenize_stream_next` semantics preserved exactly.
+  Optimization is purely internal — same tokens emitted
+  for the same input bytes.
+- **`tokenize_stream_free` clears the new fields** on
+  release.
+
+### Performance
+
+- **Single-shot bench unchanged** — the pending-pair
+  branch doesn't fire when finish() runs over a fully-
+  buffered source. Shell 21 µs / rust 30 µs / json 6 µs /
+  html-compose 11 µs (matching 2.0.2 within bench noise).
+- **Streaming pathological case dramatically improved**
+  but not in the bench suite yet (no streaming-style
+  benches today; flagged for a future cut). The 1006-byte
+  100-chunk probe completes immediately rather than
+  taking 100× longer than a single-shot equivalent.
+
+### Status
+
+- **2.0.x closeout audit (2.0.4) is queued next.** Per the
+  2026-05-09 1.13-closeout audit's recommendation, a
+  dedicated audit is triggered by buffer-bound semantic
+  changes from streaming. 2.0.4 will cover 2.0.0 / 2.0.1 /
+  2.0.2 / 2.0.3 surfaces in one pass.
+- After 2.0.4, the **2.1.x grammar batches** open: 2.1.0
+  PowerShell / Crystal / Julia; 2.1.1 Vue / Svelte SFC
+  (compose_fenced consumers); 2.1.2 Nix; 2.1.3 Terraform /
+  HCL.
+
 ## [2.0.2] — 2026-05-08
 
 Closes the 2.0.x streaming-prep wave with the **pull adapter**

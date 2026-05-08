@@ -45,8 +45,20 @@
 #                          staging token + 1 (i.e., the next one to
 #                          return). After advance(), use _kind / _start
 #                          / _len to read the just-advanced-to token.
+#   72  pending_idx i64 — index of the open pair rule whose close we're
+#                          waiting for. `-1` when no pending pair. After
+#                          a drain detects a trailing partial pair, this
+#                          is set; subsequent drains skip directly to
+#                          the close-marker scan instead of re-running
+#                          the full scanner over the open-pair body.
+#                          See 2.0.3 §Pending pair-rule tracking.
+#   80  scan_resume i64 — buffer offset to resume close-marker scanning
+#                          from. Advances each drain so we never re-
+#                          scan body bytes already known not to contain
+#                          the close marker — drops O(N²) → O(N) for
+#                          big-partial cases.
 #   -----
-#   72 bytes total
+#   88 bytes total
 #
 # Bundled into `dist/vyakarana.cyr`. Public symbols:
 #   tokenize_stream_new
@@ -79,7 +91,7 @@ var VYK_STREAM_INIT_CAP = 4096;
 # input size. Total input can exceed this freely.
 var VYK_STREAM_CAP = 16777216;
 
-var STREAM_REC_SIZE = 72;
+var STREAM_REC_SIZE = 88;
 
 # Error codes returned by tokenize_stream_feed.
 var VYK_OK            = 0;
@@ -197,6 +209,8 @@ fn tokenize_stream_new(lang) {
     store64(s + 48, 0);
     store64(s + 56, tokenbuf_new());   # staging_tb (pull adapter)
     store64(s + 64, 0);                # next_idx
+    store64(s + 72, (0 - 1));          # pending_idx — none (2.0.3)
+    store64(s + 80, 0);                # scan_resume
     return s;
 }
 
@@ -289,6 +303,43 @@ fn _stream_is_trailing_complete(g, buf, temp_tb, idx) {
     return 0;
 }
 
+# Find which pair rule emitted a token at `[start, start+len)`
+# in `buf`. Used to detect what to look for when the trailing
+# token is a partial pair-rule open. Returns rule index, or -1
+# if no pair rule's start marker matches the leading bytes.
+fn _stream_find_pair_rule(g, buf, start, len, kind) {
+    var rules = grammar_pair_rules(g);
+    var n = vec_len(rules);
+    var i = 0;
+    while (i < n) {
+        var r = vec_get(rules, i);
+        if (pair_rule_kind(r) == kind) {
+            var startm = pair_rule_start(r);
+            var slen = strlen(startm);
+            if ((slen > 0) && (slen <= len)) {
+                if (memeq(buf + start, startm, slen) == 1) { return i; }
+            }
+        }
+        i = i + 1;
+    }
+    return (0 - 1);
+}
+
+# Look for `endp` in `buf[from..buf_len]`. Honours the pair
+# rule's escape byte. Returns close-position offset or -1.
+fn _stream_scan_close(buf, buf_len, from, endp, elen, escape) {
+    var j = from;
+    while (j + elen <= buf_len) {
+        if ((escape != 0) && (load8(buf + j) == escape)) {
+            j = j + 2;
+            continue;
+        }
+        if (memeq(buf + j, endp, elen) == 1) { return j; }
+        j = j + 1;
+    }
+    return (0 - 1);
+}
+
 # Drain tokens whose spans are fully present in the buffer.
 # Re-scans the current buffer with `tokenize_with_grammar`,
 # commits all tokens whose end < buf_len (in feed mode) or every
@@ -315,19 +366,75 @@ fn tokenize_stream_drain(s, out_tb) {
     var g = load64(s + 24);
     var finishing = load64(s + 32);
     var abs_offset = load64(s + 48);
+    var pending_idx = load64(s + 72);
     if (buf_len == 0) { return 0; }
+
+    var emitted = 0;
+
+    # 2.0.3 fast path — pending pair rule from a previous drain.
+    # The buffer's first bytes are the open marker; the body has
+    # been growing across feeds. Skip the full scanner and look
+    # only for the close marker, advancing scan_resume so we
+    # never re-scan body bytes already known not to contain it.
+    # Drops the pathological "open span across many chunks" case
+    # from O(N²) to O(N).
+    if (pending_idx >= 0) {
+        var rule = vec_get(grammar_pair_rules(g), pending_idx);
+        var endp = pair_rule_end(rule);
+        var elen = strlen(endp);
+        var escape = pair_rule_escape(rule);
+        var startm = pair_rule_start(rule);
+        var slen = strlen(startm);
+        var resume = load64(s + 80);
+        if (resume < slen) { resume = slen; }
+        var close_pos = _stream_scan_close(buf, buf_len, resume, endp, elen, escape);
+        if (close_pos >= 0) {
+            var pair_total = close_pos + elen;
+            tokenbuf_push(out_tb, pair_rule_kind(rule), abs_offset, pair_total);
+            emitted = emitted + 1;
+            store64(s + 72, (0 - 1));
+            store64(s + 80, 0);
+            var k0 = pair_total;
+            var dst0 = 0;
+            while (k0 < buf_len) {
+                store8(buf + dst0, load8(buf + k0));
+                dst0 = dst0 + 1;
+                k0 = k0 + 1;
+            }
+            buf_len = buf_len - pair_total;
+            abs_offset = abs_offset + pair_total;
+            store64(s + 8, buf_len);
+            store64(s + 48, abs_offset);
+            if (buf_len == 0) { return emitted; }
+        }
+        if (close_pos < 0) {
+            # Still pending. Cache new scan-resume — backing off
+            # `elen - 1` so a close marker straddling this
+            # buffer's tail and the next feed isn't missed.
+            var new_resume = buf_len;
+            if (elen > 0) {
+                if (new_resume > elen - 1) { new_resume = new_resume - (elen - 1); }
+            }
+            if (new_resume < slen) { new_resume = slen; }
+            store64(s + 80, new_resume);
+            if (finishing == 1) {
+                tokenbuf_push(out_tb, pair_rule_kind(rule), abs_offset, buf_len);
+                store64(s + 72, (0 - 1));
+                store64(s + 80, 0);
+                store64(s + 8, 0);
+                store64(s + 48, abs_offset + buf_len);
+                return emitted + 1;
+            }
+            return emitted;
+        }
+    }
+
     # NUL-terminate the live buffer so the inner scanner's
     # strlen-shaped checks see the correct end.
     store8(buf + buf_len, 0);
-    # Scan into a fresh tokenbuf so we can decide which tokens
-    # are safe to commit. The existing scanner emits tokens with
-    # starts relative to `buf`; we shift by abs_offset on copy.
     var temp_tb = tokenbuf_new();
     tokenize_with_grammar(g, buf, buf_len, temp_tb);
     var n_temp = tokenbuf_count(temp_tb);
-    # Decide commit count: in feed mode, drop the trailing token
-    # (it might extend further in subsequent feeds). In finish
-    # mode, every token is committed.
     var commit_count = n_temp;
     if (finishing == 0) {
         commit_count = 0;
@@ -338,19 +445,12 @@ fn tokenize_stream_drain(s, out_tb) {
             if (t_start + t_len < buf_len) { commit_count = i + 1; }
             i = i + 1;
         }
-        # If the trailing token is definitively complete (close
-        # marker present at its tail, LF terminator, etc.) we can
-        # commit it even though it ends at buf_len. Avoids waiting
-        # for finish() when the stream just happens to break at a
-        # hard boundary.
         if ((commit_count < n_temp) && (n_temp > 0)) {
             if (_stream_is_trailing_complete(g, buf, temp_tb, n_temp - 1) == 1) {
                 commit_count = n_temp;
             }
         }
     }
-    # Push committed tokens to out_tb with abs_offset shift.
-    var emitted = 0;
     var j = 0;
     while (j < commit_count) {
         tokenbuf_push(out_tb,
@@ -360,9 +460,34 @@ fn tokenize_stream_drain(s, out_tb) {
         emitted = emitted + 1;
         j = j + 1;
     }
-    # Compact: slide bytes [consumed, buf_len) to offset 0.
-    # Bytes 0..consumed are now permanently committed; their
-    # absolute positions live in abs_offset.
+    # 2.0.3 — detect pending pair-rule state for the NEXT drain.
+    # If a trailing partial pair-rule open is uncommitted, save
+    # its rule index + how far we've already scanned the body.
+    var new_pending = (0 - 1);
+    var new_resume2 = 0;
+    if ((finishing == 0) && (commit_count < n_temp) && (n_temp > 0)) {
+        var partial = commit_count;
+        var p_kind  = tokenbuf_kind(temp_tb, partial);
+        var p_start = tokenbuf_start(temp_tb, partial);
+        var p_len   = tokenbuf_len(temp_tb, partial);
+        if ((p_kind == TK_STRING) || (p_kind == TK_COMMENT) || (p_kind == TK_PREPROCESSOR)) {
+            var rule_idx = _stream_find_pair_rule(g, buf, p_start, p_len, p_kind);
+            if (rule_idx >= 0) {
+                new_pending = rule_idx;
+                var rule_r = vec_get(grammar_pair_rules(g), rule_idx);
+                var endp_r = pair_rule_end(rule_r);
+                var elen_r = strlen(endp_r);
+                var slen_r = strlen(pair_rule_start(rule_r));
+                new_resume2 = p_len;
+                if (elen_r > 0) {
+                    if (new_resume2 > elen_r - 1) { new_resume2 = new_resume2 - (elen_r - 1); }
+                }
+                if (new_resume2 < slen_r) { new_resume2 = slen_r; }
+            }
+        }
+    }
+    store64(s + 72, new_pending);
+    store64(s + 80, new_resume2);
     var consumed = 0;
     if (commit_count > 0) {
         var last = commit_count - 1;
@@ -492,5 +617,7 @@ fn tokenize_stream_free(s) {
     store64(s + 48, 0);
     store64(s + 56, 0);   # staging_tb (2.0.2)
     store64(s + 64, 0);   # next_idx
+    store64(s + 72, 0);   # pending_idx (2.0.3)
+    store64(s + 80, 0);   # scan_resume
     return 0;
 }
