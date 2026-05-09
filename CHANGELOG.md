@@ -6,6 +6,54 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [2.2.0] — 2026-05-08
+
+**Toolchain pin bump cyrius `5.10.0` → `5.10.5`.**
+User-driven version refresh; pure pin change with no
+vyakarana code modifications. All gates clean against the
+new toolchain (836/836 tests, 4/4 fuzz harnesses, smoke +
+lint OK, distlib regenerated). Cut as a minor (2.1.x →
+2.2.0) because consumers pinning vyakarana need to know the
+toolchain expectation moved.
+
+### Changed
+
+- **`cyrius.cyml`** — `cyrius = "5.10.5"` (was `"5.10.0"`).
+  CI's release-tarball install will pull 5.10.5's complete
+  bundle (binary + stdlib together) on every PR. Local
+  developers should run `cyriusly use 5.10.5` to match the
+  pin (per the captured agent-memory rule: pin is
+  authoritative, local conforms — never the reverse).
+
+### Stdlib drift inherited
+
+The 5.10.0 → 5.10.5 cyrius release window includes stdlib
+shape changes that vyakarana inherits via `cyrius deps`:
+
+- `lib/string.cyr` `strlen` gained an explicit `: i64`
+  return-type annotation and a word-at-a-time SWAR
+  implementation (replaces 5.10.0's byte-at-a-time loop).
+  Functionally equivalent.
+- `lib/string.cyr` adds `println_int(n: i64)` as an
+  overload-dispatch target for `println(strlen(...))`-style
+  callers. vyakarana doesn't use it directly.
+- `lib/str.cyr` `str_from`, `str_new`, `str_from_a`,
+  `str_new_a` gained `: Str` return-type annotations.
+  Behaviour unchanged; vyakarana doesn't use these.
+
+None of these affect vyakarana's runtime behaviour — the
+gates verify identical token output across both versions.
+
+### Status
+
+- **No code changes** in `src/`, `grammars/`, `tests/`, or
+  `fuzz/`. Pure infrastructure cut.
+- **Bundled grammars: 45** (unchanged from 2.1.5).
+- **Tests: 836/836 passing** on 5.10.5. **Fuzz: 4/4 passing.**
+- Open items from 2.1.5 audit (FINDING-011 compose-prefix
+  streaming, defensive `staging == 0` guard, binary-size
+  cap revisit) carry forward unchanged.
+
 ## [2.1.5] — 2026-05-08
 
 Closes the 2.1.x window with the **post-2.1 security audit**.

@@ -4,13 +4,12 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.1.5 are
-> shipped. **2.1.5 closes the 2.1.x window with the
-> post-2.1 security audit** (0 new findings; FINDING-011
-> compose-prefix-streaming gap deferred to the next opt
-> cut). 45 bundled grammars; 4 fuzz harnesses; 836/836
-> tests passing. Toolchain pin `cyrius = "5.10.0"`. No
-> work currently in flight. See §Next up.
+> **Read this file before doing anything.** 1.0.0–2.2.0 are
+> shipped. **2.2.0 bumps the toolchain pin to `cyrius =
+> "5.10.5"`** (user-requested refresh; pure infrastructure
+> cut, no vyakarana code changes). 45 bundled grammars; 4
+> fuzz harnesses; 836/836 tests passing on 5.10.5. No work
+> currently in flight. See §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -30,8 +29,19 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `2.1.5` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `2.2.0` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`.
+- **Toolchain pin:** `cyrius = "5.10.5"` (bumped from 5.10.0
+  in 2.2.0). Local devs run `cyriusly use 5.10.5`.
+- **What 2.2.0 added (toolchain pin bump):**
+  - **Pin moved 5.10.0 → 5.10.5.** User-requested
+    refresh. CI's release-tarball install gets the matching
+    bundle automatically.
+  - Inherited stdlib drift: `strlen` SWAR + `: i64`
+    annotation; `println_int` overload-dispatch target;
+    `str_*` `: Str` annotations. None affect vyakarana
+    runtime; gates verify byte-equivalent tokenization.
+  - Pure infrastructure cut — zero vyakarana code changes.
 - **What 2.1.5 added (closeout audit):**
   - **`docs/audit/2026-05-09-2.1.x-closeout-audit.md`** —
     full surface review of every 2.1.x change. Per-function
