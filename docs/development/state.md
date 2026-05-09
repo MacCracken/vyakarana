@@ -4,14 +4,13 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.1.3 are
-> shipped. **2.1.3 closes the 2.1.x grammar wave with
-> Terraform / HCL** (`.tf` / `.tfvars` / `.hcl`) for 45
-> bundled grammars total. The 2.1.x window added 7 grammars
-> (PowerShell, Crystal, Julia, Vue, Svelte, Nix, Terraform).
-> As of 2026-05-08 the toolchain pin is `cyrius = "5.10.0"`.
-> 830/830 tests passing, 3/3 fuzz harnesses passing. No
-> work currently in flight. See §Next up.
+> **Read this file before doing anything.** 1.0.0–2.1.4 are
+> shipped. **2.1.4 adds discardable pull-adapter staging +
+> streaming-aware fuzz harness** — caught and fixed a
+> trailing-complete heuristic bug on same-byte pair markers.
+> 45 bundled grammars (unchanged); 4 fuzz harnesses (was 3);
+> 836/836 tests passing. Toolchain pin `cyrius = "5.10.0"`.
+> Next: 2.1.5 (closeout audit). See §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -31,8 +30,27 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `2.1.3` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `2.1.4` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`.
+- **What 2.1.4 added (streaming opts + fuzz):**
+  - **`tokenize_stream_discard_consumed(s)`** — drops
+    iterated-past tokens from pull-adapter staging.
+    Bounds memory in long-running streams.
+  - **`tokenbuf_drop_front(tb, n)`** — internal primitive.
+  - **`fuzz/streaming.fcyr`** — random-split fuzz harness;
+    verifies byte-equivalence vs single-shot tokenize.
+    4/4 fuzz harnesses passing (3 → 4).
+  - **Trailing-complete heuristic fix.** Pre-2.1.4 a chunk
+    ending right after an opening `"` (or other same-byte
+    pair marker) committed a 1-byte string token; the
+    actual close on the next feed then opened a SECOND
+    string. Caught by the fuzz harness; fixed by requiring
+    `t_len >= slen + elen` minimum complete length.
+  - **Filed gap (next opt cut):** compose-rule START
+    markers split across chunks lose the route; needs
+    compose-aware prefix buffering. HTML / Vue / Svelte /
+    Markdown random-split fuzz cases skipped until the fix.
+  - 6 new tcyr probes; 830 → 836 passing.
 - **What 2.1.3 added (Terraform / HCL):**
   - **Terraform** (`.tf`, `.tfvars`, `.hcl`) — the HashiCorp
     Configuration Language. Both `#` and `//` line comments

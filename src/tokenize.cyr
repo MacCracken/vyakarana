@@ -303,9 +303,21 @@ fn _stream_is_trailing_complete(g, buf, temp_tb, idx) {
         while (i < n) {
             var r = vec_get(rules, i);
             if (pair_rule_kind(r) == kind) {
+                var startm = pair_rule_start(r);
+                var slen = strlen(startm);
                 var endp = pair_rule_end(r);
                 var elen = strlen(endp);
-                if ((elen > 0) && (elen <= t_len)) {
+                # Minimum-complete length is start + end. Without
+                # this guard, an opening `"` (slen=1) at chunk
+                # boundary looks complete because its tail
+                # trivially matches the closing `"` (elen=1) —
+                # the same byte. Streaming would commit a
+                # 1-byte string token; the actual close on the
+                # next feed would then be tokenized as a
+                # SECOND string opener. Caught by the 2.1.4
+                # fuzz/streaming.fcyr c/string-with-escape
+                # case.
+                if ((elen > 0) && (t_len >= slen + elen)) {
                     if (memeq(buf + t_start + t_len - elen, endp, elen) == 1) {
                         return 1;
                     }
@@ -610,6 +622,28 @@ fn tokenize_stream_len(s) {
     var staging = load64(s + 56);
     var idx = load64(s + 64) - 1;
     return tokenbuf_len(staging, idx);
+}
+
+# Drop tokens already iterated past via `_next` from the
+# pull-adapter's internal staging tokenbuf (2.1.4+). For long-
+# running streams (millions of tokens), the staging grows
+# monotonically by default — calling this periodically keeps
+# the memory footprint bounded by "tokens iterated since last
+# discard" instead of "all tokens since stream creation".
+#
+# After the call, `_next` continues from the (now-zero) cursor;
+# subsequent `_next` calls drain into a smaller staging that's
+# trimmed to just the un-iterated tail.
+#
+# No-op if no tokens have been iterated yet.
+fn tokenize_stream_discard_consumed(s) {
+    if (s == 0) { return 0; }
+    var staging = load64(s + 56);
+    var consumed = load64(s + 64);
+    if (consumed <= 0) { return 0; }
+    tokenbuf_drop_front(staging, consumed);
+    store64(s + 64, 0);
+    return consumed;
 }
 
 # ── Internal: M1 hand-coded shell path ────────

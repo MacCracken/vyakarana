@@ -6,6 +6,79 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [2.1.4] — 2026-05-08
+
+Streaming optimization + fuzz cut. **Discardable pull-adapter
+staging** caps memory for long-running iteration; **streaming-
+aware fuzz harness** verifies byte-equivalence between
+random-split and single-shot feeds. The harness caught two
+real correctness gaps; one fixed in-pass, one filed for the
+next opt cut.
+
+### Added
+
+- **`tokenize_stream_discard_consumed(s)`** — drops tokens
+  already iterated past via `_next` from the pull-adapter's
+  internal staging tokenbuf. Caller invokes periodically
+  (e.g., after every N iterated tokens) to bound memory in
+  long-running streams. Returns count dropped; no-op when
+  nothing iterated yet; null-safe.
+- **`tokenbuf_drop_front(tb, n)`** — internal primitive in
+  `src/token.cyr`. Shifts records [n, count) to [0,
+  count - n) via forward byte copy (overlap-safe), updates
+  count. Bounds-clamps when `n >= count`.
+- **`fuzz/streaming.fcyr`** — random-split fuzz harness.
+  For each (source, language) pair, splits at 2/4/8/16/32
+  random offsets and verifies the resulting tokenbuf is
+  byte-equivalent to a single-shot tokenize. xorshift-
+  seeded; deterministic; failures reproduce. Covers shell
+  (line+pair+special_vars), rust (multi-byte ops, generics,
+  ranges), C (block comments straddling chunks — the 2.0.3
+  case), Python (indented blocks). 4 fuzz harnesses now;
+  3 → 4.
+- **6 new tcyr probes** in the `2.1.4 pull-adapter discard +
+  streaming heuristic fix` group: discard returns dropped
+  count, _next continues post-discard, no-op on empty,
+  null-safety, split-after-opening-quote produces baseline
+  count. 830 → 836 passing.
+
+### Fixed
+
+- **Trailing-complete heuristic over-eager on same-byte
+  pair markers.** Pre-2.1.4, a chunk ending right after an
+  opening `"` (or `'`, `` ` ``, etc.) had its trailing
+  TK_STRING (length 1) wrongly marked complete because the
+  closing-marker check `memeq(buf + tail - elen, endp,
+  elen)` matches the open quote against itself. Streaming
+  would commit the open quote as a 1-byte string; the
+  actual close on the next feed then opened a SECOND
+  string. Caught by the new `streaming.fcyr`
+  `c/string-with-escape` random-split case. Fixed by
+  requiring `t_len >= slen + elen` (minimum complete
+  length) before applying the closing-marker check.
+
+### Notes
+
+- **Compose-rule start markers split across chunks lose
+  the route.** `<style>`, `<script>`, `<template>`,
+  ` ```rust ` etc. — when a chunk boundary lands inside
+  the start marker, the leading byte (`<` or `` ` ``)
+  commits as a 1-byte token before the rest of the marker
+  arrives, so the compose rule never matches. The fix
+  needs compose-aware prefix buffering — scanner has to
+  hold trailing bytes that match a prefix of any
+  compose-rule start marker. **Filed for the next
+  streaming-opt cut**; HTML / Vue / Svelte / Markdown
+  cases are skipped in `streaming.fcyr` until then.
+  Single-shot tests in `tests/vyakarana.tcyr` continue to
+  cover compose correctness for whole-buffer inputs.
+- **Bench unchanged** — the discard primitive is opt-in;
+  callers that don't use the pull adapter (or don't call
+  `_discard_consumed`) see no behavioural change. The
+  trailing-complete fix is a tightening that could
+  marginally delay some commits, but `tokenize/*` bench
+  numbers are within noise.
+
 ## [2.1.3] — 2026-05-08
 
 Final grammar batch of the 2.1.x window. **Terraform / HCL**
