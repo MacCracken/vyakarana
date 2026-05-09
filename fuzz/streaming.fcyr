@@ -188,23 +188,28 @@ fn fuzz_main(data, n) {
     var c2 = "char *s = \"hello\\nworld\"; // line comment";
     if (_strm_one(c2, "c", "c/string-with-escape") != 0) { return 1; }
 
-    # ---
-    # Known gap (filed for the next streaming-opt cut, see
-    # 2.1.4 CHANGELOG §Notes): compose-rule START markers
-    # (`<style>`, `<script>`, `<template>`, ` ```rust `)
-    # split across chunk boundaries lose the route, because
-    # the leading `<` (or ` `` `) commits as a 1-byte token
-    # before the rest of the marker arrives. The fix needs
-    # compose-aware prefix buffering — scanner has to know
-    # "don't commit trailing bytes that match a prefix of a
-    # compose-rule start marker." Out of scope for 2.1.4;
-    # documented as a finding in the closeout audit (2.1.5).
-    #
-    # HTML / Vue / Svelte / Markdown random-split cases are
-    # disabled here until that fix lands. Single-shot tests
-    # in tests/vyakarana.tcyr cover compose correctness for
-    # whole-buffer inputs.
-    # ---
+    # HTML — compose rules for `<script>` → JS and `<style>` →
+    # CSS. Pre-2.2.1 these random-split cases were disabled
+    # because compose-rule START markers split across chunk
+    # boundaries lost the route (FINDING-011). 2.2.1's
+    # `_stream_compose_prefix_hold` fixes the gap; cases now
+    # re-enabled.
+    var h1 = "<style>.x{color:red;}</style><div>hi</div>";
+    if (_strm_one(h1, "html", "html/compose-style") != 0) { return 1; }
+    var h2 = "<script>const x = 42;</script>";
+    if (_strm_one(h2, "html", "html/compose-script") != 0) { return 1; }
+
+    # Vue SFC — outer Vue tokenizer with compose for <script>
+    # and <style>. Verifies the prefix-hold works for grammars
+    # with multiple compose rules.
+    var v1 = "<script>let x = 1;</script><style>.x{}</style>";
+    if (_strm_one(v1, "vue", "vue/script-and-style") != 0) { return 1; }
+
+    # Markdown — compose_fenced rule with captured language
+    # tag. The prefix-hold helper covers compose_fenced rules
+    # too; chunk-boundary in ` ``` ` opener should hold cleanly.
+    var md1 = "before\n```rust\nfn x() {}\n```\nafter";
+    if (_strm_one(md1, "markdown", "markdown/fence-rust") != 0) { return 1; }
 
     # Python — indented blocks, f-string-ish.
     var py1 = "def f(x):\n    return x + 1\n\nf(42)";

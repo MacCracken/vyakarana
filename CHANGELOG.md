@@ -6,6 +6,77 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [2.2.1] — 2026-05-08
+
+**Wrap-up cut for the 2.1.5 audit queue.** Resolves
+FINDING-011 (compose-rule prefix buffering across chunks)
+and lands the defensive `staging == 0` guard the audit
+called for. Re-enables the random-split fuzz cases that
+were skipped in 2.1.4 pending this fix. No public-API
+changes; pure streaming-correctness work.
+
+### Added
+
+- **Compose-rule prefix buffering.**
+  `_stream_compose_prefix_hold(g, buf, buf_len, temp_tb,
+  n_temp)` walks every compose / compose_fenced rule's
+  start marker and returns the count of trailing bytes
+  that must be held back from commit. Two cases covered:
+  (a) trailing bytes that match a *prefix* of a start
+  marker (e.g., last 2 bytes of buf are `` `` ``, prefix of
+  `` ``` ``); (b) full start matched mid-buffer with no end
+  yet. Drain drops trailing temp_tb tokens whose extent
+  overlaps the held region — they re-tokenize cleanly on
+  the next feed once the rest of the marker arrives.
+  Helper takes `temp_tb` so case (b) can skip positions
+  that are *already* the start of an emitted compose
+  TK_PUNCTUATION (e.g., markdown's emitted close marker is
+  a complete `` ``` `` that would otherwise look like a
+  fresh opener with no following close).
+- **Defensive `staging == 0` guard in
+  `tokenize_stream_discard_consumed`.** Filed in the
+  2.1.5 audit; previously a use-after-free where `_free`
+  zeroed staging would crash on
+  `tokenbuf_drop_front(0, …)`'s `load64(tb + 8)`. One-line
+  null check matching the rest of the streaming primitive.
+- **Pair-pending guard against compose-prefix overlap.**
+  When drain leaves a trailing partial pair-rule (string
+  / block comment), it caches `(rule_idx, scan_resume)`
+  for the fast path. 2.2.1 skips that caching when the
+  partial overlaps the prefix-hold region — otherwise the
+  pair fast path would race compose_fenced on the next
+  feed, matching the nearest backtick instead of waiting
+  for the full `` ``` `` open marker.
+- **Skip-prefix-hold guard for committed compose ends.**
+  The drain commit logic skips prefix-hold case (a) when
+  the *last already-committed* token is a TK_PUNCTUATION
+  matching a compose end marker — those bytes are claimed
+  by the just-emitted compose pair and should not be
+  re-interpreted as a partial upcoming opener.
+
+### Changed
+
+- **Streaming fuzz coverage re-enabled.**
+  `fuzz/streaming.fcyr` now exercises HTML
+  (`<style>` / `<script>` compose), Vue SFC, and Markdown
+  (` ``` ` fenced) random-split cases. Pre-2.2.1 these
+  were skipped because compose-rule START markers split
+  across chunk boundaries lost the route. With the
+  prefix-hold fix the byte-equivalence invariant holds
+  across all 5 split shapes (2 / 4 / 8 / 16 / 32 chunks).
+
+### Fixed
+
+- **FINDING-011 (compose-rule prefix buffering).**
+  Surfaced by 2.1.4's streaming fuzz; deferred from the
+  2.1.5 audit. A chunk that ended mid-marker
+  (`<sty` of `<style>`, ` `` ` of `` ``` ``) used to commit
+  spurious tokens (a single `<` operator + `sty` ident,
+  or a 2-byte inline-code TK_STRING) instead of waiting
+  for the rest of the marker. The held-bytes pattern
+  ensures the next drain re-scans those bytes against the
+  full grammar instead.
+
 ## [2.2.0] — 2026-05-08
 
 **Toolchain pin bump cyrius `5.10.0` → `5.10.5`.**

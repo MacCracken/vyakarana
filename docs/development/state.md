@@ -4,12 +4,13 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.2.0 are
-> shipped. **2.2.0 bumps the toolchain pin to `cyrius =
-> "5.10.5"`** (user-requested refresh; pure infrastructure
-> cut, no vyakarana code changes). 45 bundled grammars; 4
-> fuzz harnesses; 836/836 tests passing on 5.10.5. No work
-> currently in flight. See §Next up.
+> **Read this file before doing anything.** 1.0.0–2.2.1 are
+> shipped. **2.2.1 wraps the 2.1.5 audit queue** — FINDING-011
+> compose-rule prefix buffering fixed, defensive `staging == 0`
+> guard added, HTML / Vue / Markdown random-split fuzz cases
+> re-enabled. 45 bundled grammars; 4 fuzz harnesses; 836/836
+> tests passing on 5.10.5. No work currently in flight. See
+> §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -29,10 +30,38 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `2.2.0` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `2.2.1` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`.
 - **Toolchain pin:** `cyrius = "5.10.5"` (bumped from 5.10.0
   in 2.2.0). Local devs run `cyriusly use 5.10.5`.
+- **What 2.2.1 added (audit-queue wrap-up):**
+  - **Compose-rule prefix buffering (FINDING-011 fix).**
+    `_stream_compose_prefix_hold(g, buf, buf_len, temp_tb,
+    n_temp)` holds back trailing bytes that match a prefix
+    of any compose / compose_fenced START marker, plus
+    full mid-buffer starts whose end hasn't arrived yet.
+    Helper takes `temp_tb` so case (b) skips positions
+    already inside an emitted compose TK_PUNCTUATION
+    (markdown's `` ``` `` close == open, so an emitted
+    close marker would otherwise look like a fresh opener
+    with no end).
+  - **Defensive `staging == 0` guard** in
+    `tokenize_stream_discard_consumed`. From the 2.1.5
+    audit recommendations.
+  - **Pair-pending overlap guard.** Drain skips caching
+    the pending pair-rule fast-path state when the
+    trailing partial overlaps the prefix-hold region —
+    prevents the pair fast path from racing compose_fenced
+    on subsequent drains.
+  - **Skip-prefix-hold for committed compose ends.** When
+    the last committed token is a TK_PUNCTUATION matching
+    a compose end marker, prefix-hold case (a) skips —
+    those bytes are claimed by the just-emitted compose
+    pair, not a partial upcoming opener.
+  - **Fuzz coverage re-enabled.** `fuzz/streaming.fcyr`
+    now exercises HTML (`<style>` / `<script>` compose),
+    Vue SFC, and Markdown (` ``` `) random-split cases
+    across 5 split shapes (2 / 4 / 8 / 16 / 32 chunks).
 - **What 2.2.0 added (toolchain pin bump):**
   - **Pin moved 5.10.0 → 5.10.5.** User-requested
     refresh. CI's release-tarball install gets the matching
@@ -570,18 +599,19 @@ Now in flight — 2.1.x grammar batches:
 - **2.1.4 — Streaming opts + fuzz.** Shipped. Discardable
   pull-adapter staging; streaming-aware fuzz harness;
   trailing-complete heuristic tightened (FINDING-010).
-- **2.1.5 — Closeout audit.** Shipped (this cut). 0 new
-  findings. FINDING-011 (compose-prefix-streaming) deferred.
+- **2.1.5 — Closeout audit.** Shipped. 0 new findings.
+  FINDING-011 (compose-prefix-streaming) deferred to 2.2.1.
+- **2.2.0 — Toolchain pin bump.** Shipped. cyrius
+  `5.10.0` → `5.10.5`. Pure infrastructure cut.
+- **2.2.1 — Audit-queue wrap-up.** Shipped (this cut).
+  FINDING-011 compose-rule prefix buffering fixed;
+  defensive `staging == 0` guard; HTML / Vue / Markdown
+  random-split fuzz cases re-enabled.
 
-**The 2.1.x window is fully closed.** No work currently in
-flight. Possible directions when work resumes:
+**The 2.1.x window is fully closed; the 2.1.5 audit queue
+is now empty.** No work currently in flight. Possible
+directions when work resumes:
 
-- **Compose-rule prefix buffering** — fixes FINDING-011
-  (compose-rule START markers split across chunks lose the
-  route). Re-enables HTML / Vue / Svelte / Markdown
-  random-split cases in `streaming.fcyr`. Likely the next
-  natural cut since it has a concrete, captured bug to
-  resolve.
 - **Scanner state-machine optimization.** 2.0.1's
   rescan-and-commit drain is O(buf_len) per call. A real
   state machine would scan only the new bytes since the

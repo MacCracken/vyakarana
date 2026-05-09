@@ -296,6 +296,52 @@ fn _stream_is_trailing_complete(g, buf, temp_tb, idx) {
     # so we err on the side of conservatism: only the pair-rule
     # case (close marker is at the tail; no further bytes can
     # change this token's extent) is safe to commit early.
+    # Compose rules emit their END marker as a TK_PUNCTUATION
+    # span whose length equals the marker length. If the
+    # trailing token IS that close marker, the compose pair
+    # just emitted atomically — commit it. Without this,
+    # split-at-end-of-compose (e.g. chunk boundary right after
+    # `</style>`) would drop the close-marker token, leaving
+    # the body bytes already compacted but the compose pair
+    # incomplete from streaming's view. 2.2.1 fix; surfaced by
+    # the streaming.fcyr `html/compose-style` random-split
+    # case at split=29.
+    if (kind == TK_PUNCTUATION) {
+        var crules = grammar_compose_rules(g);
+        var cn = vec_len(crules);
+        var ci = 0;
+        while (ci < cn) {
+            var cr = vec_get(crules, ci);
+            var cendp = compose_rule_end(cr);
+            var celen = strlen(cendp);
+            if ((celen > 0) && (celen == t_len)) {
+                if (memeq(buf + t_start, cendp, celen) == 1) {
+                    return 1;
+                }
+            }
+            ci = ci + 1;
+        }
+        # Also check compose_fenced end markers — markdown's
+        # ` ``` ` close is emitted as TK_PUNCTUATION via the
+        # compose_fenced helper, same shape as compose. Without
+        # this, split-at-end-of-fenced-block would drop the
+        # close marker, leaving the body already compacted.
+        var cfrules = grammar_compose_fenced_rules(g);
+        var cfn = vec_len(cfrules);
+        var cfi = 0;
+        while (cfi < cfn) {
+            var cfr = vec_get(cfrules, cfi);
+            var cfendp = compose_fenced_rule_end(cfr);
+            var cfelen = strlen(cfendp);
+            if ((cfelen > 0) && (cfelen == t_len)) {
+                if (memeq(buf + t_start, cfendp, cfelen) == 1) {
+                    return 1;
+                }
+            }
+            cfi = cfi + 1;
+        }
+        return 0;
+    }
     if ((kind == TK_STRING) || (kind == TK_COMMENT) || (kind == TK_PREPROCESSOR)) {
         var rules = grammar_pair_rules(g);
         var n = vec_len(rules);
@@ -339,6 +385,175 @@ fn _stream_is_trailing_complete(g, buf, temp_tb, idx) {
 # in `buf`. Used to detect what to look for when the trailing
 # token is a partial pair-rule open. Returns rule index, or -1
 # if no pair rule's start marker matches the leading bytes.
+# Returns the number of trailing buffer bytes to hold so that
+# compose-rule routing isn't lost across chunk boundaries.
+# Two cases covered:
+#
+# (a) **Trailing prefix of a compose START marker** — chunk
+#     boundary lands INSIDE a marker (e.g. `<sty` of
+#     `<style>`). Without holding, the leading byte (`<`)
+#     commits as an ordinary token; on the next feed the
+#     marker is no longer recognizable.
+#
+# (b) **Full start marker matched, no end marker yet** — open
+#     fully present in the buffer, but the corresponding
+#     close (`</style>`, etc.) hasn't arrived. Same hazard:
+#     bytes inside the start marker would commit before
+#     compose can route the body.
+#
+# Returns the count of trailing bytes that must be held back
+# from commit. Caller compares each token's `start + len` to
+# `buf_len - hold` and drops tokens whose extent overlaps the
+# held region.
+#
+# Cost: O(rules × buf_len). Worst case is many compose rules
+# (HTML has 2; Vue has 2; markdown has 1 compose_fenced); per-
+# call cost is O(buf_len) per rule. Acceptable against the
+# rescan-and-commit baseline which already pays O(buf_len).
+# Filed as FINDING-011's fix in the 2.1.5 audit; surfaced by
+# the 2.1.4 streaming.fcyr random-split cases.
+# 2.2.1 — `temp_tb` is the just-scanned token sequence; we use
+# it to recognize emitted compose markers and avoid treating
+# them as "candidate openers". For markdown's `` ``` `` (open
+# and close are the same string), case (b) would otherwise loop
+# forever: every emitted close marker looks like a fresh open
+# with no following close.
+fn _stream_compose_prefix_hold(g, buf, buf_len, temp_tb, n_temp) {
+    var max_hold = 0;
+
+    var rules = grammar_compose_rules(g);
+    var n = vec_len(rules);
+    var i = 0;
+    while (i < n) {
+        var r = vec_get(rules, i);
+        var startm = compose_rule_start(r);
+        var slen = strlen(startm);
+        var endp = compose_rule_end(r);
+        var elen = strlen(endp);
+
+        # Case (a): trailing prefix of start marker.
+        var j = slen - 1;
+        if (j > buf_len) { j = buf_len; }
+        var found = 0;
+        while ((j > 0) && (found == 0)) {
+            if (memeq(buf + buf_len - j, startm, j) == 1) {
+                found = 1;
+                if (j > max_hold) { max_hold = j; }
+            }
+            if (found == 0) { j = j - 1; }
+        }
+
+        # Case (b): full start matched somewhere; no end after.
+        # Skip positions that are the start of an emitted
+        # TK_PUNCTUATION token (those bytes are claimed by an
+        # already-emitted compose pair — opener or closer).
+        if ((slen > 0) && (slen <= buf_len)) {
+            var k = 0;
+            var k_limit = buf_len - slen;
+            while (k <= k_limit) {
+                var k_emitted = 0;
+                var ti = 0;
+                while ((ti < n_temp) && (k_emitted == 0)) {
+                    if (tokenbuf_kind(temp_tb, ti) == TK_PUNCTUATION) {
+                        var ts = tokenbuf_start(temp_tb, ti);
+                        var tl = tokenbuf_len(temp_tb, ti);
+                        if ((k >= ts) && (k < ts + tl)) {
+                            k_emitted = 1;
+                        }
+                    }
+                    ti = ti + 1;
+                }
+                if (k_emitted == 0) {
+                    if (memeq(buf + k, startm, slen) == 1) {
+                        var end_search_from = k + slen;
+                        var end_pos = (0 - 1);
+                        var ep = end_search_from;
+                        while ((ep + elen <= buf_len) && (end_pos < 0)) {
+                            if (memeq(buf + ep, endp, elen) == 1) {
+                                end_pos = ep;
+                            }
+                            if (end_pos < 0) { ep = ep + 1; }
+                        }
+                        if (end_pos < 0) {
+                            var hold_from_start = buf_len - k;
+                            if (hold_from_start > max_hold) {
+                                max_hold = hold_from_start;
+                            }
+                        }
+                    }
+                }
+                k = k + 1;
+            }
+        }
+        i = i + 1;
+    }
+
+    var fenced = grammar_compose_fenced_rules(g);
+    var nf = vec_len(fenced);
+    var fi = 0;
+    while (fi < nf) {
+        var fr = vec_get(fenced, fi);
+        var fstartm = compose_fenced_rule_start(fr);
+        var fslen = strlen(fstartm);
+        var fendp = compose_fenced_rule_end(fr);
+        var felen = strlen(fendp);
+
+        # (a) Trailing prefix of fenced start marker.
+        var fj = fslen - 1;
+        if (fj > buf_len) { fj = buf_len; }
+        var ffound = 0;
+        while ((fj > 0) && (ffound == 0)) {
+            if (memeq(buf + buf_len - fj, fstartm, fj) == 1) {
+                ffound = 1;
+                if (fj > max_hold) { max_hold = fj; }
+            }
+            if (ffound == 0) { fj = fj - 1; }
+        }
+
+        # (b) Full fenced start matched; no end yet. Skip
+        # positions inside emitted TK_PUNCTUATION tokens.
+        if ((fslen > 0) && (fslen <= buf_len)) {
+            var fk = 0;
+            var fk_limit = buf_len - fslen;
+            while (fk <= fk_limit) {
+                var fk_emitted = 0;
+                var fti = 0;
+                while ((fti < n_temp) && (fk_emitted == 0)) {
+                    if (tokenbuf_kind(temp_tb, fti) == TK_PUNCTUATION) {
+                        var fts = tokenbuf_start(temp_tb, fti);
+                        var ftl = tokenbuf_len(temp_tb, fti);
+                        if ((fk >= fts) && (fk < fts + ftl)) {
+                            fk_emitted = 1;
+                        }
+                    }
+                    fti = fti + 1;
+                }
+                if (fk_emitted == 0) {
+                    if (memeq(buf + fk, fstartm, fslen) == 1) {
+                        var fend_search_from = fk + fslen;
+                        var fend_pos = (0 - 1);
+                        var fep = fend_search_from;
+                        while ((fep + felen <= buf_len) && (fend_pos < 0)) {
+                            if (memeq(buf + fep, fendp, felen) == 1) {
+                                fend_pos = fep;
+                            }
+                            if (fend_pos < 0) { fep = fep + 1; }
+                        }
+                        if (fend_pos < 0) {
+                            var fhold = buf_len - fk;
+                            if (fhold > max_hold) { max_hold = fhold; }
+                        }
+                    }
+                }
+                fk = fk + 1;
+            }
+        }
+        fi = fi + 1;
+    }
+
+    return max_hold;
+}
+
 fn _stream_find_pair_rule(g, buf, start, len, kind) {
     var rules = grammar_pair_rules(g);
     var n = vec_len(rules);
@@ -488,6 +703,73 @@ fn tokenize_stream_drain(s, out_tb) {
                 commit_count = n_temp;
             }
         }
+        # 2.2.1 (FINDING-011 fix): hold any trailing bytes that
+        # match a prefix of a compose-rule START marker. Drop
+        # tokens whose extent overlaps with the held region —
+        # they'll be re-scanned next drain when the rest of the
+        # marker arrives.
+        #
+        # Skip when the last *already-committed* token is a
+        # TK_PUNCTUATION matching a compose end marker — those
+        # bytes are claimed by the just-emitted compose pair,
+        # not a partial upcoming open. Without this guard, the
+        # prefix-hold case (a) sees a complete close marker
+        # like `` ``` `` (markdown) as a "prefix of next
+        # open" and drops the close-marker token. Test surfaced
+        # this at the streaming.fcyr markdown/fence-rust
+        # split=28 case.
+        var skip_prefix_hold = 0;
+        if (commit_count > 0) {
+            var lct_kind  = tokenbuf_kind(temp_tb, commit_count - 1);
+            var lct_start = tokenbuf_start(temp_tb, commit_count - 1);
+            var lct_len   = tokenbuf_len(temp_tb, commit_count - 1);
+            if (lct_kind == TK_PUNCTUATION) {
+                # Compose end?
+                var ccr = grammar_compose_rules(g);
+                var ccn = vec_len(ccr);
+                var cci = 0;
+                while ((cci < ccn) && (skip_prefix_hold == 0)) {
+                    var ccrule = vec_get(ccr, cci);
+                    var cce = compose_rule_end(ccrule);
+                    var ccl = strlen(cce);
+                    if ((ccl > 0) && (ccl == lct_len)) {
+                        if (memeq(buf + lct_start, cce, ccl) == 1) {
+                            skip_prefix_hold = 1;
+                        }
+                    }
+                    cci = cci + 1;
+                }
+                # Compose_fenced end?
+                var cfr = grammar_compose_fenced_rules(g);
+                var cfn = vec_len(cfr);
+                var cfi = 0;
+                while ((cfi < cfn) && (skip_prefix_hold == 0)) {
+                    var cfrule = vec_get(cfr, cfi);
+                    var cfe = compose_fenced_rule_end(cfrule);
+                    var cfl = strlen(cfe);
+                    if ((cfl > 0) && (cfl == lct_len)) {
+                        if (memeq(buf + lct_start, cfe, cfl) == 1) {
+                            skip_prefix_hold = 1;
+                        }
+                    }
+                    cfi = cfi + 1;
+                }
+            }
+        }
+        if (skip_prefix_hold == 0) {
+            var prefix_hold = _stream_compose_prefix_hold(g, buf, buf_len, temp_tb, n_temp);
+            if (prefix_hold > 0) {
+                var safe_end = buf_len - prefix_hold;
+                var ph_done = 0;
+                while ((commit_count > 0) && (ph_done == 0)) {
+                    var last = commit_count - 1;
+                    var ts = tokenbuf_start(temp_tb, last);
+                    var tl = tokenbuf_len(temp_tb, last);
+                    if (ts + tl <= safe_end) { ph_done = 1; }
+                    if (ph_done == 0) { commit_count = commit_count - 1; }
+                }
+            }
+        }
     }
     var j = 0;
     while (j < commit_count) {
@@ -508,7 +790,22 @@ fn tokenize_stream_drain(s, out_tb) {
         var p_kind  = tokenbuf_kind(temp_tb, partial);
         var p_start = tokenbuf_start(temp_tb, partial);
         var p_len   = tokenbuf_len(temp_tb, partial);
-        if ((p_kind == TK_STRING) || (p_kind == TK_COMMENT) || (p_kind == TK_PREPROCESSOR)) {
+        # 2.2.1: don't set pair-pending if prefix-hold has
+        # already marked the trailing region for compose
+        # recognition. Without this guard, a `\`` from a pair-
+        # rule fallthrough at chunk boundary would set
+        # pair-pending, and the pair fast path would beat
+        # compose_fenced on subsequent drains (matching the
+        # nearest backtick instead of waiting for the full
+        # ` ``` ` open marker). Surfaced by streaming.fcyr's
+        # markdown/fence-rust random-split case.
+        var hold_overlaps = 0;
+        var prefix_hold2 = _stream_compose_prefix_hold(g, buf, buf_len, temp_tb, n_temp);
+        if (prefix_hold2 > 0) {
+            var hold_start = buf_len - prefix_hold2;
+            if (p_start >= hold_start) { hold_overlaps = 1; }
+        }
+        if ((hold_overlaps == 0) && ((p_kind == TK_STRING) || (p_kind == TK_COMMENT) || (p_kind == TK_PREPROCESSOR))) {
             var rule_idx = _stream_find_pair_rule(g, buf, p_start, p_len, p_kind);
             if (rule_idx >= 0) {
                 new_pending = rule_idx;
@@ -639,6 +936,12 @@ fn tokenize_stream_len(s) {
 fn tokenize_stream_discard_consumed(s) {
     if (s == 0) { return 0; }
     var staging = load64(s + 56);
+    # Defensive (2.1.5 audit recommendation): guard against
+    # use-after-free where `_free` zeroed the staging field.
+    # Without this `tokenbuf_drop_front(0, ...)` would crash on
+    # `load64(tb + 8)`. Cheap one-line check; matches the null-
+    # safety pattern in the rest of the streaming primitive.
+    if (staging == 0) { return 0; }
     var consumed = load64(s + 64);
     if (consumed <= 0) { return 0; }
     tokenbuf_drop_front(staging, consumed);
