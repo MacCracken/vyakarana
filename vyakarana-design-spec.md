@@ -2,8 +2,12 @@
 
 **Source-code grammar and tokenizer library for AGNOS / Cyrius**
 
-Version: 0.1 (draft)
-Status: Design spec, scaffold-stage implementation
+Version: 0.1 (original draft, retained as historical context)
+Status: Design spec — captures the founding goals and pre-1.0
+intent. The implementation is now post-2.0; current state lives
+in `docs/development/state.md`, current decisions in
+`docs/adr/`. Read this file for *why* the project shape is what
+it is; do not treat it as live truth.
 Audience: Implementation agent / contributors
 
 ---

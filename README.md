@@ -83,36 +83,55 @@ cyrius build src/main.cyr build/vyk
 ## `vyk` — the demo CLI
 
 ```sh
-vyk --version              # scaffold-only in v0.1.0
+vyk --version              # prints `vyk 2.2.1`
 vyk --list-kinds           # print the ten token kinds
-vyk --list-languages       # list loaded grammars (empty in v0.1.0)
+vyk --list-languages       # list loaded grammars (45 bundled)
+vyk file.rs                # NDJSON tokens for any bundled grammar
+vyk --language=shell -     # explicit grammar override; reads stdin
 ```
 
-Once M1 lands, `vyk file.sh` will print the tokens as NDJSON so
-you can eyeball grammar behavior from a shell.
+`--theme <name> file.py` previews the grammar via owl's palette
+without running owl; `--handcoded file.sh` exercises the M1 hand-
+coded shell oracle for regression diffs.
 
 ---
 
 ## Using vyakarana as a library
 
-```cyrius
-# From a consumer's src, after adding a [deps.vyakarana] block:
-include "vyakarana/src/tokenize.cyr"
+The 2.0+ public surface is a streaming primitive. Push bytes via
+`_feed`, drain tokens whenever you want, finish to flush:
 
-var src = read_file("hello.sh");
-var tokens = tokenize_source(src, "shell");
-# tokens is a Vec<Token>; each token is (kind, start, len).
+```cyrius
+# After adding a [deps.vyakarana] block to your cyrius.cyml:
+include "vyakarana/dist/vyakarana.cyr"
+
+var s  = tokenize_stream_new("rust");
+var tb = tokenbuf_new();
+tokenize_stream_feed(s, src, src_len);
+tokenize_stream_finish(s, tb);     # flushes pending state
+tokenize_stream_free(s);
+# tb holds (kind, start, len) tokens; iterate via tokenbuf_count /
+# tokenbuf_kind / tokenbuf_start / tokenbuf_len.
 ```
 
-(Consumer-facing API solidifies in M1 alongside the first hand-coded
-grammar.)
+A pull-style cursor (`tokenize_stream_next` / `_kind` / `_start` /
+`_len` + `_discard_consumed`) layers on top for iterator-shaped
+consumers. The 1.x synchronous `tokenize_source(src, lang)` entry
+was removed in 2.0.0 (ADR 0017).
 
 ---
 
 ## Status
 
-v0.1.0 — scaffold. Types locked; tokenizer stubbed; no grammars bundled
-yet. See [docs/development/roadmap.md](./docs/development/roadmap.md) for the milestone plan.
+**2.2.1** (2026-05-08) — 45 bundled grammars, push + pull
+streaming primitive, 4/4 fuzz harnesses green, 840/840 tests
+passing. Toolchain pinned at `cyrius 5.10.5`. The 2.1.5 audit
+queue is fully drained; no follow-up cuts currently scheduled.
+
+`docs/development/state.md` is the authoritative live tracker;
+`CHANGELOG.md` is the per-cut log;
+[`docs/development/roadmap.md`](./docs/development/roadmap.md)
+holds the milestone history and parked backlog.
 
 ## License
 

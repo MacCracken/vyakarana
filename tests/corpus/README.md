@@ -29,5 +29,9 @@ cp ../../../vidya/content/lexing_and_parsing/shell.sh ./shell.sh
 
 ## Status
 
-- `shell.sh` — snapshot of `vidya/content/lexing_and_parsing/shell.sh`,
-  8524 bytes (as of M1).
+45 corpus files (one per bundled grammar). Mix of vidya
+snapshots (where vidya ships a real sample) and ADR-0006
+stand-ins (hand-written `concept.<ext>` files where vidya
+coverage is light). Per-grammar provenance is in
+[docs/architecture/overview.md](../../docs/architecture/overview.md)'s
+"Bundled grammars" table.
