@@ -4,13 +4,13 @@
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.1.4 are
-> shipped. **2.1.4 adds discardable pull-adapter staging +
-> streaming-aware fuzz harness** — caught and fixed a
-> trailing-complete heuristic bug on same-byte pair markers.
-> 45 bundled grammars (unchanged); 4 fuzz harnesses (was 3);
-> 836/836 tests passing. Toolchain pin `cyrius = "5.10.0"`.
-> Next: 2.1.5 (closeout audit). See §Next up.
+> **Read this file before doing anything.** 1.0.0–2.1.5 are
+> shipped. **2.1.5 closes the 2.1.x window with the
+> post-2.1 security audit** (0 new findings; FINDING-011
+> compose-prefix-streaming gap deferred to the next opt
+> cut). 45 bundled grammars; 4 fuzz harnesses; 836/836
+> tests passing. Toolchain pin `cyrius = "5.10.0"`. No
+> work currently in flight. See §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -30,8 +30,23 @@
 
 ## Current status (2026-05-08)
 
-- **Version:** `2.1.4` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `2.1.5` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`.
+- **What 2.1.5 added (closeout audit):**
+  - **`docs/audit/2026-05-09-2.1.x-closeout-audit.md`** —
+    full surface review of every 2.1.x change. Per-function
+    bounds analysis on the streaming primitives and the
+    seven new grammars. **0 CRITICAL / 0 HIGH / 0 MEDIUM /
+    0 LOW (no new findings).**
+  - **FINDING-011 filed (deferred):** compose-rule START
+    markers split across chunks lose the route. Picked up
+    in the next streaming-opt cut.
+  - **Recommendations carried forward:** defensive
+    `staging == 0` check in `tokenize_stream_discard_consumed`;
+    compose-rule prefix buffering (FINDING-011); revisit
+    1.13.0 binary-size soft cap; toolchain pin discipline
+    (memory captures the rule).
+  - No code changes — pure audit.
 - **What 2.1.4 added (streaming opts + fuzz):**
   - **`tokenize_stream_discard_consumed(s)`** — drops
     iterated-past tokens from pull-adapter staging.
@@ -501,15 +516,19 @@ Still cosmetic-only and waiting on a future ADR:
 - [2026-05-09 — 2.0.x closeout](../audit/2026-05-09-2.0.x-closeout-audit.md):
   streaming surfaces (push primitive, rolling buffer, pull
   adapter, pending-pair fast path). 0 CRITICAL / 0 HIGH /
-  0 MEDIUM / **2 LOW (FINDING-008, FINDING-009 — both
-  fixed in-pass).** Buffer-cap semantics documented;
-  `VYK_STREAM_CAP` caps live buffer not total input.
+  0 MEDIUM / 2 LOW (FINDING-008, FINDING-009 — both fixed
+  in-pass).
+- [2026-05-09 — 2.1.x closeout](../audit/2026-05-09-2.1.x-closeout-audit.md):
+  seven new grammars + streaming opts (discard primitive,
+  trailing-complete tightening, streaming fuzz harness).
+  **0 CRITICAL / 0 HIGH / 0 MEDIUM / 0 LOW.** FINDING-010
+  fixed in 2.1.4 in-pass; **FINDING-011 (compose-rule
+  prefix streaming gap) deferred** to the next opt cut.
 
 See `SECURITY.md` for the living state of the audit findings.
-Next scheduled audit: 2.1.x closeout (after the four grammar
-batches land — surface additions are mostly declarative
-`.cyml` files; the audit confirms grammar-loader hardening
-didn't regress).
+Next scheduled audit: the next streaming-opt cut (which fixes
+FINDING-011); or whichever cut lands a meaningful new surface
+first.
 
 ---
 
@@ -534,44 +553,46 @@ Closed waves:
 
 Now in flight — 2.1.x grammar batches:
 
-- **2.1.0 — PowerShell / Crystal / Julia grammars.**
-  Shipped.
-- **2.1.1 — Vue / Svelte single-file components.**
-  Shipped (this cut). Both use compose rules to route
-  `<script>` / `<style>` bodies; attribute-bearing
-  variants (`<script lang="ts">`) fall back to outer
-  tokenization (documented limitation).
-- **2.1.2 — Nix grammar.** Shipped (this cut). `//`
-  set-merge, `++` list concat, `'`/`-` in idents,
-  `''…''` indented strings.
-- **2.1.3 — Terraform / HCL grammar.** Shipped (this cut).
-  Closes the 2.1.x wave. No work currently in
-flight. The post-streaming queue is open — nothing forces
-the next cut. Possible directions when work resumes:
+- **2.1.0 — PowerShell / Crystal / Julia grammars.** Shipped.
+- **2.1.1 — Vue / Svelte single-file components.** Shipped.
+- **2.1.2 — Nix grammar.** Shipped.
+- **2.1.3 — Terraform / HCL grammar.** Shipped.
+- **2.1.4 — Streaming opts + fuzz.** Shipped. Discardable
+  pull-adapter staging; streaming-aware fuzz harness;
+  trailing-complete heuristic tightened (FINDING-010).
+- **2.1.5 — Closeout audit.** Shipped (this cut). 0 new
+  findings. FINDING-011 (compose-prefix-streaming) deferred.
 
+**The 2.1.x window is fully closed.** No work currently in
+flight. Possible directions when work resumes:
+
+- **Compose-rule prefix buffering** — fixes FINDING-011
+  (compose-rule START markers split across chunks lose the
+  route). Re-enables HTML / Vue / Svelte / Markdown
+  random-split cases in `streaming.fcyr`. Likely the next
+  natural cut since it has a concrete, captured bug to
+  resolve.
 - **Scanner state-machine optimization.** 2.0.1's
   rescan-and-commit drain is O(buf_len) per call. A real
   state machine would scan only the new bytes since the
-  previous commit, dropping the per-feed cost from
-  O(buf_len) to O(new_bytes). Worth doing if a real
-  consumer surfaces a profiling complaint.
-- **Discardable staging buffer.** The pull adapter's
-  internal tokenbuf grows monotonically across iteration.
-  For very long streams (millions of tokens) the tokenbuf
-  itself becomes a memory cost. Adding a "discard tokens
-  before index N" primitive would cap pull-mode memory
-  too.
-- **Additional grammars.** Eight categories surfaced in
-  prior cuts but didn't make 2.x: shell variants,
-  Terraform / HCL, Nix, Vue / Svelte single-file, MDX,
-  PowerShell, Crystal, Julia.
-- **Real-corpus fuzz harness** (flagged in the
-  2026-05-09 1.13-closeout audit's recommendations).
-  Mutates vidya snapshots instead of random bytes —
-  catches shape-specific regressions.
+  previous commit, dropping per-feed cost from O(buf_len)
+  to O(new_bytes). Worth doing if a real consumer surfaces
+  a profiling complaint.
+- **Real-corpus fuzz harness** (flagged in the 2026-05-09
+  1.13-closeout audit's recommendations). Mutates vidya
+  snapshots instead of random bytes — catches shape-
+  specific regressions.
+- **More grammars.** No batch queued; whatever a real
+  consumer asks for. Stale-list candidates from the 2.1.x
+  selection: MDX (markdown + JSX), shell variants beyond
+  bash/zsh/sh/dash, Lean 4, Zig macros.
+- **Binary-size cap revisit.** 1.13.0's 300 KB soft cap is
+  consistently exceeded (now ~376 KB) since ADR 0014's
+  embedded-grammar design. Not a security concern; flagged
+  in the 2026-05-09 2.1.x audit as a 2.x roadmap item.
 
-These are all consumer-driven. No forced minor; the next
-cut waits for a real ask.
+All consumer-driven. No forced minor; the next cut waits
+for a real ask.
 
 Each new grammar is a `grammars/<name>.cyml` plus a
 `tests/corpus/<name>.<ext>` (vidya snapshot per

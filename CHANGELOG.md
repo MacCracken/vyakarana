@@ -6,6 +6,58 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [2.1.5] — 2026-05-08
+
+Closes the 2.1.x window with the **post-2.1 security audit**.
+0 new findings; FINDING-010 (fixed in 2.1.4) and FINDING-011
+(deferred — compose-rule prefix streaming gap) recorded in
+the carryover table. No code changes — pure audit.
+
+### Added
+
+- **`docs/audit/2026-05-09-2.1.x-closeout-audit.md`** —
+  full surface review of every 2.1.x change. Per-function
+  bounds analysis on `tokenbuf_drop_front`,
+  `tokenize_stream_discard_consumed`, the
+  `_stream_is_trailing_complete` tightening, the
+  `detect_language` length-bucket refactor, and each of
+  the seven new grammars. Buffer-cap semantics confirmed
+  unchanged from the 2.0.x close. Streaming fuzz harness
+  (2.1.4) called out as the most rigorous correctness
+  check in the suite — already caught two bugs on its
+  first run.
+  **0 CRITICAL / 0 HIGH / 0 MEDIUM / 0 LOW (no new
+  findings).**
+
+### Status
+
+- **2.1.x is closed.** Seven grammars added (PowerShell,
+  Crystal, Julia, Vue, Svelte, Nix, Terraform); discardable
+  pull-adapter staging; streaming-aware fuzz; trailing-
+  complete heuristic tightened; closeout audit. Bundled
+  grammar count: 38 → 45 across the window.
+- Carryover findings table updated. FINDING-010 fixed in
+  2.1.4 in-pass. **FINDING-011 (compose-rule prefix
+  streaming gap) is the only deferred item** — picked up
+  in the next streaming-opt cut.
+
+### Recommendations carried forward
+
+- **Defensive `staging == 0` check in
+  `tokenize_stream_discard_consumed`** — one-line guard;
+  matches the pattern used elsewhere; out of scope for
+  2.1.5 but should land in the next opt cut alongside
+  FINDING-011's fix.
+- **Compose-rule prefix buffering** — required for
+  FINDING-011; same opt cut.
+- **Revisit the 1.13.0 binary-size soft cap** (300 KB).
+  Predates ADR 0014's embedded-grammar design; binary now
+  ~376 KB and rising with each grammar batch. Not a
+  security concern; flagged for 2.x roadmap.
+- **Toolchain pin discipline** — `feedback_cyrius_pin_authority.md`
+  in agent memory now captures the rule (use `cyriusly use
+  <pin>`; never bump `cyrius.cyml` to chase local).
+
 ## [2.1.4] — 2026-05-08
 
 Streaming optimization + fuzz cut. **Discardable pull-adapter
