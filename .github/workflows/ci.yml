@@ -20,18 +20,23 @@ jobs:
 
       - name: Install Cyrius toolchain
         run: |
-          CYRIUS_VERSION="${CYRIUS_VERSION:-$(grep 'cyrius *= *"' cyrius.cyml 2>/dev/null | head -1 | sed 's/.*"\(.*\)"/\1/')}"
+          set -e
+          # The cyrius.cyml `[package].cyrius` pin is the single source of
+          # truth for the toolchain version — no version hardcoded here.
+          # The upstream installer lays out the version-matched stdlib
+          # snapshot at ~/.cyrius/versions/<pin>/lib, which `cyrius deps`
+          # copies into ./lib (gitignored since 2.2.2 — ADR 0018). The old
+          # manual tar+cp dropped the stdlib in a flat ~/.cyrius/lib that
+          # 6.0.x ignores: harmless while lib/ was committed, broken once
+          # the checkout stopped shipping it. Matches patra / sigil.
+          CYRIUS_VERSION="$(grep '^cyrius = ' cyrius.cyml | head -1 | sed 's/cyrius = "\(.*\)"/\1/')"
           echo "Installing Cyrius $CYRIUS_VERSION"
-          curl -sLO "https://github.com/MacCracken/cyrius/releases/download/$CYRIUS_VERSION/cyrius-$CYRIUS_VERSION-x86_64-linux.tar.gz"
-          tar xzf "cyrius-$CYRIUS_VERSION-x86_64-linux.tar.gz"
-          CYRIUS_DIR="cyrius-$CYRIUS_VERSION-x86_64-linux"
-          mkdir -p "$HOME/.cyrius/bin" "$HOME/.cyrius/lib"
-          cp "$CYRIUS_DIR/bin/"* "$HOME/.cyrius/bin/" 2>/dev/null || true
-          cp -r "$CYRIUS_DIR/lib/"* "$HOME/.cyrius/lib/" 2>/dev/null || true
-          chmod +x "$HOME/.cyrius/bin/"* 2>/dev/null || true
-          echo "$HOME/.cyrius/bin" >> $GITHUB_PATH
-          echo "CYRIUS_HOME=$HOME/.cyrius" >> $GITHUB_ENV
+          curl -sSf https://raw.githubusercontent.com/MacCracken/cyrius/main/scripts/install.sh | \
+            CYRIUS_VERSION="$CYRIUS_VERSION" sh
+          echo "$HOME/.cyrius/bin" >> "$GITHUB_PATH"
 
+      # Populates ./lib from the version-matched toolchain snapshot
+      # (gitignored since 2.2.2 — ADR 0018). Required before build.
       - name: Resolve dependencies
         run: cyrius deps
 

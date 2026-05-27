@@ -27,6 +27,17 @@ fuzz harnesses unchanged.
   build time. `cyrius deps` now repopulates `lib/` from the
   pinned snapshot on each checkout. Untrack with `git rm -r
   --cached lib`.
+- **CI / release install via the upstream `cyrius` installer.**
+  `.github/workflows/{ci,release}.yml` previously did a manual
+  `curl + tar + cp` that dropped the stdlib in a flat
+  `~/.cyrius/lib`. 6.0.x reads the version-matched snapshot from
+  `~/.cyrius/versions/<pin>/lib`, which only the upstream
+  `install.sh` lays out — so `cyrius deps` can repopulate the
+  now-gitignored `lib/`. The manual copy was harmless while
+  `lib/` was committed; it would have broken the build on a
+  fresh checkout once it wasn't. Pin still read from
+  `cyrius.cyml` (no hardcoded version). Dropped a dead
+  `matrix.installer` field. Matches `patra` / `sigil`.
 
 ### Fixed
 

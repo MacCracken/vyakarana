@@ -69,7 +69,6 @@ jobs:
         include:
           - target: x86_64-linux
             runs-on: ubuntu-latest
-            installer: cyrius-${VERSION}-x86_64-linux.tar.gz
     env:
       CYRIUS_DCE: '1'             # dead-code-eliminated build
       VERSION: ${{ needs.version-verify.outputs.version }}
@@ -78,17 +77,20 @@ jobs:
 
       - name: Install Cyrius toolchain
         run: |
-          CYRIUS_VERSION=$(grep 'cyrius *= *"' cyrius.cyml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          set -e
+          # Pin from cyrius.cyml; upstream installer lays out the
+          # version-matched stdlib snapshot at ~/.cyrius/versions/<pin>/lib
+          # for `cyrius deps` (lib/ gitignored since 2.2.2 — ADR 0018). The
+          # installer detects the host platform, so the matrix runner picks
+          # the right arch without a hardcoded URL. Matches ci.yml + patra.
+          CYRIUS_VERSION="$(grep '^cyrius = ' cyrius.cyml | head -1 | sed 's/cyrius = "\(.*\)"/\1/')"
           echo "Installing Cyrius $CYRIUS_VERSION"
-          curl -sLO "https://github.com/MacCracken/cyrius/releases/download/$CYRIUS_VERSION/cyrius-$CYRIUS_VERSION-${{ matrix.target }}.tar.gz"
-          tar xzf "cyrius-$CYRIUS_VERSION-${{ matrix.target }}.tar.gz"
-          CYRIUS_DIR="cyrius-$CYRIUS_VERSION-${{ matrix.target }}"
-          mkdir -p "$HOME/.cyrius/bin" "$HOME/.cyrius/lib"
-          cp "$CYRIUS_DIR/bin/"* "$HOME/.cyrius/bin/" 2>/dev/null || true
-          cp -r "$CYRIUS_DIR/lib/"* "$HOME/.cyrius/lib/" 2>/dev/null || true
-          chmod +x "$HOME/.cyrius/bin/"* 2>/dev/null || true
-          echo "$HOME/.cyrius/bin" >> $GITHUB_PATH
+          curl -sSf https://raw.githubusercontent.com/MacCracken/cyrius/main/scripts/install.sh | \
+            CYRIUS_VERSION="$CYRIUS_VERSION" sh
+          echo "$HOME/.cyrius/bin" >> "$GITHUB_PATH"
 
+      # Populates ./lib from the version-matched toolchain snapshot
+      # (gitignored since 2.2.2 — ADR 0018). Required before build.
       - name: Resolve dependencies
         run: cyrius deps
 

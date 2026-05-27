@@ -137,6 +137,13 @@ overlap exactly with either of the existing two).
 The repo owner runs the release flow when shipping a new minor
 or patch:
 
+0. **Fresh-checkout prep.** As of 2.2.2 the stdlib `lib/` is
+   gitignored (ADR 0018), so a clean clone has no stdlib until
+   `cyrius deps` populates it from the version-matched toolchain
+   snapshot. Run `cyriusly use "$(grep '^cyrius = ' cyrius.cyml
+   | sed 's/.*"\(.*\)"/\1/')"` then `cyrius deps && sh
+   scripts/embed-grammars.sh` before the gate sweep. CI does the
+   same via the upstream installer + `cyrius deps`.
 1. **Final gate sweep on the release branch.** All five gates
    green: `cyrius build`, `cyrius test`, `sh scripts/smoke.sh`,
    `sh scripts/lint-fmt.sh`, `cyrius fuzz`. Plus
