@@ -17,7 +17,7 @@ tokenize source code).
 ## What you depend on
 
 vyakarana ships a single concatenated distfile,
-`dist/vyakarana.cyr`, that bundles the public API **and the 38
+`dist/vyakarana.cyr`, that bundles the public API **and the 45
 grammars themselves** (inlined as Cyrius string literals — see
 [ADR 0014](../adr/0014-embedded-grammar-blobs.md)). Add to your
 project's `cyrius.cyml`:
@@ -25,7 +25,7 @@ project's `cyrius.cyml`:
 ```toml
 [deps.vyakarana]
 git     = "https://github.com/MacCracken/vyakarana.git"
-tag     = "2.0.0"
+tag     = "2.2.2"
 modules = ["dist/vyakarana.cyr"]
 ```
 

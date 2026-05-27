@@ -27,6 +27,11 @@ sub-blocks).
 | 0011 | [`case_insensitive_keywords` default](0011-case-insensitive-keywords-default.md)         | Accepted | 2026-05-08 |
 | 0012 | [LSP semantic-tokens bridge mapping](0012-lsp-semantic-tokens-bridge.md)                  | Accepted | 2026-05-08 |
 | 0013 | [Grammar composition rule](0013-grammar-composition-rule.md)                              | Accepted | 2026-05-08 |
+| 0014 | [Embedded grammar blobs in the dist bundle](0014-embedded-grammar-blobs.md)                | Accepted | 2026-05-08 |
+| 0015 | [Content-based language detection](0015-content-based-detection.md)                        | Accepted | 2026-05-08 |
+| 0016 | [`compose_fenced` rule type for markdown fences](0016-compose-fenced-rule.md)              | Accepted | 2026-05-08 |
+| 0017 | [Streaming tokenizer API (2.0)](0017-streaming-api.md)                                     | Accepted | 2026-05-08 |
+| 0018 | [Vendored stdlib snapshot is gitignored, not committed](0018-vendored-stdlib-gitignored.md) | Accepted | 2026-05-27 |
 
 ## Conventions
 

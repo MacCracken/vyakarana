@@ -6,6 +6,46 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [2.2.2] — 2026-05-27
+
+**Modernization cut.** Bumps the toolchain pin 5.10.5 → 6.0.3 and
+moves the vendored stdlib to the `cyrius deps` model used by the
+sibling first-party libraries (`patra`, `sigil`). No public-API,
+token-layout, or grammar changes; 45 grammars, 840/840 tests, 4/4
+fuzz harnesses unchanged.
+
+### Changed
+
+- **Toolchain pin `5.10.5` → `6.0.3`** in `cyrius.cyml`. Local
+  devs run `cyriusly use 6.0.3`. All declared stdlib modules
+  (`syscalls`, `alloc`, `fmt`, `io`, `fs`, `str`, `string`,
+  `vec`, `args`, `hashmap`, `assert`, `cyml`) resolve in 6.0.3.
+- **Vendored `lib/` is now gitignored** ([ADR 0018](docs/adr/0018-vendored-stdlib-gitignored.md)).
+  Previously 20 stdlib files were committed at the 5.10.5
+  vintage; a checked-in `./lib/` shadows the version-matched
+  toolchain snapshot, so the pin was effectively ignored at
+  build time. `cyrius deps` now repopulates `lib/` from the
+  pinned snapshot on each checkout. Untrack with `git rm -r
+  --cached lib`.
+
+### Fixed
+
+- **`vyk --list-languages` printed pointer addresses on 6.0.x.**
+  Cyrius 6.0 annotates `vec_get(v, idx): i64`, so the
+  unannotated `println(vec_get(...))` in `print_list_languages`
+  dispatched to the `println_int` overload. Bind the result
+  through a `var name: cstring` local to land on the string
+  overload. The bug was masked pre-2.2.2 by the committed 5.10.5
+  `lib/` (untyped `vec_get`); surfaced once the 6.0.3 snapshot
+  took over per ADR 0018.
+
+### Docs
+
+- ADR index (`docs/adr/README.md`) backfilled with the 0014–0017
+  entries that were missing, plus the new 0018.
+- Consumer-integration guide dep example bumped to `tag =
+  "2.2.2"` and the stale "38 grammars" count corrected to 45.
+
 ## [2.2.1] — 2026-05-08
 
 **Wrap-up cut for the 2.1.5 audit queue.** Resolves

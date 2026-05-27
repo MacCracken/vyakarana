@@ -103,8 +103,15 @@ fn print_list_languages() {
     list_languages_into(names);
     var n = vec_len(names);
     var i = 0;
+    # vec_get is `: i64`-typed as of cyrius 6.0.x, so an unannotated
+    # `println(vec_get(...))` dispatches to println_int and prints the
+    # pointer. Bind through a `: cstring` local to land on the string
+    # overload. (Was masked pre-2.2.2 by the vendored 5.10.5 stdlib,
+    # whose vec_get was untyped.)
+    var name: cstring = 0;
     while (i < n) {
-        println(vec_get(names, i));
+        name = vec_get(names, i);
+        println(name);
         i = i + 1;
     }
     return 0;

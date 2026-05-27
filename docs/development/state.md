@@ -1,16 +1,17 @@
 # vyakarana — current state
 
-> **Last refresh:** 2026-05-08 | **Refresh cadence:** every release
+> **Last refresh:** 2026-05-27 | **Refresh cadence:** every release
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.2.1 are
-> shipped. **2.2.1 wraps the 2.1.5 audit queue** — FINDING-011
-> compose-rule prefix buffering fixed, defensive `staging == 0`
-> guard added, HTML / Vue / Markdown random-split fuzz cases
-> re-enabled. 45 bundled grammars; 4 fuzz harnesses; 836/836
-> tests passing on 5.10.5. No work currently in flight. See
-> §Next up.
+> **Read this file before doing anything.** 1.0.0–2.2.2 are
+> shipped. **2.2.2 is a modernization cut** — toolchain pin
+> 5.10.5 → 6.0.3, vendored `lib/` moved to the `cyrius deps`
+> model (gitignored, ADR 0018), one dispatch fix in
+> `--list-languages` for the 6.0 `vec_get: i64` annotation. No
+> public-API, token-layout, or grammar changes. 45 bundled
+> grammars; 4 fuzz harnesses; 840/840 tests passing on 6.0.3.
+> No work currently in flight. See §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -28,12 +29,29 @@
 
 ---
 
-## Current status (2026-05-08)
+## Current status (2026-05-27)
 
-- **Version:** `2.2.1` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `2.2.2` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`.
-- **Toolchain pin:** `cyrius = "5.10.5"` (bumped from 5.10.0
-  in 2.2.0). Local devs run `cyriusly use 5.10.5`.
+- **Toolchain pin:** `cyrius = "6.0.3"` (bumped from 5.10.5
+  in 2.2.2). Local devs run `cyriusly use 6.0.3`.
+- **What 2.2.2 added (modernization cut):**
+  - **Toolchain pin `5.10.5` → `6.0.3`.** All declared stdlib
+    modules resolve in 6.0.3.
+  - **Vendored `lib/` gitignored** ([ADR 0018](../adr/0018-vendored-stdlib-gitignored.md)).
+    The 20 committed 5.10.5-vintage stdlib files were shadowing
+    the version-matched toolchain snapshot, so the pin was
+    ignored at build time. `cyrius deps` now repopulates `lib/`
+    from the pinned snapshot — matches `patra` / `sigil`.
+    Untrack with `git rm -r --cached lib`.
+  - **`vyk --list-languages` dispatch fix.** 6.0 annotates
+    `vec_get(v, idx): i64`, so `println(vec_get(...))` resolved
+    to `println_int` and printed pointer addresses. Bound the
+    result through a `var name: cstring` local. Was masked by
+    the committed 5.10.5 `lib/`; surfaced once the 6.0.3
+    snapshot took over.
+  - Pure infrastructure + one-line correctness fix — no
+    grammar, token-layout, or public-API changes.
 - **What 2.2.1 added (audit-queue wrap-up):**
   - **Compose-rule prefix buffering (FINDING-011 fix).**
     `_stream_compose_prefix_hold(g, buf, buf_len, temp_tb,
@@ -603,10 +621,14 @@ Now in flight — 2.1.x grammar batches:
   FINDING-011 (compose-prefix-streaming) deferred to 2.2.1.
 - **2.2.0 — Toolchain pin bump.** Shipped. cyrius
   `5.10.0` → `5.10.5`. Pure infrastructure cut.
-- **2.2.1 — Audit-queue wrap-up.** Shipped (this cut).
+- **2.2.1 — Audit-queue wrap-up.** Shipped.
   FINDING-011 compose-rule prefix buffering fixed;
   defensive `staging == 0` guard; HTML / Vue / Markdown
   random-split fuzz cases re-enabled.
+- **2.2.2 — Modernization cut.** Shipped (this cut). Toolchain
+  pin `5.10.5` → `6.0.3`; vendored `lib/` gitignored
+  ([ADR 0018](../adr/0018-vendored-stdlib-gitignored.md));
+  `--list-languages` dispatch fix for 6.0's `vec_get: i64`.
 
 **The 2.1.x window is fully closed; the 2.1.5 audit queue
 is now empty.** No work currently in flight. Possible
@@ -678,7 +700,9 @@ Post-1.1 roadmap ([./roadmap.md](./roadmap.md) has the detail):
   corpus decisions. M6 will bring vidya on as a consumer; don't
   pre-negotiate that now.
 - **cyrius** (`/home/macro/Repos/cyrius`) — toolchain. Pinned at
-  `5.9.36` in `cyrius.cyml`. The 2026-05-07 `include`-graph
+  `6.0.3` in `cyrius.cyml` (bumped from 5.10.5 in 2.2.2; see
+  [ADR 0018](../adr/0018-vendored-stdlib-gitignored.md)). The
+  2026-05-07 `include`-graph
   regression filed against 5.9.32
   ([`./issues/2026-05-07-cyrius-include-graph-regression.md`](./issues/2026-05-07-cyrius-include-graph-regression.md))
   is resolved on 5.9.36. If you find another compiler bug, file

@@ -14,4 +14,4 @@
 # just references the var. No regex hunting; no drift; no
 # fourth-file gotcha. cyrius and cyim use the same pattern.
 
-var VYK_VERSION = "vyk 2.2.1";
+var VYK_VERSION = "vyk 2.2.2";
