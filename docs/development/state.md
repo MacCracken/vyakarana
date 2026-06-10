@@ -1,17 +1,17 @@
 # vyakarana — current state
 
-> **Last refresh:** 2026-05-27 | **Refresh cadence:** every release
+> **Last refresh:** 2026-06-10 | **Refresh cadence:** every release
 > (1.x cuts), plus any session that shifts the gates' colour or
 > the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.2.2 are
-> shipped. **2.2.2 is a modernization cut** — toolchain pin
-> 5.10.5 → 6.0.3, vendored `lib/` moved to the `cyrius deps`
-> model (gitignored, ADR 0018), one dispatch fix in
-> `--list-languages` for the 6.0 `vec_get: i64` annotation. No
-> public-API, token-layout, or grammar changes. 45 bundled
-> grammars; 4 fuzz harnesses; 840/840 tests passing on 6.0.3.
-> No work currently in flight. See §Next up.
+> **Read this file before doing anything.** 1.0.0–2.2.3 are
+> shipped. **2.2.3 is a toolchain pin bump** — pin 6.0.3 →
+> 6.1.24, no vyakarana code changes. (2.2.2 was the modernization
+> cut: pin 5.10.5 → 6.0.3, vendored `lib/` moved to the `cyrius
+> deps` model — gitignored, ADR 0018.) No public-API,
+> token-layout, or grammar changes. 45 bundled grammars; 4 fuzz
+> harnesses; 840/840 tests passing on 6.1.24. No work currently
+> in flight. See §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -29,12 +29,17 @@
 
 ---
 
-## Current status (2026-05-27)
+## Current status (2026-06-10)
 
-- **Version:** `2.2.2` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `2.2.3` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`.
-- **Toolchain pin:** `cyrius = "6.0.3"` (bumped from 5.10.5
-  in 2.2.2). Local devs run `cyriusly use 6.0.3`.
+- **Toolchain pin:** `cyrius = "6.1.24"` (bumped from 6.0.3
+  in 2.2.3). Local devs run `cyriusly use 6.1.24`.
+- **What 2.2.3 added (toolchain pin bump):**
+  - **Toolchain pin `6.0.3` → `6.1.24`.** All declared stdlib
+    modules resolve in 6.1.24; all five gates (build, test,
+    smoke, lint, fmt) green. No grammar, token-layout, or
+    public-API changes.
 - **What 2.2.2 added (modernization cut):**
   - **Toolchain pin `5.10.5` → `6.0.3`.** All declared stdlib
     modules resolve in 6.0.3.
@@ -625,10 +630,13 @@ Now in flight — 2.1.x grammar batches:
   FINDING-011 compose-rule prefix buffering fixed;
   defensive `staging == 0` guard; HTML / Vue / Markdown
   random-split fuzz cases re-enabled.
-- **2.2.2 — Modernization cut.** Shipped (this cut). Toolchain
+- **2.2.2 — Modernization cut.** Shipped. Toolchain
   pin `5.10.5` → `6.0.3`; vendored `lib/` gitignored
   ([ADR 0018](../adr/0018-vendored-stdlib-gitignored.md));
   `--list-languages` dispatch fix for 6.0's `vec_get: i64`.
+- **2.2.3 — Toolchain pin bump.** Shipped (this cut). cyrius
+  `6.0.3` → `6.1.24`. Pure infrastructure cut; no vyakarana
+  code changes.
 
 **The 2.1.x window is fully closed; the 2.1.5 audit queue
 is now empty.** No work currently in flight. Possible
@@ -700,7 +708,8 @@ Post-1.1 roadmap ([./roadmap.md](./roadmap.md) has the detail):
   corpus decisions. M6 will bring vidya on as a consumer; don't
   pre-negotiate that now.
 - **cyrius** (`/home/macro/Repos/cyrius`) — toolchain. Pinned at
-  `6.0.3` in `cyrius.cyml` (bumped from 5.10.5 in 2.2.2; see
+  `6.1.24` in `cyrius.cyml` (bumped from 6.0.3 in 2.2.3; 6.0.3
+  came from 5.10.5 in 2.2.2; see
   [ADR 0018](../adr/0018-vendored-stdlib-gitignored.md)). The
   2026-05-07 `include`-graph
   regression filed against 5.9.32

@@ -6,6 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [2.2.3] — 2026-06-10
+
+**Toolchain pin bump.** Moves the pin `6.0.3` → `6.1.24`. No
+public-API, token-layout, or grammar changes; 45 grammars,
+840/840 tests, 4/4 fuzz harnesses unchanged.
+
+### Changed
+
+- **Toolchain pin `6.0.3` → `6.1.24`** in `cyrius.cyml`. Local
+  devs run `cyriusly use 6.1.24`. All declared stdlib modules
+  (`syscalls`, `alloc`, `fmt`, `io`, `fs`, `str`, `string`,
+  `vec`, `args`, `hashmap`, `assert`, `cyml`) resolve in 6.1.24;
+  all five gates (build, test, smoke, lint, fmt) green.
+
 ## [2.2.2] — 2026-05-27
 
 **Modernization cut.** Bumps the toolchain pin 5.10.5 → 6.0.3 and

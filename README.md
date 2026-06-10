@@ -83,7 +83,7 @@ cyrius build src/main.cyr build/vyk
 ## `vyk` — the demo CLI
 
 ```sh
-vyk --version              # prints `vyk 2.2.2`
+vyk --version              # prints `vyk 2.2.3`
 vyk --list-kinds           # print the ten token kinds
 vyk --list-languages       # list loaded grammars (45 bundled)
 vyk file.rs                # NDJSON tokens for any bundled grammar
@@ -123,10 +123,10 @@ was removed in 2.0.0 (ADR 0017).
 
 ## Status
 
-**2.2.2** (2026-05-27) — 45 bundled grammars, push + pull
+**2.2.3** (2026-06-10) — 45 bundled grammars, push + pull
 streaming primitive, 4/4 fuzz harnesses green, 840/840 tests
-passing. Toolchain pinned at `cyrius 6.0.3`. Modernization cut:
-toolchain pin bumped 5.10.5 → 6.0.3, no vyakarana code changes.
+passing. Toolchain pinned at `cyrius 6.1.24`. Pin bump cut:
+toolchain pin bumped 6.0.3 → 6.1.24, no vyakarana code changes.
 
 `docs/development/state.md` is the authoritative live tracker;
 `CHANGELOG.md` is the per-cut log;
