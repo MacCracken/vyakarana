@@ -197,3 +197,11 @@ public static class Program
         }
     }
 }
+
+// 2.3.2 error-hole coverage: C# preprocessor directives.
+#nullable enable
+#region Diagnostics
+#if DEBUG
+#pragma warning disable CS0168
+#endif
+#endregion

@@ -77,6 +77,8 @@ operators = [
     "#",
     "$",
     "+", "-", "*", "%",
+    # Free text in markup bodies — see the vue grammar.
+    "\\", "^", "`", "|", "~",
 ]
 
 punctuation = [

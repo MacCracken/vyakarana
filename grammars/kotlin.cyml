@@ -72,6 +72,9 @@ operators = [
     "!", "~", "&", "|", "^",
     "<", ">",
     "?",
+    # `'` / `\` fallbacks for char-literal escape forms
+    # `char_literal` does not model (`'\u0041'`).
+    "'", "\\",
 ]
 
 punctuation = [
@@ -132,3 +135,13 @@ words = [
     "in", "out", "as",
     "by", "where",
 ]
+
+# Backtick-escaped identifier — `` `object` ``, and the test-naming
+# idiom ``fun `returns 404 when missing`()``. Emitted as TK_IDENT
+# because the delimited text names something.
+[[rules]]
+kind = "ident"
+match = "pair"
+start = "`"
+end = "`"
+

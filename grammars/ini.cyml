@@ -61,6 +61,10 @@ operators = [
     "&", "|", "@",
     "!", "?", "#", "$",
     "\\",
+    # INI values are free-form text to end of line: `%` drives
+    # configparser interpolation (`%(name)s`), and `^`, backtick
+    # and `~` all appear unquoted in real config values.
+    "%", "^", "`", "~",
 ]
 
 punctuation = [

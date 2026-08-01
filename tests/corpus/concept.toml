@@ -90,3 +90,14 @@ evidence = "rustc uses a typed arena for AST nodes. GCC uses obstacks (similar c
 title = "Lookup tables beat branching for character classification"
 explanation = "Checking if a character is an identifier start/continuation with chains of comparisons (is_alpha || c == '_' || is_digit) generates branches. A 256-byte lookup table indexed by byte value gives branch-free classification. The table fits in 4 cache lines."
 evidence = "Table lookup: 1 cycle (memory load, likely cached). Branch chain for 6 categories: 3-6 cycles with branch misprediction. rustc and V8 both use classification tables for their lexers."
+
+
+# 2.3.2 error-hole coverage: RFC 3339 datetimes. `:` separates
+# the time fields and was the one genuine hole in this grammar --
+# TOML is otherwise strict enough that every other unlisted byte
+# really is invalid.
+[audit]
+started_at = 2026-07-31T10:30:00Z
+finished_at = 2026-07-31T11:05:30.250-04:00
+local_date = 2026-07-31
+local_time = 10:30:00

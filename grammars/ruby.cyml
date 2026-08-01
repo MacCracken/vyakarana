@@ -163,3 +163,14 @@ words = [
     "__method__", "__FILE__", "__LINE__", "__dir__", "__ENCODING__",
     "BEGIN", "END",
 ]
+
+# Command literal `` `ls` `` — runs the string in a subshell and
+# returns stdout. Same shape as Ruby's `%x{}`. TK_STRING per the
+# julia.cyml precedent.
+[[rules]]
+kind = "string"
+match = "pair"
+start = "`"
+end = "`"
+escape = "\\"
+

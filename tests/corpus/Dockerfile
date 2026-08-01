@@ -52,3 +52,9 @@ healthcheck --interval=30s --timeout=3s --retries=3 \
 # JSON-form (exec form) ENTRYPOINT — recommended over shell form.
 EntryPoint ["/app/concept"]
 CMD        ["--listen", "0.0.0.0:8080"]
+
+
+# 2.3.2 error-hole coverage: RUN bodies are shell -- backtick
+# command substitution and `%` both turn up there.
+RUN echo "built `date +%F`" > /etc/vyk-build \
+ && printf '%s\n' "disk `df -h / | awk 'NR==2 {print $5}'` used"

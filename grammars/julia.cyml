@@ -82,6 +82,10 @@ operators = [
     "&", "|", "~", "!",
     "<", ">", "?",
     "$", "\\",
+    # `'` is the postfix adjoint/transpose operator (`A'`, `A'B`).
+    # `char_literal` handles `'a'`; this catches the postfix form,
+    # which has no closing quote.
+    "'",
 ]
 
 punctuation = [

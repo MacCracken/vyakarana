@@ -113,3 +113,8 @@ attributes #2 = { nounwind allocsize(0) "no-builtins" }
 !1 = !{i32 7, !"PIC Level", i32 2}
 !2 = !{i32 7, !"uwtable", i32 2}
 !3 = !{!"vyakarana stand-in 1.9.0"}
+
+; 2.3.2 error-hole coverage: `$` names a comdat.
+$__vyk_scan_table = comdat any
+
+@__vyk_scan_table = linkonce_odr global [4 x i8] zeroinitializer, comdat

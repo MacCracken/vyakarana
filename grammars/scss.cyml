@@ -61,6 +61,11 @@ operators = [
     "&", "|", "~",
     "!", "?",
     "=",
+    # `%` is both a placeholder-selector sigil (`%btn`, `@extend
+    # %btn`) and the percent unit (`width: 50%`). `\` escapes a
+    # character in an identifier or selector (`.w-1\/2`).
+    # The `%` unit fix landed in css at 2.1.1; scss was missed.
+    "%", "\\",
 ]
 
 punctuation = [

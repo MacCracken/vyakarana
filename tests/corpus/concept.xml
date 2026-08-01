@@ -61,4 +61,9 @@ fn tokenize(src: &str) -> Tokenbuf {
     <!-- Entity references in text: &lt; &gt; &amp; &quot; &apos; -->
     <encoded>5 &lt; 10 &amp;&amp; 10 &gt; 5</encoded>
 
+    <!-- 2.3.2 error-hole coverage: character data is arbitrary
+         text, the same as HTML element content. -->
+    <prose>50% of $5 is $2.50 &amp; change; a|b ~ c ^ d * e + f @ g</prose>
+    <path>C:\build\vyk.exe</path>
+
 </concept>

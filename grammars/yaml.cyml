@@ -37,6 +37,9 @@ whitespace = true
 ident_start = "A-Za-z_"
 ident_cont  = "A-Za-z0-9_-"
 
+# Plain (unquoted) scalars are arbitrary Unicode. ADR 0009.
+unicode_ident = true
+
 number_decimal = true
 number_0x      = true
 number_0b      = true
@@ -56,6 +59,10 @@ operators = [
     "<<",
     "&", "*", "-", "+", "?", "!", "|", "<", ">",
     "=", "/", "%", "@", "~", "^",
+    # Plain (unquoted) scalars are near-arbitrary text. `$` is
+    # everywhere in CI YAML (`$HOME`, `${VAR}`), backticks show up
+    # in prose values, and `\` in Windows paths.
+    "$", "\\", "`",
 ]
 
 # YAML's structural punctuation. Flow style mirrors JSON; the rest

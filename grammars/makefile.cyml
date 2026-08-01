@@ -132,3 +132,13 @@ words = [
     # Recursive / extra
     "undefine", "load",
 ]
+
+# Command substitution inside a recipe line. Recipe bodies are shell,
+# so `` `date +%F` `` is ordinary Makefile content.
+[[rules]]
+kind = "string"
+match = "pair"
+start = "`"
+end = "`"
+escape = "\\"
+

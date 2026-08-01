@@ -29,6 +29,23 @@ fn tb_coverage_sum(tb) {
     return sum;
 }
 
+# Error-hole helper: count TK_ERROR tokens in a tokenbuf.
+#
+# The 2.3.2 sweep below asserts this is 0 for genuine source in
+# every grammar that audit touched. TK_ERROR on valid syntax is
+# the bug class it closed; TK_ERROR on a byte with no syntax in
+# the language is correct, and the negative probes lock that in.
+fn tb_error_count(tb) {
+    var n = tokenbuf_count(tb);
+    var i = 0;
+    var e: i64 = 0;
+    while (i < n) {
+        if (tokenbuf_kind(tb, i) == TK_ERROR) { e = e + 1; }
+        i = i + 1;
+    }
+    return e;
+}
+
 # Test helper: tokenize a small source string with the streaming
 # API and return the populated tokenbuf. 2.0+ replaces the 1.x
 # `_t_tokenize(src, lang)` synchronous entry; this wrapper
@@ -217,7 +234,7 @@ fn main() {
     var prs = grammar_pair_rules(gshell);
     var wrs = grammar_words_rules(gshell);
     assert_eq(vec_len(lrs), 1, "1 line rule (# comment)");
-    assert_eq(vec_len(prs), 2, "2 pair rules (\" and ')");
+    assert_eq(vec_len(prs), 3, "3 pair rules (\", ' and `)");
     assert_eq(vec_len(wrs), 1, "1 words rule (keywords)");
 
     var kw = vec_get(wrs, 0);
@@ -3244,6 +3261,178 @@ fn main() {
     tokenize_stream_free(ch_md3);
     assert_eq(tokenbuf_count(ch_md_tb3), tokenbuf_count(ch_md_tbb),
               "markdown drain-after-each-feed: token count matches");
+
+    test_group("2.3.2 TK_ERROR holes — valid syntax must not error");
+
+    # A sweep of every printable ASCII byte through all 45 grammars
+    # found 44 with at least one TK_ERROR hole. The corpora hid it:
+    # they are single canonical samples, so a shape they happen not
+    # to contain is a shape twelve minor releases of green gates
+    # never proved anything about. Each probe here is the smallest
+    # piece of *genuine* source that the pre-2.3.2 grammar rejected.
+
+    # ── Backtick-delimited regions ──────────────────────────────
+    var eh_sh = _t_tokenize("today=`date +%F`\n", "shell");
+    assert_eq(tb_error_count(eh_sh), 0, "shell: `cmd` command substitution");
+
+    var eh_rb = _t_tokenize("x = `ls`\n", "ruby");
+    assert_eq(tb_error_count(eh_rb), 0, "ruby: `cmd` command literal");
+
+    var eh_cr = _t_tokenize("out = `echo hi`\n", "crystal");
+    assert_eq(tb_error_count(eh_cr), 0, "crystal: `cmd` command literal");
+
+    var eh_php = _t_tokenize("<?php $out = `ls -l`;\n", "php");
+    assert_eq(tb_error_count(eh_php), 0, "php: `cmd` shell_exec operator");
+
+    var eh_mk = _t_tokenize("all:\n\t@echo `date +%F`\n", "makefile");
+    assert_eq(tb_error_count(eh_mk), 0, "makefile: `cmd` in a recipe");
+
+    var eh_dk = _t_tokenize("RUN echo `date` && echo 100%\n", "dockerfile");
+    assert_eq(tb_error_count(eh_dk), 0, "dockerfile: `cmd` and % in RUN");
+
+    # Go struct tags are the single most common raw string in the
+    # language, and every one of them was a run of error tokens.
+    var eh_go = _t_tokenize("type T struct { N string `json:\"n\"` }\n", "go");
+    assert_eq(tb_error_count(eh_go), 0, "go: raw string struct tag");
+
+    var eh_kt = _t_tokenize("fun `a test name`() { }\n", "kotlin");
+    assert_eq(tb_error_count(eh_kt), 0, "kotlin: backtick-escaped identifier");
+
+    var eh_sql = _t_tokenize("SELECT `c` FROM t WHERE a ~ 'x' AND b = $1; # m\n", "sql");
+    assert_eq(tb_error_count(eh_sql), 0, "sql: MySQL ident, ~, $1, # comment");
+
+    var eh_ml = _t_tokenize("let x = `Foo\nlet ( $ ) f y = f y\n", "ocaml");
+    assert_eq(tb_error_count(eh_ml), 0, "ocaml: polymorphic variant and $ op");
+
+    # ── C-family char literals, separators, continuations ───────
+    var eh_cpp = _t_tokenize("int a = 1'000'000;\n#define M(x) \\\n  do { } while (0)\n", "cpp");
+    assert_eq(tb_error_count(eh_cpp), 0, "cpp: digit separator + continuation");
+
+    var eh_cs = _t_tokenize("#nullable enable\n#region H\n#if DEBUG\n#endif\n#endregion\n", "csharp");
+    assert_eq(tb_error_count(eh_cs), 0, "csharp: preprocessor directives");
+
+    var eh_java = _t_tokenize("char c = '\\u0041';\n", "java");
+    assert_eq(tb_error_count(eh_java), 0, "java: \\u escape in a char literal");
+
+    var eh_sw = _t_tokenize("#if os(iOS)\nlet `d` = 1\nlet k = \\Person.name\n#endif\n", "swift");
+    assert_eq(tb_error_count(eh_sw), 0, "swift: #if, escaped ident, key path");
+
+    var eh_zig = _t_tokenize("const q =\n    \\\\SELECT 1;\n    ;\n", "zig");
+    assert_eq(tb_error_count(eh_zig), 0, "zig: \\\\ multiline string literal");
+
+    # ── Operators that were missing outright ────────────────────
+    var eh_hs = _t_tokenize("main = print $ length [1,2,3]\n", "haskell");
+    assert_eq(tb_error_count(eh_hs), 0, "haskell: $ application operator");
+
+    var eh_jl = _t_tokenize("B = A'\n", "julia");
+    assert_eq(tb_error_count(eh_jl), 0, "julia: postfix adjoint operator");
+
+    var eh_rs = _t_tokenize("fn f(x: u8) { match x { n @ 1..=5 => {}, _ => {} } }\n", "rust");
+    assert_eq(tb_error_count(eh_rs), 0, "rust: @ pattern binding");
+
+    var eh_js = _t_tokenize("class A { #n = 1; @dec m() { return this.#n; } }\n", "javascript");
+    assert_eq(tb_error_count(eh_js), 0, "javascript: #private field, @decorator");
+
+    var eh_ts = _t_tokenize("class A { #n = 1; @dec m(): number { return 1; } }\n", "typescript");
+    assert_eq(tb_error_count(eh_ts), 0, "typescript: #private field, @decorator");
+
+    var eh_gq = _t_tokenize("{ f(a: 1.5e+3, b: -1) { id } }\n", "graphql");
+    assert_eq(tb_error_count(eh_gq), 0, "graphql: float exponent, negative int");
+
+    var eh_scss = _t_tokenize("%ph { width: 50%; }\n.a { @extend %ph; }\n", "scss");
+    assert_eq(tb_error_count(eh_scss), 0, "scss: placeholder selector and % unit");
+
+    var eh_css = _t_tokenize(".w-1\\/2 { width: 50%; }\n", "css");
+    assert_eq(tb_error_count(eh_css), 0, "css: escaped character in a selector");
+
+    var eh_nix = _t_tokenize("{ p = ~/foo/bar; }\n", "nix");
+    assert_eq(tb_error_count(eh_nix), 0, "nix: ~ home-relative path");
+
+    var eh_toml = _t_tokenize("d = 2026-07-31T10:30:00Z\n", "toml");
+    assert_eq(tb_error_count(eh_toml), 0, "toml: RFC 3339 datetime");
+
+    var eh_ini = _t_tokenize("[s]\nv = %(name)s\n", "ini");
+    assert_eq(tb_error_count(eh_ini), 0, "ini: %-interpolation in a value");
+
+    var eh_ll = _t_tokenize("$c = comdat any\n", "llvm_ir");
+    assert_eq(tb_error_count(eh_ll), 0, "llvm_ir: $ comdat name");
+
+    var eh_ps = _t_tokenize("Set-Location C:\\Users\\foo\n", "powershell");
+    assert_eq(tb_error_count(eh_ps), 0, "powershell: backslash in a bare path");
+
+    var eh_ex = _t_tokenize("c = 'charlist'\n", "elixir");
+    assert_eq(tb_error_count(eh_ex), 0, "elixir: single-quoted charlist");
+
+    # ── Assembly. tests/corpus/asm_x86_64.s is `.intel_syntax
+    # noprefix`, which uses no `$` at all — so AT&T immediates,
+    # relocation suffixes and .macro parameters went unexercised.
+    var eh_x86 = _t_tokenize("movq $60, %rax\ncall printf@PLT\n.macro m a\nmovq \\a, %rbx\n.endm\n", "asm_x86_64");
+    assert_eq(tb_error_count(eh_x86), 0, "asm_x86_64: $imm, @PLT, \\macro-arg");
+
+    var eh_a64 = _t_tokenize("adrp x1, _setjmp@GOTPAGE\n.macro m a\nmov x0, \\a\n.endm\n", "asm_aarch64");
+    assert_eq(tb_error_count(eh_a64), 0, "asm_aarch64: @GOTPAGE, \\macro-arg");
+
+    var eh_x86c = _t_tokenize("// preprocessed .S comment with a `tick`\nnop\n", "asm_x86_64");
+    assert_eq(tb_error_count(eh_x86c), 0, "asm_x86_64: // comment in a .S file");
+
+    # ── Free-text formats. Markup bodies and unquoted scalars are
+    # arbitrary characters, so no printable byte may error.
+    var eh_html = _t_tokenize("<p>50% off &mdash; $5 &amp; a|b ~ c ^ d `e`</p>\n", "html");
+    assert_eq(tb_error_count(eh_html), 0, "html: arbitrary text content");
+
+    var eh_xml = _t_tokenize("<n>a * b + c @ d ~ e $ f</n>\n", "xml");
+    assert_eq(tb_error_count(eh_xml), 0, "xml: arbitrary character data");
+
+    var eh_vue = _t_tokenize("<template><p>$5 ~ 50% | x</p></template>\n", "vue");
+    assert_eq(tb_error_count(eh_vue), 0, "vue: arbitrary template text");
+
+    var eh_svlt = _t_tokenize("<p>a | b ~ c ^ d</p>\n", "svelte");
+    assert_eq(tb_error_count(eh_svlt), 0, "svelte: arbitrary markup text");
+
+    var eh_yaml = _t_tokenize("cmd: $HOME/bin\nnote: use `x` here\n", "yaml");
+    assert_eq(tb_error_count(eh_yaml), 0, "yaml: $ and backtick in plain scalars");
+
+    # ── UTF-8 identifiers and scalars. Nine grammars never set
+    # `unicode_ident`, so each byte of a non-ASCII identifier
+    # became its own TK_ERROR — the non-ASCII half of the same
+    # bug class. ADR 0009 established the flag back in 1.1.0.
+    var eh_ujs = _t_tokenize("const café = 1;\n", "javascript");
+    assert_eq(tb_error_count(eh_ujs), 0, "javascript: non-ASCII identifier");
+
+    var eh_uts = _t_tokenize("const café: number = 1;\n", "typescript");
+    assert_eq(tb_error_count(eh_uts), 0, "typescript: non-ASCII identifier");
+
+    var eh_upy = _t_tokenize("café = 1\n", "python");
+    assert_eq(tb_error_count(eh_upy), 0, "python: PEP 3131 identifier");
+
+    var eh_urs = _t_tokenize("let café = 1;\n", "rust");
+    assert_eq(tb_error_count(eh_urs), 0, "rust: non-ASCII identifier");
+
+    var eh_ush = _t_tokenize("echo café\n", "shell");
+    assert_eq(tb_error_count(eh_ush), 0, "shell: UTF-8 in an unquoted word");
+
+    var eh_uyml = _t_tokenize("key: valué\n", "yaml");
+    assert_eq(tb_error_count(eh_uyml), 0, "yaml: UTF-8 in a plain scalar");
+
+    # ── Negative probes. TK_ERROR is the CORRECT answer for a byte
+    # with no syntax in the language, and the audit deliberately
+    # left those alone — python, lua, json, c, protobuf, terraform
+    # and cyrius came through it unchanged. Lock that half in too,
+    # so a later "just add every byte" fix cannot quietly pass.
+    var eh_njson = _t_tokenize("{\"a\": 1} $\n", "json");
+    assert(tb_error_count(eh_njson) > 0, "json: $ is genuinely invalid");
+
+    var eh_nlua = _t_tokenize("local x = 1 $ 2\n", "lua");
+    assert(tb_error_count(eh_nlua) > 0, "lua: $ is genuinely invalid");
+
+    var eh_npy = _t_tokenize("x = 1 ` 2\n", "python");
+    assert(tb_error_count(eh_npy) > 0, "python: backtick died with Python 2");
+
+    var eh_nc = _t_tokenize("int x = 1 ` 2;\n", "c");
+    assert(tb_error_count(eh_nc) > 0, "c: backtick is not C syntax");
+
+    var eh_ncy = _t_tokenize("var x = 1 ` 2;\n", "cyrius");
+    assert(tb_error_count(eh_ncy) > 0, "cyrius: backtick is not Cyrius syntax");
 
     test_group("version string shape");
     # VYK_VERSION lives in src/version_str.cyr (auto-generated by

@@ -191,3 +191,11 @@ public final class ConceptParser {
         }
     }
 }
+
+// 2.3.2 error-hole coverage: a `\u` escape inside a char
+// literal. ADR 0010's char scanner models 'C', '\C' and
+// '\xHH', so the four-hex form needs the operator fallback.
+class UnicodeEscapes {
+    static final char A = '\u0041';
+    static final char NL = '\n';
+}

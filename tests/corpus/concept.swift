@@ -185,3 +185,12 @@ for (input, expected) in cases {
     print(line)
     precondition(got == expected, "mismatch at \"\(input)\"")
 }
+
+// 2.3.2 error-hole coverage: `#` compile-time directives, a
+// backtick-escaped identifier, and a key path.
+#if os(iOS)
+let `default` = 1
+#endif
+
+struct Person { var name: String = "" }
+let namePath = \Person.name

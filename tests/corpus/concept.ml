@@ -132,3 +132,14 @@ let () =
     Printf.printf "%-15s => %d (expected %d)\n" input got expected;
     assert (got = expected)
   ) cases
+
+(* 2.3.2 error-hole coverage: polymorphic-variant tags and a
+   user-defined operator built from OCaml's symbol characters. *)
+type token = [ `Ident of string | `Number of int | `Eof ]
+
+let ( $ ) f x = f x
+
+let describe = function
+  | `Ident s  -> "ident " ^ s
+  | `Number n -> "number " ^ string_of_int n
+  | `Eof      -> "eof"

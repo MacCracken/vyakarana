@@ -166,3 +166,13 @@ words = [
     "and", "or", "xor", "not",
     "list", "isset", "unset", "empty",
 ]
+
+# Backtick operator — PHP's `` `ls -l` `` is shell_exec() by another
+# spelling.
+[[rules]]
+kind = "string"
+match = "pair"
+start = "`"
+end = "`"
+escape = "\\"
+

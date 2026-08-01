@@ -194,3 +194,9 @@ foreach ($cases as [$input, $expected]) {
         throw new \RuntimeException("mismatch at \"{$input}\"");
     }
 }
+
+<?php
+// 2.3.2 error-hole coverage: PHP's backtick operator is
+// shell_exec() by another spelling.
+$listing = `ls -l`;
+echo $listing;

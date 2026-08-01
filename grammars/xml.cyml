@@ -66,6 +66,9 @@ operators = [
     # part of the ident; bare `-` between numbers falls
     # through here.
     "-",
+    # Free character data — see the html grammar. XML content
+    # between tags is arbitrary text.
+    "$", "%", "*", "+", "@", "\\", "^", "`", "|", "~",
 ]
 
 punctuation = [

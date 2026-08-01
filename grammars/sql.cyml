@@ -74,6 +74,13 @@ operators = [
     "&", "|", "^",
     "<", ">",
     "?", "@",
+    # Dialect reality: `#` is a MySQL line comment and a T-SQL
+    # temp-table sigil, `$` is a PostgreSQL positional parameter
+    # (`$1`) and dollar-quote marker, `~` is the PostgreSQL regex
+    # match operator, and `!` is the MySQL spelling of NOT.
+    # Listed as plain 1-byte operators rather than a comment rule
+    # so neither dialect reading corrupts the other.
+    "#", "$", "~", "!",
 ]
 
 punctuation = [
@@ -179,3 +186,13 @@ words = [
     "IF", "ELSEIF", "WHILE", "LOOP", "RETURN", "RETURNS",
     "DECLARE", "EXECUTE",
 ]
+
+# MySQL / MariaDB quoted identifier — `` `select` ``, `` `order` ``.
+# The ANSI spelling is a double-quoted identifier, which the string
+# rule already covers; this adds the dialect most real schemas use.
+[[rules]]
+kind = "ident"
+match = "pair"
+start = "`"
+end = "`"
+

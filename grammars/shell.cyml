@@ -29,6 +29,9 @@ whitespace = true
 ident_start = "A-Za-z_"
 ident_cont  = "A-Za-z0-9_"
 
+# Unquoted words carry arbitrary UTF-8 — `echo café`. ADR 0009.
+unicode_ident = true
+
 # Numbers: decimal, plus 0x / 0b / 0o prefixes.
 number_decimal = true
 number_0x      = true
@@ -96,3 +99,16 @@ words = [
     "break", "continue",
     "select", "time",
 ]
+
+# Command substitution `` `cmd` ``. Standard POSIX shell and still
+# pervasive in real scripts (`PROGNAME=`basename $0``). Treated as
+# TK_STRING, matching how julia.cyml types its backtick command
+# literals; the inner bytes are a command, not shell code the outer
+# scanner should re-tokenize.
+[[rules]]
+kind = "string"
+match = "pair"
+start = "`"
+end = "`"
+escape = "\\"
+

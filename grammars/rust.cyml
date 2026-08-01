@@ -42,6 +42,10 @@ whitespace = true
 ident_start = "A-Za-z_$"
 ident_cont  = "A-Za-z0-9_"
 
+# Non-ASCII identifiers, stable since Rust 1.53 (RFC 2457).
+# ADR 0009.
+unicode_ident = true
+
 number_decimal = true
 number_0x      = true
 number_0b      = true
@@ -73,6 +77,10 @@ operators = [
     "<", ">",
     "?", "'",
     "#",
+    # `@` binds a pattern to a name in a match arm (`n @ 1..=5`)
+    # and is the conventional internal-rule sigil inside
+    # `macro_rules!` bodies (`(@impl $x:expr)`).
+    "@",
 ]
 
 # Punctuation, longest-match.

@@ -140,3 +140,12 @@ fragment UserBasics on User {
     email
     displayName
 }
+
+# 2.3.2 error-hole coverage: negative ints and floats with a
+# signed exponent. IntValue admits a leading `-`; FloatValue
+# admits `.` and a signed ExponentPart.
+query Window {
+  tokens(offset: -1, threshold: 1.5e+3, ratio: 0.25) {
+    kind
+  }
+}

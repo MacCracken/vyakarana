@@ -33,6 +33,7 @@ sub-blocks).
 | 0017 | [Streaming tokenizer API (2.0)](0017-streaming-api.md)                                     | Accepted | 2026-05-08 |
 | 0018 | [Vendored stdlib snapshot is gitignored, not committed](0018-vendored-stdlib-gitignored.md) | Accepted | 2026-05-27 |
 | 0019 | [`compose_region` rule type for open-ended regions](0019-compose-region-rule.md)           | Accepted | 2026-07-31 |
+| 0020 | [When `TK_ERROR` is correct and when it is a grammar hole](0020-tk-error-adjudication.md) | Accepted | 2026-07-31 |
 
 ## Conventions
 

@@ -75,6 +75,11 @@ operators = [
     # tokenizes cleanly until grammar composition (1.11.0) routes
     # `<style>` / `<script>` bodies to their own grammars.
     "#",
+    # Free text. Element content and attribute values are
+    # arbitrary characters — `50% off`, `a | b`, `$5`, `x ~ y`,
+    # backtick-quoted prose. None of these are markup, so none
+    # of them may fall through to TK_ERROR.
+    "$", "%", "*", "+", "-", "@", "\\", "^", "`", "|", "~",
 ]
 
 punctuation = [

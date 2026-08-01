@@ -79,3 +79,14 @@ anchors_and_aliases:
   staging:
     <<: *default_config
     timeout: 60
+
+
+# 2.3.2 error-hole coverage: plain (unquoted) scalars are
+# near-arbitrary text. `$` is everywhere in CI YAML, backticks
+# turn up in prose values, and `\` in Windows paths.
+error_hole_coverage:
+  interpolated: $HOME/bin/vyk
+  braced: ${VYK_BUILD_DIR}/vyk
+  prose: use `tokenize_stream_new` to open a stream
+  windows_path: C:\build\vyk.exe
+  non_ascii: café — naïve — 東京

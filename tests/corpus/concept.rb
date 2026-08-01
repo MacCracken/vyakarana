@@ -169,3 +169,9 @@ if __FILE__ == $PROGRAM_NAME
     raise "mismatch at #{input.inspect}" unless got == expected
   end
 end
+
+# 2.3.2 error-hole coverage: backtick command literal runs the
+# string in a subshell. Ordinary Ruby, and it used to emit
+# TK_ERROR for each backtick.
+host = `hostname`.strip
+files = `ls -1`.split("\n")

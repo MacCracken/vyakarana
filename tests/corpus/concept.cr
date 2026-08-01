@@ -127,3 +127,9 @@ rescue ex : Exception
 ensure
   puts "cleanup"
 end
+
+# 2.3.2 error-hole coverage: Crystal inherits Ruby's backtick
+# command literal, plus `$~`/`$1` regex specials.
+host = `hostname`.strip
+"lexer" =~ /lex(er)?/
+suffix = $1

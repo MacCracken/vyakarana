@@ -78,6 +78,10 @@ operators = [
     # tokenizes as a regular ident on the next iteration —
     # same fall-through pattern as Rust lifetimes (ADR 0010).
     "'",
+    # Backtick opens a polymorphic-variant tag (`` `Foo ``). `$`
+    # is a legal OCaml operator character — user-defined operators
+    # may be built from any of `! $ % & * + - . / : < = > ? @ ^ | ~`.
+    "`", "$",
 ]
 
 # Punctuation. `;` is statement separator; `;;` (REPL terminator)

@@ -98,6 +98,11 @@ operators = [
     # operator. Themes can re-pair adjacent backticks if they
     # want to colour the wrapped name distinctly.
     "`",
+    # `$` is Haskell's function-application operator — `print $ f x`
+    # — and one of the most-used operators in the language. `'`
+    # is a prime in `ident_cont`, but also leads promoted
+    # constructors (`'True`) and Template Haskell quotes (`'name`).
+    "$", "'",
 ]
 
 # Punctuation. `,` for tuples, `;` for explicit semis,

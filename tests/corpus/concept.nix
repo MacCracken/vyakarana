@@ -91,3 +91,11 @@ in
     notes = "Lex demo built with ${mode} mode";
   };
 }
+
+# 2.3.2 error-hole coverage: `~` opens a home-relative path
+# literal. Path literals themselves stay a documented gap; this
+# just keeps the leading `~` off TK_ERROR.
+{
+  configFile = ~/.config/vyakarana/config.toml;
+  cacheDir = ~/.cache/vyakarana;
+}

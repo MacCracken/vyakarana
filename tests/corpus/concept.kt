@@ -148,3 +148,9 @@ fun main() {
         require(got == expected) { "mismatch at \"$input\"" }
     }
 }
+
+// 2.3.2 error-hole coverage: backtick-escaped identifiers. The
+// test-naming idiom below is the most common Kotlin use of them.
+fun `tokenizes an empty input`() { }
+
+val `object` = "reserved word used as a name"

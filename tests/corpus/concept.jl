@@ -148,3 +148,9 @@ n = 100
     s = sum(i for i in 1:n)
     println("sum 1..$n = $s")
 end
+
+# 2.3.2 error-hole coverage: `'` is the postfix adjoint
+# (transpose) operator, not just a char-literal delimiter.
+A = [1 2; 3 4]
+At = A'
+gram = A'A

@@ -104,6 +104,10 @@ operators = [
     "?",
     "@",
     "`",
+    # `\` is the Windows path separator and appears unquoted in
+    # bare-word arguments constantly — `Set-Location C:\Users\foo`,
+    # `.\build.ps1`.
+    "\\",
 ]
 
 punctuation = [

@@ -77,6 +77,12 @@ operators = [
     "&", "|", "^", "~",
     "<", ">",
     "#", "!",
+    # `@` suffixes a relocation (`_setjmp@GOTPAGE`) and names an
+    # ELF symbol type (`.type f, @function`). `\` references a
+    # `.macro` parameter and continues a line. `$` leads AArch64
+    # mapping symbols (`$x` code, `$d` data). `'` is a GNU as
+    # character constant.
+    "$", "@", "'", "\\",
 ]
 
 # Punctuation. `{` `}` for register lists (LDM / STM / TBX),

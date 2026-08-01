@@ -6,6 +6,135 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [2.3.2] — 2026-07-31
+
+**37 grammars stop erroring on valid syntax.** A sweep of every
+printable ASCII byte (0x20–0x7E) through all 45 bundled grammars
+found 44 emitting `TK_ERROR` for at least one character. Not all
+of those were bugs — a backtick really is invalid in C — so each
+character was adjudicated per language against that language's
+actual syntax. [ADR 0020](docs/adr/0020-tk-error-adjudication.md)
+records the rule used. Patch rather than minor, on the same
+reasoning as 2.3.1: no token kind, no `Token` layout change, no
+public-API change, no new rule type — incorrect output made
+correct.
+
+Measured on real source from `/usr/lib`, `/usr/share`,
+`/usr/include` and the cargo registry rather than hand-written
+samples. Files with at least one error token, before → after:
+html 38/40 → 0, javascript 11/40 → 0, typescript 9/40 → 0,
+yaml 8/40 → 0, shell 7/40 → 0, zig 5/40 → 0, xml 5/39 → 0,
+go 4/40 → 1 (binary testdata carrying a `.go` suffix),
+cpp 2/40 → 0, css 1/40 → 0.
+`/usr/lib/go/src/runtime/race_amd64.s` went 91 → 0.
+
+### Fixed
+
+- **Backtick-delimited regions.** `shell` and `ruby` backtick
+  command substitution — ``PROGNAME=`basename $0` `` — is
+  ordinary, extremely common syntax and emitted two error tokens
+  per use. Also `crystal` and `php` (both inherit the form),
+  `makefile` and `dockerfile` (recipe and `RUN` bodies are
+  shell), `go` **raw string literals** (every struct tag,
+  `` `json:"name"` ``, was a run of error tokens), `kotlin` and
+  `swift` backtick-escaped identifiers, `sql` MySQL quoted
+  identifiers, and `ocaml` polymorphic-variant tags (`` `Foo ``).
+  Delimited regions use rules, not bare operators; command
+  substitution follows the `kind = "string"` precedent
+  `grammars/julia.cyml` already set.
+
+- **Assembly, both targets.** `asm_x86_64` rejected `$`, which
+  prefixes **every AT&T-syntax immediate** (`movq $60, %rax`) and
+  every Plan 9 frame size (`TEXT f(SB), $0-8`); `@`, which
+  suffixes relocations (`call printf@PLT`, `sym@GOTPCREL`); and
+  `\`, which references a `.macro` parameter. `asm_aarch64` had
+  the same `@` and `\` holes (`_setjmp@GOTPAGE`). None of it was
+  caught because `tests/corpus/asm_x86_64.s` is `.intel_syntax
+  noprefix` — a dialect that uses no `$` at all. `asm_x86_64`
+  also gained the `//` and `/* */` comment rules its aarch64
+  sibling already had: it claims the `.S` extension, which means
+  "C-preprocessed", and real `.S` files use `//` freely.
+
+- **Operators that were simply missing.** `haskell` `$` (the
+  function-application operator, one of the most-used in the
+  language); `rust` `@` pattern bindings and `macro_rules!`
+  internal-rule sigils; `julia` `'` postfix adjoint (`A'`);
+  `javascript` / `typescript` `#` private class fields and `@`
+  decorators; `csharp` `#` preprocessor directives (`#if DEBUG`,
+  `#region`, `#nullable`); `swift` `#` directives (`#if os(iOS)`,
+  `#available`, `#Preview`) and `\` key paths (`\Person.name`);
+  `scss` `%` — both the placeholder-selector sigil and the
+  percent unit, the same fix `css` got at 2.1.1 and scss missed;
+  `css` / `scss` `\` selector escapes (`.w-1\/2`); `nix` `~`
+  home-relative paths; `powershell` `\` in bare Windows paths;
+  `graphql` `.`, `+` and `-` for negative ints and signed
+  exponents; `elixir` single-quoted charlists; `zig` `\\`
+  multiline string literals (275 error tokens across a 40-file
+  sample); `llvm_ir` `$` comdat names; `toml` `:` in RFC 3339
+  datetimes; `dockerfile` `%`.
+
+- **Char-literal escape fallbacks.** Where `'` opens a char
+  literal rather than a string, `'` and `\` are now operator
+  fallbacks in `cpp`, `crystal`, `csharp`, `java`, `kotlin`,
+  `swift` and both asm grammars. [ADR 0010](docs/adr/0010-char-literal-default.md)'s
+  scanner models `'C'`, `'\C'` and `'\xHH'`; the four-hex form
+  `'A'` — valid Java, C# and Kotlin — fragmented into three
+  error tokens without them. `grammars/c.cyml` already carried
+  both entries; the rest had diverged from it. `cpp` also needed
+  `'` for C++14 digit separators (`1'000'000`) and `\` for the
+  line continuations every multi-line macro relies on.
+
+- **Free-text formats.** `html`, `xml`, `vue`, `svelte`, `yaml`
+  and `ini` rejected characters that are ordinary content:
+  `<p>50% off &mdash; $5 &amp; more! a|b ~ c</p>` produced five
+  error tokens. Element content, attribute values, template text,
+  YAML plain scalars and INI values are arbitrary characters.
+  `$HOME` in CI YAML — 29 hits in a 40-file sample — was the
+  single most common instance.
+
+- **Non-ASCII identifiers and scalars.** Nine grammars never set
+  `unicode_ident`, so every byte of a non-ASCII identifier became
+  its own error token: `const café = 1` (valid JavaScript),
+  `café = 1` (valid Python 3, PEP 3131) and `let café = 1` (valid
+  Rust since 1.53) each produced two. Flag added to
+  `javascript`, `typescript`, `python`, `rust`, `shell` and
+  `yaml`. This is the non-ASCII half of the same bug class and
+  sits outside the printable-ASCII sweep that found the rest;
+  `json`, `toml` and `cyrius` were left alone, since non-ASCII
+  outside a string genuinely is invalid there.
+
+### Unchanged — deliberately
+
+- `c`, `cyml`, `cyrius`, `json`, `lua`, `protobuf` and
+  `terraform` came through the audit untouched: every byte they
+  reject really is invalid in those languages, and they tokenize
+  real-world samples with zero errors today. `python` is a
+  half-case — its printable-ASCII rejections (`!`, `$`, `?`,
+  `` ` ``) are all correct and stand; the file was edited only
+  for `unicode_ident`. `markdown` was fixed in 2.3.1.
+  Negative probes assert `$` still errors in `json` and `lua`,
+  and backtick still errors in `c`, `python` and `cyrius`, so a
+  later blanket "add every byte" change cannot pass the gates.
+
+### Added
+
+- **48 probes** in `tests/vyakarana.tcyr` (test group "2.3.2
+  `TK_ERROR` holes"), 850 → **898 passing**. Each is the smallest
+  piece of genuine source the pre-2.3.2 grammar rejected, plus a
+  `tb_error_count(tb)` helper and the negative probes above.
+- **Corpus coverage for 29 ADR-0006 stand-ins.** `smoke.sh`
+  enforces a zero-error bar per corpus, so these are a second
+  independent gate — verified load-bearing by reverting
+  `grammars/ruby.cyml` and confirming smoke fails on
+  `tests/corpus/concept.rb`. The vidya-backed corpora (shell, go,
+  rust, python, zig, typescript, both asm) are left alone per
+  [ADR 0001](docs/adr/0001-corpus-sync-policy.md) — they re-sync
+  by `cp` — so those grammars are covered by probes only.
+- [ADR 0020](docs/adr/0020-tk-error-adjudication.md) — the rule
+  for when `TK_ERROR` is correct and when it is a hole, the
+  three-tier fix preference, and what was deliberately left
+  erroring.
+
 ## [2.3.1] — 2026-07-31
 
 **CYML finally parses as CYML.** The grammar for vyakarana's own

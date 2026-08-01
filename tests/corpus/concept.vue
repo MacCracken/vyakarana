@@ -23,6 +23,11 @@
     </ul>
     <p v-else>No tokens yet.</p>
   </article>
+
+    <!-- 2.3.2 error-hole coverage: template text is free text,
+         and `$` also leads Vue's instance properties. -->
+    <p class="prose">50% off ~ $5 | see `docs` ^ notes</p>
+    <p>{{ $props.title }} / {{ $emit }}</p>
 </template>
 
 

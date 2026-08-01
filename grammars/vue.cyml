@@ -73,6 +73,9 @@ operators = [
     "@",
     "#",
     "+", "-", "*", "%",
+    # Free text in `<template>` bodies, plus `$` for Vue's
+    # instance properties (`$emit`, `$refs`, `$props`).
+    "$", "\\", "^", "`", "|", "~",
 ]
 
 punctuation = [

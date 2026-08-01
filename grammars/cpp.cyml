@@ -74,6 +74,11 @@ operators = [
     "<", ">",
     "?",
     "#",
+    # `'` is the C++14 digit separator (`1'000'000`) as well as the
+    # char-literal delimiter; `\` continues a line, which every
+    # multi-line macro relies on. Both are already in c.cyml —
+    # cpp simply diverged.
+    "'", "\\",
 ]
 
 punctuation = [

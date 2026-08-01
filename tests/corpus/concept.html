@@ -72,5 +72,15 @@ fn tokenize(src: &amp;str) -&gt; Tokenbuf {
         const x = 1 + 2;
         console.log(x);
     </script>
+    <!-- 2.3.2 error-hole coverage: element content and attribute
+         values are arbitrary characters. None of these are markup,
+         so none of them may fall through to TK_ERROR. -->
+    <section id="prose">
+        <p>50% off &mdash; $5 &amp; up! Ranges: a|b, x ~ y, 2^8, `code`.</p>
+        <p>Path C:\build\vyk.exe and math 3 * 4 + 5 &lt; 20.</p>
+        <p title="cost: $5 | 50% ~ approx">Attribute values too.</p>
+        <p>Non-ASCII prose: caf&eacute;, naïve, 東京.</p>
+    </section>
+
 </body>
 </html>

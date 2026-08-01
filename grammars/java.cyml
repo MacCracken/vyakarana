@@ -73,6 +73,11 @@ operators = [
     "!", "~", "&", "|", "^",
     "<", ">",
     "?",
+    # `'` / `\` fallbacks for char-literal escape forms outside
+    # ADR 0010's `'C'` / `'\C'` / `'\xHH'` set — `'\u0041'` — and
+    # for Java's `\uXXXX` source escapes, which are legal anywhere
+    # in a compilation unit.
+    "'", "\\",
 ]
 
 # Punctuation. `:` (label / ternary / switch arms) and `;`

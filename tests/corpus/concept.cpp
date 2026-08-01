@@ -200,3 +200,11 @@ int main() {
         }
     }
 }
+
+// 2.3.2 error-hole coverage: C++14 digit separators and a
+// backslash line continuation in a macro. Both are in c.cyml
+// already; cpp.cyml had simply diverged.
+constexpr long kMaxTokens = 1'000'000;
+
+#define TRACE_TOKEN(k, n) \
+    do { (void)(k); (void)(n); } while (0)

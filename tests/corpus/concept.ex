@@ -148,3 +148,9 @@ Enum.each(cases, fn {input, expected} ->
   IO.puts("#{String.pad_trailing(input, 15)} => #{got} (expected #{expected})")
   ^expected = got
 end)
+
+# 2.3.2 error-hole coverage: single-quoted charlists. Soft-
+# deprecated in favour of ~c sigils in Elixir 1.18, but still
+# valid and pervasive in pre-1.18 code.
+letters = 'abc'
+empty = ''

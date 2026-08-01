@@ -87,6 +87,10 @@ operators = [
     "=", "+", "-", "*", "/",
     "<", ">", "!",
     "?", "@", "$",
+    # `~` opens a home-relative path literal (`~/.config/foo`).
+    # Path literals themselves remain a documented gap; this only
+    # keeps the leading `~` off TK_ERROR.
+    "~",
 ]
 
 punctuation = [

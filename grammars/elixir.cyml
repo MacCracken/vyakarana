@@ -142,3 +142,23 @@ words = [
     # Misc
     "quote", "unquote", "unquote_splicing",
 ]
+
+# Charlist heredoc `'''...'''` — the single-quoted twin of `"""`.
+[[rules]]
+kind = "string"
+match = "pair"
+start = "'''"
+end = "'''"
+escape = "\\"
+
+
+# Charlist `'hello'`. Soft-deprecated in favour of `~c` sigils in
+# Elixir 1.18, but single-quoted charlists remain valid and are
+# everywhere in pre-1.18 code.
+[[rules]]
+kind = "string"
+match = "pair"
+start = "'"
+end = "'"
+escape = "\\"
+

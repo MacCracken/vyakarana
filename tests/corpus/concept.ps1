@@ -112,3 +112,8 @@ try {
 } finally {
     Write-Host "done"
 }
+
+# 2.3.2 error-hole coverage: `\` is the Windows path separator
+# and appears unquoted in bare-word arguments constantly.
+Set-Location C:\Users\vyakarana\corpus
+& .\scripts\smoke.ps1 -Path C:\build\vyk.exe

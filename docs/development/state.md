@@ -4,8 +4,17 @@
 > (1.x and 2.x cuts), plus any session that shifts the gates'
 > colour or the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.3.1 are
-> shipped. **2.3.1 makes CYML parse as CYML** — its markdown
+> **Read this file before doing anything.** 1.0.0–2.3.2 are
+> shipped. **2.3.2 closed the `TK_ERROR` holes** — a sweep of
+> every printable ASCII byte through all 45 grammars found 44
+> emitting `TK_ERROR` for at least one character, and 37 of them
+> had a genuine gap ([ADR 0020](../adr/0020-tk-error-adjudication.md)
+> records how each character was adjudicated). Backtick command
+> substitution in `shell` / `ruby`, Go raw-string struct tags,
+> AT&T-syntax `$` immediates in `asm_x86_64`, Haskell `$`,
+> JS/TS `#` and `@`, C# `#if`, Zig `\\` multiline strings and
+> free text in `html` / `xml` / `yaml` were all error tokens.
+> 898/898 tests. **2.3.1 makes CYML parse as CYML** — its markdown
 > bodies now route to the markdown grammar through the new
 > `compose_region` rule type ([ADR 0019](../adr/0019-compose-region-rule.md)),
 > where 1.9.0–2.3.0 merged TOML and markdown into one rule set
@@ -49,13 +58,66 @@
 
 ## Current status (2026-07-31)
 
-- **Version:** `2.3.1` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `2.3.2` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`.
 - **Toolchain pin:** `cyrius = "6.5.4"` (bumped from 6.1.24
   in 2.3.0). Local devs run `cyriusly use 6.5.4`.
-- **Gates:** build OK · **850/850** tests · smoke OK · lint+fmt
-  exit 0 · fuzz 4/4 · bench 8 rows flat. Verified from a clean
-  `rm -rf build lib src/grammar_blobs.cyr` rebuild.
+- **Gates:** build OK · **898/898** tests · smoke OK · lint+fmt
+  exit 0 · fuzz 4/4 · bench 7 rows flat-or-faster, one up 10.5%.
+  Verified from a clean `rm -rf build src/grammar_blobs.cyr`
+  rebuild.
+- **Bench note (2.3.2):** `blob/grammar-load-shell` moved
+  33.2 → 36.7 µs (+10.5%) against the 2.3.0 table in
+  `./performance.md`. Expected and accounted for: `shell.cyml`
+  gained a pair rule and `unicode_ident`, and the embedded blob
+  set grew 206,394 → 217,790 bytes across the 37 edited
+  grammars, so there is simply more grammar text to parse per
+  load. Inside CLAUDE.md's 20% watch threshold, and it is a
+  once-per-process cost, not a per-token one. The four tokenize
+  rows — the hot path consumers actually run — are all
+  fractionally *faster*. Table not refreshed: the documented
+  cadence is minor-release boundaries, and this is a patch.
+- **What 2.3.2 added (`TK_ERROR` hole audit):**
+  - **37 grammars stopped erroring on valid syntax**
+    ([ADR 0020](../adr/0020-tk-error-adjudication.md)). A
+    printable-ASCII sweep (0x20–0x7E) through all 45 grammars
+    found 44 with at least one `TK_ERROR` hole; each character
+    was then adjudicated per language, because the same byte is
+    a raw string in Go, a command literal in Ruby, an escaped
+    identifier in Kotlin and genuinely invalid in C.
+  - **Delimited regions got rules, not bare operators** — Go raw
+    strings, Kotlin / Swift / MySQL backtick identifiers, Elixir
+    charlists, Zig `\\` multiline strings, and shell / ruby /
+    crystal / php / makefile / dockerfile command substitution
+    (`kind = "string"`, per the precedent `julia.cyml` set).
+  - **Missing operators added** — Haskell `$`, Rust `@`, Julia
+    `'`, JS/TS `#` and `@`, C# and Swift `#`, Swift `\` key
+    paths, scss `%` (the css fix from 2.1.1 that scss missed),
+    css/scss `\`, nix `~`, powershell `\`, graphql `.`/`+`/`-`,
+    llvm_ir `$`, toml `:`, and `'`/`\` char-literal fallbacks
+    across the C-family (ADR 0010 models only `'C'` / `'\C'` /
+    `'\xHH'`, so `'A'` fragmented).
+  - **`unicode_ident` added to six grammars** — javascript,
+    typescript, python, rust, shell, yaml. `const café = 1` was
+    two error tokens. Non-ASCII half of the same bug class,
+    outside the ASCII sweep that found the rest.
+  - **The corpora are why this survived twelve minor releases.**
+    One canonical sample per grammar means a shape the sample
+    lacks is a shape the gates never tested.
+    `tests/corpus/asm_x86_64.s` is `.intel_syntax noprefix` —
+    zero `$` bytes — so AT&T immediates, the dominant real-world
+    x86-64 dialect, were never tokenized once. Real GNU as from
+    `/usr/lib` produced 91 errors in one file; it is 0 now.
+  - 48 new probes (850 → 898) plus corpus additions to 29
+    ADR-0006 stand-ins; verified load-bearing by reverting
+    `grammars/ruby.cyml` and watching smoke fail.
+  - **Left erroring on purpose:** `c`, `cyml`, `cyrius`, `json`,
+    `lua`, `protobuf`, `terraform` — 8 of 45 counting `markdown`,
+    fixed in 2.3.1. `python`'s ASCII rejections stand too; it was
+    edited only for `unicode_ident`. Negative probes pin that half.
+  - **Open (not operator-list gaps):** Rust's nestable `/* */`
+    block comments — backticks inside doc comments still error —
+    and the variable-length-delimiter shapes below.
 - **What 2.3.1 added (CYML composition):**
   - **`match = "compose_region"` rule type**
     ([ADR 0019](../adr/0019-compose-region-rule.md)). Routes an
@@ -83,11 +145,12 @@
     ten `tcyr` probes. The old corpus had neither a body heading
     nor a fence, which is exactly why twelve minor releases of
     green gates proved nothing here.
-  - **Open:** a sweep of every printable ASCII byte through all
-    45 grammars found 44 with at least one `TK_ERROR` hole. Some
-    are correct (a backtick really is invalid in C); some are
-    not — backtick command substitution is standard `shell` and
-    `ruby` and currently errors. Only `markdown` was fixed here.
+  - **Open at the time:** a sweep of every printable ASCII byte
+    through all 45 grammars found 44 with at least one
+    `TK_ERROR` hole. Some are correct (a backtick really is
+    invalid in C); some are not — backtick command substitution
+    is standard `shell` and `ruby`. Only `markdown` was fixed
+    here. **Closed in 2.3.2** — see above and ADR 0020.
 - **What 2.3.0 added (toolchain catch-up):**
   - **Toolchain pin `6.1.24` → `6.5.4`.** Four minor lines in
     one step. Every remaining declared stdlib module resolves;

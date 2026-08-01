@@ -108,3 +108,14 @@ $themes: (
     border-radius: math.div(spacing(4), 2);
     border-color:  t.$border-color;
 }
+
+// 2.3.2 error-hole coverage: `%` is both a placeholder-selector
+// sigil and the percent unit. The `%` unit fix landed in css at
+// 2.1.1; scss was missed. `\` escapes a character in a selector.
+%token-base {
+  font-family: monospace;
+  width: 50%;
+}
+
+.token-ident { @extend %token-base; }
+.w-1\/2 { width: 50%; }

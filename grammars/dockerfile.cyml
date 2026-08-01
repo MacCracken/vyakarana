@@ -68,6 +68,9 @@ operators = [
     "&", "|", "^", "~",
     "!", "?", "@", "$", "#",
     "\\",
+    # `%` appears in `RUN` bodies (shell `${x%%y}`, `printf` specs)
+    # and in Windows-form variables (`%APPDATA%`).
+    "%",
 ]
 
 punctuation = [
@@ -119,3 +122,12 @@ words = [
     # `AS` for `FROM x AS name`; `--from=` is operator + ident
     "AS",
 ]
+
+# Command substitution inside a `RUN` body — `RUN` content is shell.
+[[rules]]
+kind = "string"
+match = "pair"
+start = "`"
+end = "`"
+escape = "\\"
+

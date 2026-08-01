@@ -106,3 +106,10 @@ help:
 	@echo "  PREFIX=<dir> Install prefix (default: $(PREFIX))"
 	@echo "  DEBUG=1      Build with -g -O0 -DDEBUG"
 	@echo "  ASAN=1       Build with AddressSanitizer"
+
+
+# 2.3.2 error-hole coverage: recipe bodies are shell, so backtick
+# command substitution is ordinary Makefile content.
+.PHONY: stamp
+stamp:
+	@echo "built `date +%F` on `uname -s`" > build/stamp.txt

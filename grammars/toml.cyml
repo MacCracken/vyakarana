@@ -64,6 +64,11 @@ operators = [
 punctuation = [
     "[[", "]]",
     "[", "]", "{", "}", ",",
+    # `:` separates the time fields of an RFC 3339 datetime —
+    # `d = 2026-07-31T10:30:00Z`. TOML is otherwise strict enough
+    # that every other unlisted byte really is invalid, so `:` is
+    # the one genuine hole in this grammar.
+    ":",
 ]
 
 

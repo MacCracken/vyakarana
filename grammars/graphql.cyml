@@ -62,6 +62,11 @@ operators = [
     "...",
     "=",
     "!", "|", "&",
+    # Float / scientific notation — `3.14`, `1.5e+3` — and
+    # negative values (`first: -1`). IntValue admits a leading
+    # `-`; FloatValue admits `.` and a signed ExponentPart.
+    # Clears the "known gap" noted in this file's header.
+    ".", "+", "-",
 ]
 
 punctuation = [

@@ -27,6 +27,11 @@ whitespace = true
 ident_start = "A-Za-z_$"
 ident_cont  = "A-Za-z0-9_$"
 
+# JS identifiers admit non-ASCII (ID_Start / ID_Continue) —
+# `const café = 1` is valid. Without this, each UTF-8 byte
+# outside a string or comment became its own TK_ERROR. ADR 0009.
+unicode_ident = true
+
 number_decimal = true
 number_0x      = true
 number_0b      = true
@@ -51,6 +56,10 @@ operators = [
     "!", "~", "&", "|", "^",
     "<", ">",
     "?", "\\",
+    # `#` declares and reads a private class field (`#count`,
+    # `this.#count`, `#x in obj`) and opens a hashbang line. `@`
+    # prefixes a decorator (`@component`).
+    "#", "@",
 ]
 
 punctuation = [

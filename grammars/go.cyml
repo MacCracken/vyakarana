@@ -121,3 +121,15 @@ words = [
     # Concurrency / cleanup
     "go", "defer",
 ]
+
+# Raw string literal `` `...` ``. No escape processing: a backslash
+# inside a raw string is a literal backslash, which is exactly why
+# struct tags (`` `json:"name"` ``) and embedded regexes use them.
+# Backticks were falling through to TK_ERROR, which also swallowed
+# the raw string's contents into per-byte errors.
+[[rules]]
+kind = "string"
+match = "pair"
+start = "`"
+end = "`"
+

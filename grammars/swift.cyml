@@ -75,6 +75,12 @@ operators = [
     "!", "~", "&", "|", "^",
     "<", ">",
     "?",
+    # `#` leads compile-time directives and macros — `#if os(iOS)`,
+    # `#available`, `#selector`, `#Preview`, `#warning` — and the
+    # raw-string delimiter `#"..."#`. `\` opens a key path
+    # (`\Person.name`, `\.self`). `'` is not Swift syntax but is
+    # kept as a fallback so unmodelled escape forms cannot error.
+    "#", "\\", "'",
 ]
 
 punctuation = [
@@ -152,3 +158,12 @@ words = [
     # Misc
     "import", "associatedtype",
 ]
+
+# Backtick-escaped identifier — ``let `default` = 1`` lets a reserved
+# word be used as a name. TK_IDENT: the delimited text is a name.
+[[rules]]
+kind = "ident"
+match = "pair"
+start = "`"
+end = "`"
+

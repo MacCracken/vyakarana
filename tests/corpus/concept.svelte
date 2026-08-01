@@ -88,6 +88,9 @@
 </article>
 
 
+<!-- 2.3.2 error-hole coverage: markup text is free text. -->
+<p class="prose">a | b ~ c ^ d, 50% of $5, see `docs`</p>
+
 <style>
   .lexer-demo {
     font-family: ui-sans-serif, system-ui, sans-serif;

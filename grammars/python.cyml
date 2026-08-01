@@ -32,6 +32,10 @@ whitespace = true
 ident_start = "A-Za-z_"
 ident_cont  = "A-Za-z0-9_"
 
+# PEP 3131 identifiers are Unicode — `café = 1` is valid
+# Python 3. ADR 0009.
+unicode_ident = true
+
 number_decimal = true
 number_0x      = true
 number_0b      = true

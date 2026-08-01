@@ -142,3 +142,8 @@ main = do
           else error ("mismatch at " ++ input)
 
     pad n s = s ++ replicate (max 0 (n - length s)) ' '
+
+-- 2.3.2 error-hole coverage: `$` is Haskell's application
+-- operator and one of the most-used operators in the language.
+describeAll :: [String] -> IO ()
+describeAll = mapM_ $ putStrLn . pad 15

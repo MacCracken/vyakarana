@@ -125,3 +125,9 @@ ul.features li:nth-child(odd) {
 @container (min-width: 480px) {
     .card { padding-block: 1.5rem; }
 }
+
+/* 2.3.2 error-hole coverage: `\` escapes a character inside an
+   identifier or selector. Utility-CSS generators emit these
+   constantly (`.w-1/2` -> `.w-1\/2`, `.md:flex` -> `.md\:flex`). */
+.w-1\/2 { width: 50%; }
+.md\:flex { display: flex; }

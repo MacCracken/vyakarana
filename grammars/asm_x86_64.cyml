@@ -85,6 +85,15 @@ operators = [
     "=", "+", "-", "*", "/", "%",
     "&", "|", "^", "~",
     "<", ">",
+    # `$` prefixes every AT&T-syntax immediate (`movq $60, %rax`)
+    # and every Plan 9 frame size (`TEXT f(SB), $0-8`). `@`
+    # suffixes a relocation (`printf@PLT`, `sym@GOTPCREL`). `\`
+    # references a `.macro` parameter (`\arg`) and continues a
+    # line. `'` is a GNU as character constant. `!` is an
+    # expression operator in `.if` directives.
+    # The corpus is `.intel_syntax noprefix`, which is why none of
+    # this was caught: Intel syntax uses no `$` at all.
+    "$", "@", "'", "\\", "!",
 ]
 
 # Punctuation, longest-match. `:` is the label terminator.
@@ -101,6 +110,27 @@ punctuation = [
 kind = "comment"
 match = "line"
 start = "#"
+
+
+# `//` line comments. `#` is gas's own line-comment character on
+# i386/x86-64, but this grammar also claims `.S` — the capital-S
+# extension means "run the C preprocessor first", and cpp strips
+# `//` before gas ever sees it. Real `.S` files use `//` freely
+# (compiler-rt, libtsan, glibc). asm_aarch64 already carries this
+# rule; x86_64 simply lacked it, so a backtick or apostrophe in a
+# `//` comment fell through to TK_ERROR.
+[[rules]]
+kind = "comment"
+match = "line"
+start = "//"
+
+
+# `/* … */` block comments — valid gas on every target.
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "/*"
+end = "*/"
 
 
 [[rules]]

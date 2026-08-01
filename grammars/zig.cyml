@@ -136,3 +136,13 @@ words = [
     # Type-flavoured keywords
     "anytype", "anyframe",
 ]
+
+# Multiline string literal. Each line of one is introduced by `\\`
+# and runs to end of line, with no escape processing — Zig's answer
+# to heredocs, used for embedded shaders, SQL, and C snippets.
+# Expressed as a line rule because that is exactly the shape.
+[[rules]]
+kind = "string"
+match = "line"
+start = "\\\\"
+

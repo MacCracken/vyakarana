@@ -159,3 +159,18 @@ for (const { input, expected } of cases) {
 }
 
 console.log(`${cases.length} cases passed`);
+
+// 2.3.2 error-hole coverage: private class fields (`#`) and
+// decorators (`@`), plus a non-ASCII identifier.
+function logged(fn) { return fn; }
+
+class Counter {
+    #count = 0;
+
+    @logged
+    bump() { return ++this.#count; }
+
+    has(o) { return #count in o; }
+}
+
+const café = new Counter();

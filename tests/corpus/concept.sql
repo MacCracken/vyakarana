@@ -98,3 +98,11 @@ JOIN   posts p ON p.author_id = u.id;
 DROP INDEX IF EXISTS posts_author_idx;
 DROP TABLE IF EXISTS posts;
 DROP TABLE IF EXISTS users;
+
+-- 2.3.2 error-hole coverage: dialect punctuation. MySQL quotes
+-- identifiers with backticks and comments with `#`; PostgreSQL
+-- uses `$1` positional parameters and `~` for regex match.
+SELECT `token`, `kind`
+  FROM `scan_log`                        # MySQL line comment
+ WHERE kind ~ '^ident'
+   AND source_id = $1;

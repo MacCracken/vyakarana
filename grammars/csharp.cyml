@@ -76,6 +76,11 @@ operators = [
     "<", ">",
     "?",
     "@", "$",
+    # `#` leads a preprocessor directive — `#if DEBUG`, `#region`,
+    # `#nullable enable`, `#pragma warning`. `'` / `\` are
+    # fallbacks for char-literal escape forms `char_literal` does
+    # not model (`'\u0041'`) and C#'s `\uXXXX` identifier escapes.
+    "#", "'", "\\",
 ]
 
 punctuation = [
