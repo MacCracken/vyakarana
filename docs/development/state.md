@@ -1,17 +1,28 @@
 # vyakarana — current state
 
-> **Last refresh:** 2026-06-10 | **Refresh cadence:** every release
-> (1.x cuts), plus any session that shifts the gates' colour or
-> the active task.
+> **Last refresh:** 2026-07-31 | **Refresh cadence:** every release
+> (1.x and 2.x cuts), plus any session that shifts the gates'
+> colour or the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.2.3 are
-> shipped. **2.2.3 is a toolchain pin bump** — pin 6.0.3 →
-> 6.1.24, no vyakarana code changes. (2.2.2 was the modernization
-> cut: pin 5.10.5 → 6.0.3, vendored `lib/` moved to the `cyrius
-> deps` model — gitignored, ADR 0018.) No public-API,
-> token-layout, or grammar changes. 45 bundled grammars; 4 fuzz
-> harnesses; 840/840 tests passing on 6.1.24. No work currently
-> in flight. See §Next up.
+> **Read this file before doing anything.** 1.0.0–2.3.0 are
+> shipped. **2.3.0 is the toolchain catch-up** — pin 6.1.24 →
+> 6.5.4, four minor lines in one step — and it cleared two
+> pre-existing gate failures on the way: a vestigial `cyml` entry
+> in `[deps] stdlib` that made `cyrius deps` exit 1 on a fresh
+> checkout, and eleven `duplicate variable` names that stopped
+> `tests/vyakarana.tcyr` compiling at all. Both reproduce under
+> the *outgoing* 6.1.24 pin — neither is a 6.5.4 regression.
+> **The test gate is green at 840/840 on 6.5.4. It was RED at
+> 2.2.2 and 2.2.3** — the suite did not compile under either pin
+> (6.0.3 and 6.1.24 both reject the duplicates), so the
+> "840/840 passing on 6.1.24" line this file carried was wrong
+> the day it was written. Do not carry any pre-2.3.0 "green"
+> claim forward without re-running the gates. (2.2.3 was pin
+> 6.0.3 → 6.1.24; 2.2.2 was the modernization cut: pin 5.10.5 →
+> 6.0.3, vendored `lib/` moved to the `cyrius deps` model —
+> gitignored, ADR 0018.) No public-API, token-layout, or grammar
+> changes. 45 bundled grammars; 4 fuzz harnesses. No work
+> currently in flight. See §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
 > contracts, durable invariants): [`../architecture/`](../architecture/).
@@ -29,17 +40,102 @@
 
 ---
 
-## Current status (2026-06-10)
+## Current status (2026-07-31)
 
-- **Version:** `2.2.3` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `2.3.0` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`.
-- **Toolchain pin:** `cyrius = "6.1.24"` (bumped from 6.0.3
-  in 2.2.3). Local devs run `cyriusly use 6.1.24`.
+- **Toolchain pin:** `cyrius = "6.5.4"` (bumped from 6.1.24
+  in 2.3.0). Local devs run `cyriusly use 6.5.4`.
+- **What 2.3.0 added (toolchain catch-up):**
+  - **Toolchain pin `6.1.24` → `6.5.4`.** Four minor lines in
+    one step. Every remaining declared stdlib module resolves;
+    build / test / smoke / lint / fmt all green, plus `cyrius
+    fuzz` 4/4 and `cyrius bench` 8/8 rows flat-or-faster against
+    the 2.2.1 baseline — well inside the 20% watch threshold.
+    Minor rather than patch because the bump needed source
+    changes; see the next two bullets.
+  - **`cyrius deps` fixed on a fresh checkout.** `[deps] stdlib`
+    listed `"cyml"`. The module still exists — 6.1.24 folded it
+    into the `bayan` bundle, where its 17 `cyml_*` symbols live
+    now — but the standalone `lib/cyml.cyr` that the deps list
+    resolves against is gone (present at 6.1.23, absent at
+    6.1.24), so `cyrius deps` exited 1. The entry was vestigial
+    either way — zero `cyml_*` symbols anywhere in the repo; the
+    grammar loader parses `grammars/*.cyml` with its own
+    purpose-built scanner in `src/grammar.cyr`. Removed rather
+    than re-pointed at `bayan`, which would vendor an unused
+    module. **2.2.3's own pin move is what broke it**, so from
+    that cut on CI's resolve step could not have passed on a
+    clean checkout; the local build only survived because the
+    stale `lib/` held the last copy of `cyml.cyr`.
+  - **The test suite compiles again.** `tests/vyakarana.tcyr` is
+    one 3,100-line `fn main()` (lines 48–3152), and Cyrius
+    rejects a second `var NAME` bound in the same lexical block —
+    eleven names were re-declared across test sections. Renamed
+    the *later* declarations to section-scoped names:
+    `tb_c1-3` / `src_c1-3` → `tb_css1-3` / `src_css1-3` (CSS),
+    `gc` → `gc_st` (stress), `tb_r1-3` → `tb_sr1-3` (streaming),
+    `saw_arrow` → `saw_tf_arrow` (Terraform). Pure renames — no
+    assertion, input, or expected value changed. **2.2.2 and
+    2.2.3 both shipped with a red test gate** — their pins,
+    6.0.3 and 6.1.24, reject the duplicates identically
+    (re-verified against both installed snapshots). The
+    duplicate lines themselves accumulated across the
+    1.7.0–2.1.3 commits of 2026-05-08 (the six CSS names
+    landed first, at 1.7.0 — `var tb_c1` goes 1 → 2 between
+    `git show 1.6.0:` and `1.7.0:`); 2.2.0's CHANGELOG
+    records 836/836 on 5.10.5 with those lines already in the
+    file, but 5.10.5 is no longer installed, so that green is
+    unverifiable. 840/840 is the first green run this file can
+    vouch for.
+  - **Vendored `lib/` re-cut from the 6.5.4 snapshot.** What was
+    on disk was a 6.0.x-vintage tree older than even the 6.1.24
+    pin: `cyrius deps` treats an already-present `lib/<mod>.cyr`
+    as satisfied and never refreshes it, so the pinned stdlib had
+    been silently ignored at build time since 2.2.2. Plain
+    `cyrius deps` will not fix it — refreshing takes `rm -rf lib
+    && cyrius deps`.
+  - **`agnoshi` dropped from `cyrius.cyml`'s `[lib]` consumer
+    comment.** It is not a consumer and never was. The three
+    repos that actually declare `[deps.vyakarana]` are `owl`,
+    `cyim`, and `vidya` — all currently pinned at `tag =
+    "2.2.3"`.
+  - **Nothing to chase downstream.** `dist/vyakarana.cyr` is
+    byte-identical to the 2.2.3 bundle apart from its version
+    header line (`git diff`: 1 insertion, 1 deletion) — 348,582
+    bytes, 4,030 lines by `wc -l` (`cyrius distlib` misreports
+    4002; trust `wc -l`). `build/vyk` is 371,472 bytes
+    (362.8 KB), *down* 19,312 bytes from the 2.2.1 capture — with
+    342 unreachable fns (58,238 bytes) still riding along in that
+    total. DCE is opt-in: the default build only reports them,
+    and `CYRIUS_DCE=1` NOPs them without changing the size (same
+    371,472 bytes, 58,195 of them different). No public-API,
+    token-layout, or grammar changes; 45 grammars unchanged.
+  - **Toolchain deltas worth knowing** (6.1.24 → 6.5.4; zero
+    stdlib functions were *removed* from any module vyakarana
+    declares, and the only signature changes add `: Str` to
+    `lib/fs.cyr` path helpers we never call): a wrong argument
+    count is a hard error since 6.5.1 (was a warning that still
+    emitted a binary); a call to a reachable undefined fn is a
+    hard error since 6.3.2; `cyrius distlib` exits 1 on a missing
+    `[lib] modules` entry since 6.2.52, so
+    `scripts/embed-grammars.sh` **must** run before it; the
+    initialized-globals cap per compilation unit is 4096, was
+    1024 (6.3.41); a bare **top-level** `var X[N]` is `N*8` bytes
+    while a function-local `var buf[N]` is still N bytes
+    (6.4.10); `&&` now binds tighter than `||`, which were equal
+    precedence before (6.3.36); `public` / `private` are
+    file-scoped and now reserved keywords (6.5.0). distlib's
+    per-module read cap went 256 KB → 1 MB —
+    `src/grammar_blobs.cyr` is 204,240 bytes, 78% of the old cap,
+    so that is real headroom won.
 - **What 2.2.3 added (toolchain pin bump):**
-  - **Toolchain pin `6.0.3` → `6.1.24`.** All declared stdlib
-    modules resolve in 6.1.24; all five gates (build, test,
-    smoke, lint, fmt) green. No grammar, token-layout, or
-    public-API changes.
+  - **Toolchain pin `6.0.3` → `6.1.24`.** No grammar,
+    token-layout, or public-API changes. The original entry here
+    claimed all declared stdlib modules resolved and all five
+    gates were green — **neither held.** `cyrius deps` exited 1
+    on `cyml` and `cyrius test` did not compile at that pin;
+    2.3.0 found both. Left in place as history, corrected here.
 - **What 2.2.2 added (modernization cut):**
   - **Toolchain pin `5.10.5` → `6.0.3`.** All declared stdlib
     modules resolve in 6.0.3.
@@ -404,12 +500,12 @@
     gate run). `grammar_load` consults the blob registry
     first; file-load fallback retained for grammar-author
     dev workflow. Bundle grew 82KB → 253KB.
-- **Test count:** 731/731 (was 717 at 1.13.1; 13 new 1.13.2
-  probes covering Rust + Python fence routing, unknown-tag
+- **Test count at 1.13.2:** 731/731 (was 717 at 1.13.1; 14 new
+  1.13.2 probes covering Rust + Python fence routing, unknown-tag
   fallback, empty-tag fallback, unclosed-fence fall-through,
   `c++` tag accepts; M3 markdown probe refreshed for the new
-  fence shape). 3 fuzz harnesses pass.
-- **No new grammars** — 38 bundled, unchanged.
+  fence shape). 3 fuzz harnesses passed then; 4 today.
+- **No new grammars at 1.13.2** — 38 bundled then; 45 today.
 
 ### 1.10.0 deliverables (recap)
 
@@ -418,13 +514,16 @@
 - Consumer integration guide at
   `docs/guides/consumer-integration.md`.
 
-### Vidya integration — ready, not yet started
+### Vidya integration — landed
 
-Per the 1.10.0 cut, vidya can adopt vyakarana as its code
-renderer whenever vidya plans a renderer rewrite. The
-integration is documented in vidya's own roadmap (under
-"Renderer integration — vyakarana") and points to the
-consumer guide here. No vyakarana cut needed.
+Per the 1.10.0 cut, vidya could adopt vyakarana as its code
+renderer whenever it planned a renderer rewrite; it has. Vidya
+pins `[deps.vyakarana] tag = "2.2.3"` and drives the 2.x
+streaming API from `src/main.cyr` at two call sites — the `vidya
+code` CLI and the `GET /code/{topic}/{lang}` route. The `code`
+command shipped in vidya 2.7.0 against vyakarana 1.11.1; vidya
+2.7.1 migrated both call sites to the streaming API. No
+vyakarana cut was needed, and none is now.
 - **What 1.9.0 added:** two AGNOS-native grammars —
   **CYML and LLVM-IR**. Token counts: cyml 659, llvm_ir 1194 —
   zero errors on canonical samples. **No new scanner
@@ -588,9 +687,10 @@ Still cosmetic-only and waiting on a future ADR:
   prefix streaming gap) deferred** to the next opt cut.
 
 See `SECURITY.md` for the living state of the audit findings.
-Next scheduled audit: the next streaming-opt cut (which fixes
-FINDING-011); or whichever cut lands a meaningful new surface
-first.
+Next scheduled audit: whichever cut lands a meaningful new
+surface first. FINDING-011 closed in 2.2.1, and neither 2.2.3
+nor 2.3.0 added a surface to audit — both were toolchain work
+over an unchanged public API.
 
 ---
 
@@ -613,7 +713,8 @@ Closed waves:
   ADR 0017); rolling-buffer per-feed drainage (2.0.1);
   pull adapter (2.0.2).
 
-Now in flight — 2.1.x grammar batches:
+Shipped since — the 2.1.x grammar batches and the
+infrastructure cuts that followed:
 
 - **2.1.0 — PowerShell / Crystal / Julia grammars.** Shipped.
 - **2.1.1 — Vue / Svelte single-file components.** Shipped.
@@ -634,9 +735,17 @@ Now in flight — 2.1.x grammar batches:
   pin `5.10.5` → `6.0.3`; vendored `lib/` gitignored
   ([ADR 0018](../adr/0018-vendored-stdlib-gitignored.md));
   `--list-languages` dispatch fix for 6.0's `vec_get: i64`.
-- **2.2.3 — Toolchain pin bump.** Shipped (this cut). cyrius
+- **2.2.3 — Toolchain pin bump.** Shipped. cyrius
   `6.0.3` → `6.1.24`. Pure infrastructure cut; no vyakarana
-  code changes.
+  code changes — and, as 2.3.0 discovered, a red test gate.
+- **2.3.0 — Toolchain catch-up.** Shipped (this cut). cyrius
+  `6.1.24` → `6.5.4`, four minor lines in one step. Vestigial
+  `cyml` entry removed from `[deps] stdlib` (it broke `cyrius
+  deps` on a fresh checkout at both pins); eleven duplicate
+  `var` names in `tests/vyakarana.tcyr` renamed, taking the
+  test gate red → green at 840/840; vendored `lib/` re-cut from
+  the 6.5.4 snapshot after sitting at 6.0.x vintage since 2.2.2.
+  No public-API, token-layout, or grammar changes.
 
 **The 2.1.x window is fully closed; the 2.1.5 audit queue
 is now empty.** No work currently in flight. Possible
@@ -657,9 +766,10 @@ directions when work resumes:
   selection: MDX (markdown + JSX), shell variants beyond
   bash/zsh/sh/dash, Lean 4, Zig macros.
 - **Binary-size cap revisit.** 1.13.0's 300 KB soft cap is
-  consistently exceeded (now ~376 KB) since ADR 0014's
-  embedded-grammar design. Not a security concern; flagged
-  in the 2026-05-09 2.1.x audit as a 2.x roadmap item.
+  consistently exceeded (362.8 KB on 6.5.4, down from 381.6 KB
+  at the 2.2.1 capture) since ADR 0014's embedded-grammar
+  design. Not a security concern; flagged in the 2026-05-09
+  2.1.x audit as a 2.x roadmap item.
 
 All consumer-driven. No forced minor; the next cut waits
 for a real ask.
@@ -692,24 +802,35 @@ Post-1.1 roadmap ([./roadmap.md](./roadmap.md) has the detail):
 - **M4** — Theme-palette contract with owl. Shared palette header
   is the likely shape.
 - **M5** — Streaming tokenizer (iterator API). Memory goes
-  O(tokens in flight); enables `owl huge.log`.
+  O(tokens in flight); enables `owl huge.log`. **Landed** —
+  2.0.0–2.0.2.
 - **M6** — vidya reverse consumption (vidya starts rendering its
   `content/lexing_and_parsing/` samples through vyakarana).
+  **Landed** — vidya 2.7.0 / 2.7.1; see §Vidya integration.
 - **M7** — Polish + release candidate.
 
 ---
 
 ## Cross-repo coordination
 
-- **owl** (`/home/macro/Repos/owl`) — its M3b was blocked on M1
-  and can now add `[deps.vyakarana]` at the tag the user cuts.
-  Do **not** sidestep with a path hack.
+- **Consumers all sit at `tag = "2.2.3"`** — `owl`, `cyim`, and
+  `vidya`, each pulling `dist/vyakarana.cyr` via
+  `[deps.vyakarana]`. The 2.3.0 bundle is byte-identical apart
+  from its version header, so bumping them buys nothing but the
+  tag; there is no downstream churn to chase.
+- **owl** (`/home/macro/Repos/owl`) — its M3b was blocked on M1;
+  it has long since declared `[deps.vyakarana]` at a cut tag
+  (currently 2.2.3). Do **not** sidestep with a path hack.
 - **vidya** (`/home/macro/Repos/vidya`) — read before making
-  corpus decisions. M6 will bring vidya on as a consumer; don't
-  pre-negotiate that now.
+  corpus decisions. Already a live consumer: the `vidya code`
+  CLI and the `GET /code/{topic}/{lang}` route both render
+  through the 2.x streaming API (`tokenize_stream_new` /
+  `_feed` / `_finish` / `_free`, ADR 0017) from its
+  `src/main.cyr` — added in vidya 2.7.0 against vyakarana
+  1.11.1, migrated to streaming in vidya 2.7.1.
 - **cyrius** (`/home/macro/Repos/cyrius`) — toolchain. Pinned at
-  `6.1.24` in `cyrius.cyml` (bumped from 6.0.3 in 2.2.3; 6.0.3
-  came from 5.10.5 in 2.2.2; see
+  `6.5.4` in `cyrius.cyml` (bumped from 6.1.24 in 2.3.0; 6.1.24
+  came from 6.0.3 in 2.2.3, and 6.0.3 from 5.10.5 in 2.2.2; see
   [ADR 0018](../adr/0018-vendored-stdlib-gitignored.md)). The
   2026-05-07 `include`-graph
   regression filed against 5.9.32
@@ -730,5 +851,9 @@ flag); 2026-05-08 (1.2.2 cut + `asm_x86_64`); 2026-05-08
 (1.2.3 cut + `asm_aarch64` + roadmap restructure); 2026-05-08
 (1.2.4 closeout — dead-code cleanup + stale-comment sweep +
 1.2.x audit); 2026-05-08 (1.3.0 cut + JVM + C-family —
-java/kotlin/cpp/csharp via ADR 0006 stand-ins). Next refresh:
-when 1.4.0 (scripting + mobile) ships.*
+java/kotlin/cpp/csharp via ADR 0006 stand-ins) — the list then
+went unmaintained through the 1.4.0–2.2.3 cuts; 2026-07-31
+(2.3.0 cut + pin 6.1.24 → 6.5.4 + test gate red → green).
+Next refresh: whenever the next cut ships. Nothing is in
+flight, so that waits on a real consumer ask — or on the next
+toolchain bump, whichever the user calls first.*

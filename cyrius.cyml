@@ -5,7 +5,7 @@ description = "Source-code grammar and tokenizer library for AGNOS / Cyrius"
 license = "GPL-3.0-only"
 repository = "https://github.com/MacCracken/vyakarana"
 language = "cyrius"
-cyrius = "6.1.24"
+cyrius = "6.5.4"
 
 [build]
 entry = "src/main.cyr"
@@ -13,7 +13,7 @@ output = "vyk"
 
 # `[lib]` drives `cyrius distlib` — concatenates the listed modules
 # into `dist/vyakarana.cyr` for downstream consumers (owl, cyim,
-# agnoshi, vidya) to pull via `[deps.vyakarana] modules =
+# vidya) to pull via `[deps.vyakarana] modules =
 # ["dist/vyakarana.cyr"]`. Do NOT move these into `[build]` — that
 # would prepend them before `src/main.cyr`, which re-includes them
 # and bloats the binary.
@@ -53,7 +53,16 @@ modules = [
 #   fs                    — reading files to tokenize
 #   hashmap               — keyword tables, extension→grammar map
 #   assert                — tests/vyakarana.tcyr
-#   cyml                  — grammar loader (M2)
+# `cyml` is NOT gone — it was folded into the `bayan` bundle at
+# 6.1.24, which is where its 17 `cyml_*` symbols live now. There
+# is just no standalone `lib/cyml.cyr` to resolve any more, so
+# naming it here made `cyrius deps` fail on a fresh checkout from
+# 2.2.3 onward. Removed rather than re-pointed at `bayan`: the
+# grammar loader parses `grammars/*.cyml` with its own
+# purpose-built scanner in `src/grammar.cyr` and has never called
+# a `cyml_*` symbol, so declaring `bayan` would vendor an unused
+# module. See the note in `src/grammar.cyr`'s header for why the
+# scanner is hand-rolled.
 # vyakarana is still first-party — no [deps.<name>] blocks yet.
 [deps]
 stdlib = [
@@ -68,5 +77,4 @@ stdlib = [
     "args",
     "hashmap",
     "assert",
-    "cyml",
 ]

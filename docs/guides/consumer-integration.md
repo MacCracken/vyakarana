@@ -1,10 +1,10 @@
 # Consumer integration guide
 
 How to integrate vyakarana into a downstream Cyrius project
-(owl, cyim, agnoshi, vidya, or anything else that needs to
-tokenize source code).
+(owl, cyim, vidya, or anything else that needs to tokenize
+source code).
 
-> **Last updated:** 2026-05-08 (2.0.0)
+> **Last updated:** 2026-07-31 (2.3.0)
 >
 > Audience: implementers writing the *renderer*, *editor*,
 > *theme*, or *content pipeline* that sits on top of vyakarana.
@@ -25,13 +25,27 @@ project's `cyrius.cyml`:
 ```toml
 [deps.vyakarana]
 git     = "https://github.com/MacCracken/vyakarana.git"
-tag     = "2.2.2"
+tag     = "2.3.0"
 modules = ["dist/vyakarana.cyr"]
 ```
 
-`cyrius deps` will fetch the tag and copy the bundle into your
-`lib/`. Pin to a tag, not a branch — the bundle changes per
-release.
+`cyrius deps` will fetch the tag and copy the bundle in as
+`lib/vyakarana.cyr`. Pin to a tag, not a branch — the bundle
+changes per release. Moving an existing 2.2.3 pin up to 2.3.0 is
+free: the 2.3.0 bundle is byte-identical to 2.2.3's apart from
+its version header line. 2.3.0 is a toolchain catch-up on
+vyakarana's side, not an API cut — it puts no new compiler
+floor on yours.
+
+One adjacent trap, surfaced while cutting 2.3.0: `cyrius deps`
+unlinks and re-copies *dep* modules like `lib/vyakarana.cyr` on
+every run, but it treats an already-present *stdlib* module of
+the same size as satisfied and never refreshes it. So bumping
+the vyakarana tag does pick up the new bundle, while bumping
+your own `cyrius = "X.Y.Z"` pin silently leaves `lib/alloc.cyr`
+and friends at their old vintage — vyakarana's own tree ran on
+a 6.0.x-vintage `lib/` from 2.2.2 until this cut caught it.
+Re-vendor with `rm -rf lib && cyrius deps`.
 
 > **1.11.0 and earlier are broken.** Through 1.11.0 the bundle
 > tried to read `grammars/<name>.cyml` from disk at runtime, but
@@ -65,11 +79,14 @@ fn tokenize_stream_free(s)
 # Pull adapter (2.0.2+). Iterator over the same stream;
 # pass 0 as out_tb to drain/finish to route into the
 # stream's internal staging tokenbuf, then walk it via
-# tokenize_stream_next.
+# tokenize_stream_next. On long-running streams call
+# _discard_consumed periodically — the staging grows
+# monotonically otherwise.
 fn tokenize_stream_next(s)              -> i64            # 1 advanced, 0 exhausted
 fn tokenize_stream_kind(s)              -> i64            # current token's kind
 fn tokenize_stream_start(s)             -> i64            # current token's start
 fn tokenize_stream_len(s)               -> i64            # current token's len
+fn tokenize_stream_discard_consumed(s)  -> i64            # 2.1.4+; tokens dropped
 
 fn has_grammar(name) -> i64                # 1 if known, 0 otherwise
 fn list_languages_into(out_vec) -> i64     # populates a vec of cstr names
@@ -87,7 +104,7 @@ fn lsp_kind_from_standard_index(idx) -> i64    # by integer index in LSP 3.17 le
 ```
 
 These are the **stable** entry points. Their names and arg
-order do not change across the 1.x line — see
+order do not change across the 2.x line — see
 [docs/architecture/overview.md](../architecture/overview.md)
 "Frozen public contracts."
 
@@ -122,7 +139,8 @@ fn kind_name(k)     -> cstr;       # "ident" / "keyword" / ...
 ```
 
 The integer values, the string names, and the count of 10 are
-all stable across 1.x — see
+all stable across 1.x and 2.x — the 2.0.0 break was the entry
+point only, and the palette hasn't moved since. See
 [architecture note 004](../architecture/004-theme-palette-contract.md).
 
 ## How to render
@@ -134,7 +152,7 @@ that kind. Pseudocode:
 
 ```cyrius
 var s = tokenize_stream_new("rust");
-if (s == 0) { /* unknown grammar */ return; }
+if (s == 0) { return; }        # unknown grammar
 var tb = tokenbuf_new();
 tokenize_stream_feed(s, src, strlen(src));
 tokenize_stream_finish(s, tb);
@@ -162,7 +180,7 @@ intermediate tokenbuf to manage:
 
 ```cyrius
 var s = tokenize_stream_new("rust");
-if (s == 0) { /* unknown grammar */ return; }
+if (s == 0) { return; }        # unknown grammar
 tokenize_stream_feed(s, src, strlen(src));
 tokenize_stream_finish(s, 0);   # 0 = drain into internal staging
 
@@ -212,7 +230,7 @@ wants to pre-load the registry at startup (e.g., to validate
 that `--language=foo` will work later), call:
 
 ```cyrius
-bootstrap_grammars();        # loads all 38 bundled grammars
+bootstrap_grammars();        # loads all 45 bundled grammars
 ```
 
 Then `has_grammar("foo")` and `list_languages_into(vec)` give
@@ -235,8 +253,11 @@ if (s == 0) {
 `tokenize_stream_feed` returns:
 - `VYK_OK` (0) — bytes accepted.
 - `VYK_ERR_OVERFLOW` (-1) — buffer cap (`VYK_STREAM_CAP`,
-  1 MB in 2.0.0) would be exceeded. 2.0.1+ removes this with
-  rolling-buffer streaming.
+  16 MB) would be exceeded. Since 2.0.1's rolling buffer
+  compacts after every drain, this bounds the longest
+  *in-progress* span — one block comment, string, or fence
+  body — not the total bytes you feed. Total input is
+  unbounded.
 - `VYK_ERR_FINISHED` (-2) — `tokenize_stream_finish` already
   ran on this stream; create a fresh one for new input.
 
@@ -267,20 +288,29 @@ manual re-sync step.
   For an N-byte input expect ≤ log₂(N) allocations.
 - Public API has no syscalls beyond what your project's stdlib
   already pulls in.
-- Streaming-tokenizer (iterator API) is scheduled for **2.0.0**
-  per the roadmap. Until then, `tokenize_source` materializes
-  the full tokenbuf eagerly. For files in the 1 MB range this
-  is fine; for 100 MB+ files, wait for 2.0.0 or buffer
-  yourself.
+- The streaming API shipped in **2.0.0**, the rolling buffer
+  and per-feed drainage in 2.0.1, the pull adapter in 2.0.2 —
+  nothing has to materialize the whole file eagerly any more.
+  Feed in chunks, drain as you go, and the *source-side*
+  footprint tracks your chunk size plus the longest
+  in-progress span rather than the input size.
+- The *token* side is yours to bound. A caller-owned tokenbuf
+  keeps every token ever drained into it, and the pull
+  adapter's staging grows monotonically until you call
+  `tokenize_stream_discard_consumed(s)` (2.1.4+). On a 100 MB
+  input that's O(total tokens) of live memory unless you
+  iterate with the pull adapter and discard periodically — do
+  that and 100 MB+ files are a loop, not a problem.
 
 ## Cross-repo coordination
 
 If you're building a renderer in tandem with vyakarana
 development, the project tracks consumer-side coordination in
 [docs/development/state.md](../development/state.md)'s
-"Consumer pressure" line. Prominent consumers (owl, cyim,
-agnoshi, vidya) should expect their pinned tag to be valid for
-the entire 1.x line — public API doesn't break across minors.
+"Consumer pressure" line. The consumers that actually declare
+`[deps.vyakarana]` are owl, cyim, and vidya; they should expect
+their pinned tag to be valid for the entire 2.x line — public
+API doesn't break across minors.
 
 ## Reporting issues
 

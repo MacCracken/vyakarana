@@ -1578,26 +1578,26 @@ fn main() {
     assert_eq(streq(grammar_name(gcss), "css"), 1, "name is 'css'");
 
     # `@media` is a keyword (via @ in ident_start + words rule).
-    var tb_c1 = tokenbuf_new();
-    var src_c1 = "@media (min-width: 768px) {}";
-    tokenize_with_grammar(gcss, src_c1, strlen(src_c1), tb_c1);
-    assert_eq(tokenbuf_kind(tb_c1, 0), TK_KEYWORD, "@media keyword");
-    assert_eq(tokenbuf_len(tb_c1, 0),  6,          "@media len 6");
+    var tb_css1 = tokenbuf_new();
+    var src_css1 = "@media (min-width: 768px) {}";
+    tokenize_with_grammar(gcss, src_css1, strlen(src_css1), tb_css1);
+    assert_eq(tokenbuf_kind(tb_css1, 0), TK_KEYWORD, "@media keyword");
+    assert_eq(tokenbuf_len(tb_css1, 0),  6,          "@media len 6");
 
     # `#hero` id selector is one ident (`#` in ident_start).
-    var tb_c2 = tokenbuf_new();
-    var src_c2 = "#hero";
-    tokenize_with_grammar(gcss, src_c2, strlen(src_c2), tb_c2);
-    assert_eq(tokenbuf_count(tb_c2), 1,           "#hero one token");
-    assert_eq(tokenbuf_kind(tb_c2, 0), TK_IDENT,  "#hero ident");
+    var tb_css2 = tokenbuf_new();
+    var src_css2 = "#hero";
+    tokenize_with_grammar(gcss, src_css2, strlen(src_css2), tb_css2);
+    assert_eq(tokenbuf_count(tb_css2), 1,           "#hero one token");
+    assert_eq(tokenbuf_kind(tb_css2, 0), TK_IDENT,  "#hero ident");
 
     # `--color-bg` custom property is one ident (`-` in ident_start).
-    var tb_c3 = tokenbuf_new();
-    var src_c3 = "--color-bg";
-    tokenize_with_grammar(gcss, src_c3, strlen(src_c3), tb_c3);
-    assert_eq(tokenbuf_count(tb_c3), 1,           "--color-bg one token");
-    assert_eq(tokenbuf_kind(tb_c3, 0), TK_IDENT,  "--color-bg ident");
-    assert_eq(tokenbuf_len(tb_c3, 0),  10,        "--color-bg len 10");
+    var tb_css3 = tokenbuf_new();
+    var src_css3 = "--color-bg";
+    tokenize_with_grammar(gcss, src_css3, strlen(src_css3), tb_css3);
+    assert_eq(tokenbuf_count(tb_css3), 1,           "--color-bg one token");
+    assert_eq(tokenbuf_kind(tb_css3, 0), TK_IDENT,  "--color-bg ident");
+    assert_eq(tokenbuf_len(tb_css3, 0),  10,        "--color-bg len 10");
 
     # `::after` pseudo-element: `::` is a 2-byte op.
     var tb_c4 = tokenbuf_new();
@@ -2084,13 +2084,13 @@ fn main() {
     # to EOF and emit one big token, not loop forever.
     var st_runaway_block = "/* this never closes and contains no terminator at all just bytes";
     var tb_st1 = tokenbuf_new();
-    var gc = registry_find_by_name("c");
-    if (gc == 0) {
+    var gc_st = registry_find_by_name("c");
+    if (gc_st == 0) {
         # Bootstrap if needed (test order may not have visited c yet).
-        gc = grammar_load("grammars/c.cyml");
-        registry_add(gc);
+        gc_st = grammar_load("grammars/c.cyml");
+        registry_add(gc_st);
     }
-    tokenize_with_grammar(gc, st_runaway_block, strlen(st_runaway_block), tb_st1);
+    tokenize_with_grammar(gc_st, st_runaway_block, strlen(st_runaway_block), tb_st1);
     assert(tokenbuf_count(tb_st1) >= 1, "runaway block comment: at least one token");
     var sum_st1 = 0;
     var st1i = 0;
@@ -2102,7 +2102,7 @@ fn main() {
 
     var st_runaway_str = "\"runaway string with no closing quote at all";
     var tb_st2 = tokenbuf_new();
-    tokenize_with_grammar(gc, st_runaway_str, strlen(st_runaway_str), tb_st2);
+    tokenize_with_grammar(gc_st, st_runaway_str, strlen(st_runaway_str), tb_st2);
     var sum_st2 = 0;
     var st2i = 0;
     while (st2i < tokenbuf_count(tb_st2)) {
@@ -2115,7 +2115,7 @@ fn main() {
     # that have caught greedy matchers in other tokenizers.
     var st_soup = "/*/*/*/* nested-looking but really linear */ */ */ */";
     var tb_st3 = tokenbuf_new();
-    tokenize_with_grammar(gc, st_soup, strlen(st_soup), tb_st3);
+    tokenize_with_grammar(gc_st, st_soup, strlen(st_soup), tb_st3);
     var sum_st3 = 0;
     var st3i = 0;
     while (st3i < tokenbuf_count(tb_st3)) {
@@ -2137,7 +2137,7 @@ fn main() {
     store8(st_bad_utf8 + 6,  114);   # 'r'
     store8(st_bad_utf8 + 7,  0);
     var tb_st4 = tokenbuf_new();
-    tokenize_with_grammar(gc, st_bad_utf8, 7, tb_st4);
+    tokenize_with_grammar(gc_st, st_bad_utf8, 7, tb_st4);
     var sum_st4 = 0;
     var st4i = 0;
     while (st4i < tokenbuf_count(tb_st4)) {
@@ -2208,7 +2208,7 @@ fn main() {
     }
     store8(st_long + 4000, 0);
     var tb_st7 = tokenbuf_new();
-    tokenize_with_grammar(gc, st_long, 4000, tb_st7);
+    tokenize_with_grammar(gc_st, st_long, 4000, tb_st7);
     assert_eq(tokenbuf_count(tb_st7), 1, "4KB ident run: one token");
     assert_eq(tokenbuf_len(tb_st7, 0), 4000, "4KB ident run: span covers everything");
 
@@ -2446,24 +2446,24 @@ fn main() {
     # everything except the trailing partial token; that partial
     # is re-scanned after the next feed appends more bytes.
     var sr1 = tokenize_stream_new("shell");
-    var tb_r1 = tokenbuf_new();
+    var tb_sr1 = tokenbuf_new();
     tokenize_stream_feed(sr1, "echo ", 5);
-    var d1 = tokenize_stream_drain(sr1, tb_r1);
+    var d1 = tokenize_stream_drain(sr1, tb_sr1);
     assert(d1 > 0,
            "drain 1: at least one token committed (`echo`)");
     # Token starts must be absolute (cumulative bytes since
     # stream creation), not relative to whatever buf_ptr is
     # holding now.
-    assert_eq(tokenbuf_start(tb_r1, 0), 0,
+    assert_eq(tokenbuf_start(tb_sr1, 0), 0,
               "first token's start is 0 (absolute)");
     tokenize_stream_feed(sr1, "hi", 2);
-    tokenize_stream_finish(sr1, tb_r1);
-    var sum_r1 = tb_coverage_sum(tb_r1);
+    tokenize_stream_finish(sr1, tb_sr1);
+    var sum_r1 = tb_coverage_sum(tb_sr1);
     assert_eq(sum_r1, 7, "rolling-buffer: coverage invariant holds (5+2)");
     # Last token's absolute start must reflect prior compaction —
     # `hi` lives at absolute offset 5, not at a buffer-relative 0.
-    var last_r1 = tokenbuf_count(tb_r1) - 1;
-    assert(tokenbuf_start(tb_r1, last_r1) >= 5,
+    var last_r1 = tokenbuf_count(tb_sr1) - 1;
+    assert(tokenbuf_start(tb_sr1, last_r1) >= 5,
            "last token start reflects abs_offset (post-compaction)");
     tokenize_stream_free(sr1);
 
@@ -2472,24 +2472,24 @@ fn main() {
     # `world */` should NOT commit the open marker until the
     # close arrives.
     var sr2 = tokenize_stream_new("c");
-    var tb_r2 = tokenbuf_new();
+    var tb_sr2 = tokenbuf_new();
     tokenize_stream_feed(sr2, "/* hello ", 9);
-    var d2a = tokenize_stream_drain(sr2, tb_r2);
+    var d2a = tokenize_stream_drain(sr2, tb_sr2);
     assert_eq(d2a, 0,
               "block comment open: no tokens committed yet");
     tokenize_stream_feed(sr2, "world */", 8);
-    var d2b = tokenize_stream_drain(sr2, tb_r2);
+    var d2b = tokenize_stream_drain(sr2, tb_sr2);
     assert(d2b >= 1,
            "after close arrives: comment commits");
-    tokenize_stream_finish(sr2, tb_r2);
-    var sum_r2 = tb_coverage_sum(tb_r2);
+    tokenize_stream_finish(sr2, tb_sr2);
+    var sum_r2 = tb_coverage_sum(tb_sr2);
     assert_eq(sum_r2, 17,
               "cross-boundary block comment: coverage holds (9+8)");
     # The first token MUST be the comment, not three separate
     # tokens emitted prematurely.
-    assert_eq(tokenbuf_kind(tb_r2, 0), TK_COMMENT,
+    assert_eq(tokenbuf_kind(tb_sr2, 0), TK_COMMENT,
               "cross-boundary: token is one TK_COMMENT");
-    assert_eq(tokenbuf_len(tb_r2, 0), 17,
+    assert_eq(tokenbuf_len(tb_sr2, 0), 17,
               "cross-boundary: comment spans the full 17 bytes");
     tokenize_stream_free(sr2);
 
@@ -2499,15 +2499,15 @@ fn main() {
     var src_drip = "if [[ -d /tmp ]]; then echo ok; fi";
     var n_drip = strlen(src_drip);
     var sr3 = tokenize_stream_new("shell");
-    var tb_r3 = tokenbuf_new();
+    var tb_sr3 = tokenbuf_new();
     var bi = 0;
     while (bi < n_drip) {
         tokenize_stream_feed(sr3, src_drip + bi, 1);
-        tokenize_stream_drain(sr3, tb_r3);
+        tokenize_stream_drain(sr3, tb_sr3);
         bi = bi + 1;
     }
-    tokenize_stream_finish(sr3, tb_r3);
-    var sum_r3 = tb_coverage_sum(tb_r3);
+    tokenize_stream_finish(sr3, tb_sr3);
+    var sum_r3 = tb_coverage_sum(tb_sr3);
     assert_eq(sum_r3, n_drip,
               "byte-at-a-time stream: coverage holds");
     tokenize_stream_free(sr3);
@@ -2518,14 +2518,14 @@ fn main() {
     tokenize_stream_feed(sr_base, src_drip, n_drip);
     tokenize_stream_finish(sr_base, tb_base);
     tokenize_stream_free(sr_base);
-    assert_eq(tokenbuf_count(tb_r3), tokenbuf_count(tb_base),
+    assert_eq(tokenbuf_count(tb_sr3), tokenbuf_count(tb_base),
               "byte-at-a-time vs single-shot: same token count");
     var bk = 0;
     var byte_drip_match = 1;
     while (bk < tokenbuf_count(tb_base)) {
-        if (tokenbuf_kind(tb_r3, bk)  != tokenbuf_kind(tb_base, bk))  { byte_drip_match = 0; }
-        if (tokenbuf_start(tb_r3, bk) != tokenbuf_start(tb_base, bk)) { byte_drip_match = 0; }
-        if (tokenbuf_len(tb_r3, bk)   != tokenbuf_len(tb_base, bk))   { byte_drip_match = 0; }
+        if (tokenbuf_kind(tb_sr3, bk)  != tokenbuf_kind(tb_base, bk))  { byte_drip_match = 0; }
+        if (tokenbuf_start(tb_sr3, bk) != tokenbuf_start(tb_base, bk)) { byte_drip_match = 0; }
+        if (tokenbuf_len(tb_sr3, bk)   != tokenbuf_len(tb_base, bk))   { byte_drip_match = 0; }
         bk = bk + 1;
     }
     assert_eq(byte_drip_match, 1,
@@ -2968,15 +2968,15 @@ fn main() {
 
     # `=>` for-expression operator (longest-match before `=`).
     var tb_tf4 = _t_tokenize("[for k, v in m: k => v]", "terraform");
-    var saw_arrow = 0;
+    var saw_tf_arrow = 0;
     var t4i = 0;
     while (t4i < tokenbuf_count(tb_tf4)) {
         if (tokenbuf_kind(tb_tf4, t4i) == TK_OPERATOR) {
-            if (tokenbuf_len(tb_tf4, t4i) == 2) { saw_arrow = 1; }
+            if (tokenbuf_len(tb_tf4, t4i) == 2) { saw_tf_arrow = 1; }
         }
         t4i = t4i + 1;
     }
-    assert_eq(saw_arrow, 1, "tf `=>`: 2-byte arrow operator");
+    assert_eq(saw_tf_arrow, 1, "tf `=>`: 2-byte arrow operator");
 
     # `...` variadic / spread.
     var tb_tf5 = _t_tokenize("foo(args...)", "terraform");

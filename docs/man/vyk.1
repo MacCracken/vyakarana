@@ -1,12 +1,14 @@
-.\" vyk(1) — man page for the vyakarana CLI
+.\" vyk(1) \(em man page for the vyakarana CLI
 .\" Format: groff_man(7).  Render with `man -l docs/man/vyk.1`
 .\"           or `groff -man -Tutf8 docs/man/vyk.1 | less -R`.
 .\"
 .\" Update procedure: this page mirrors `vyk --help` (src/main.cyr
-.\" `print_help`).  When changing one, refresh the other and the
-.\" 1.13.1 smoke probes.
+.\" `print_help`).  When changing one, refresh the other by hand:
+.\" nothing in scripts/smoke.sh or tests/vyakarana.tcyr reads this
+.\" file, which is how the .TH line sat at 1.13.1 across the whole
+.\" 2.x line.  Smoke probes `--help` output, never this page.
 .\"
-.TH VYK 1 "2026-05-08" "vyakarana 1.13.1" "User Commands"
+.TH VYK 1 "2026-07-31" "vyakarana 2.3.0" "User Commands"
 .SH NAME
 vyk \- source-code tokenizer (vyakarana demo CLI)
 .SH SYNOPSIS
@@ -169,7 +171,7 @@ span (the
 .I dist/vyakarana.cyr
 Single-file bundle for downstream
 .BR cyrius (1)
-consumers. Includes all 38 grammars inlined as Cyrius string
+consumers. Includes all 45 grammars inlined as Cyrius string
 literals.
 .TP
 .I grammars/<name>.cyml

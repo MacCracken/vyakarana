@@ -6,6 +6,97 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [2.3.0] — 2026-07-31
+
+**Toolchain catch-up.** Moves the pin `6.1.24` → `6.5.4`, four
+minor lines in one step. Minor rather than patch because the bump
+required source changes: the test suite did not compile, and
+`cyrius deps` did not resolve, at *either* pin. No public-API,
+token-layout, or grammar changes; 45 grammars and 4/4 fuzz
+harnesses unchanged, and the test suite is green at 840/840 for
+the first time since the defects below were introduced.
+
+### Changed
+
+- **Toolchain pin `6.1.24` → `6.5.4`** in `cyrius.cyml`. Local
+  devs run `cyriusly use 6.5.4`. Every remaining declared stdlib
+  module (`syscalls`, `alloc`, `fmt`, `io`, `fs`, `str`,
+  `string`, `vec`, `args`, `hashmap`, `assert`) resolves in
+  6.5.4; all five gates plus `cyrius fuzz` and `cyrius bench`
+  are green.
+- **Vendored `lib/` re-cut from the 6.5.4 snapshot.** The tree on
+  disk was a 6.0.x-vintage snapshot that predated both the 6.1.24
+  pin and this one — `cyrius deps` treats an already-present
+  `lib/<mod>.cyr` as satisfied and never refreshes it, so the
+  pinned stdlib had been silently ignored at build time since
+  2.2.2. A fresh checkout is now required to re-vendor: `rm -rf
+  lib && cyrius deps`.
+- Dropped `agnoshi` from the downstream-consumer list in
+  `cyrius.cyml`'s `[lib]` comment. The actual consumers declaring
+  `[deps.vyakarana]` are `owl`, `cyim`, and `vidya`; agnoshi has
+  no vyakarana reference and has not had one.
+
+### Fixed
+
+- **`cyrius deps` failed on a fresh checkout** because `[deps]
+  stdlib` listed `"cyml"`. The module was not deleted — it was
+  **folded into the `bayan` bundle at 6.1.24**, where its 17
+  `cyml_*` symbols live today; what disappeared is the
+  standalone `lib/cyml.cyr` the deps list resolves against
+  (present through 6.1.23, gone at 6.1.24). So 2.2.3's own pin
+  move is what broke it: from that cut on, CI's "Resolve
+  dependencies" step could not have passed on a clean checkout,
+  and the local build only worked because the stale `lib/` held
+  the last surviving copy of `cyml.cyr`.
+
+  Removed rather than re-pointed at `bayan`, because the entry
+  was vestigial either way — the grammar loader parses
+  `grammars/*.cyml` with a purpose-built scanner in
+  `src/grammar.cyr` (deliberately "not a general CYML/TOML
+  implementation", per its header) and has never called a
+  `cyml_*` symbol. Declaring `bayan` would vendor an unused
+  module. Adopting bayan's parser in place of the hand-rolled
+  one is a live design question, but it changes the grammar
+  loader's behaviour and belongs in an ADR, not a pin bump.
+- **`cyrius test` failed to compile** with `duplicate variable`
+  errors. Cyrius rejects a second `var NAME` bound in the same
+  lexical block, and `tests/vyakarana.tcyr` is one 3,100-line
+  `fn main()` in which eleven names were re-declared across test
+  sections. Renamed the later declarations to section-scoped
+  names (`tb_css1-3` / `src_css1-3` for the CSS block, `gc_st`
+  for the stress block, `tb_sr1-3` for the streaming block,
+  `saw_tf_arrow` for the Terraform block). Pure renames — no
+  assertion, input, or expected value changed.
+
+  These predate this release. They reproduce identically under
+  the outgoing 6.1.24 pin *and* under 6.0.3, so both 2.2.3 and
+  2.2.2 shipped with a red test gate — long enough that
+  `docs/development/state.md`'s "840/840 tests passing" claim had
+  gone stale without anyone re-running the gate. The
+  compiler under-reports them — error recovery swallows the
+  statement after each duplicate, so only 4 of the 11 surfaced
+  in any single run, along with a spurious `undefined variable
+  'gc'` cascade. Do not drive this class of fix from compiler
+  output alone.
+
+### Verified rather than assumed
+
+- **Zero stdlib removals** across the declared module set between
+  the 6.1.24 and 6.5.4 snapshots. The only signature changes are
+  added `: Str` annotations on `lib/fs.cyr` path/extension
+  helpers, none of which vyakarana calls.
+- **`dist/vyakarana.cyr` is byte-identical** to the 2.2.3 bundle
+  apart from its version header — no downstream churn for `owl`,
+  `cyim`, or `vidya`, all three of which still pin `tag =
+  "2.2.3"`.
+- **No benchmark regression.** All 8 rows in
+  `tests/bcyr/vyakarana.bcyr` are flat or faster than the 2.2.1
+  baseline, well inside the 20% watch threshold. `build/vyk` fell
+  390,784 → 371,472 bytes.
+- Byte-level input handling (`load8`/`store8` over `src + i`,
+  `alloc` sizing, `file_read_all` capping) re-read against the
+  6.5.4 stdlib; the coverage invariant holds on every corpus.
+
 ## [2.2.3] — 2026-06-10
 
 **Toolchain pin bump.** Moves the pin `6.0.3` → `6.1.24`. No

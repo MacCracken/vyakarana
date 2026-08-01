@@ -178,10 +178,15 @@ at least three languages.
 **Versioning rule (revised in flight).** The original rule
 reserved 2.x.x for the streaming-tokenizer break and parked
 everything else in 1.x.x. That mapping shipped: 2.0.0 cut the
-streaming API, and the 2.1.x / 2.2.x lines have absorbed
-follow-on grammar batches and audit-driven correctness work
-without further breaking changes. Future minors stay additive
-unless a real consumer-driven contract change forces a 3.0.0.
+streaming API, and the 2.1.x through 2.3.x lines have absorbed
+follow-on grammar batches, audit-driven correctness work, and
+toolchain catch-up without further breaking changes. Toolchain
+moves have never settled on one level: 2.2.0 took a minor
+purely to flag that the `cyriusly use` line had moved, 2.2.2
+and 2.2.3 shipped the two pin hops after it as patches, and
+2.3.0 earned its minor because the bump needed source changes,
+not because the pin moved. Future minors stay additive unless
+a real consumer-driven contract change forces a 3.0.0.
 
 ### Released
 
@@ -212,15 +217,42 @@ drifted, then stayed drifted). Brief shape:
   (38 → 45 grammars). Discardable pull-adapter staging.
   Random-split fuzz harness. Trailing-complete heuristic
   fix (FINDING-010). 2.1.5 closeout audit (0 findings).
-- **2.2.x** — Toolchain pin refresh + audit-queue wrap-up.
-  cyrius `5.10.0` → `5.10.5`. FINDING-011 compose-rule
+- **2.2.x** — Audit-queue wrap-up + a three-step toolchain
+  march. cyrius `5.10.0` → `5.10.5` (2.2.0) → `6.0.3`
+  (2.2.2) → `6.1.24` (2.2.3). FINDING-011 compose-rule
   prefix buffering fix; defensive `staging == 0` guard;
-  HTML / Vue / Markdown random-split fuzz cases re-enabled.
+  HTML / Vue / Markdown random-split fuzz cases re-enabled
+  (2.2.1). Vendored `lib/` gitignored
+  ([ADR 0018](../adr/0018-vendored-stdlib-gitignored.md))
+  and the `--list-languages` dispatch fixed for 6.0's
+  annotated `vec_get: i64` (2.2.2).
+- **2.3.x** — Toolchain catch-up. cyrius `6.1.24` → `6.5.4`,
+  four minor lines in one step. Minor rather than patch
+  because the bump needed source changes: it cleared two
+  **pre-existing** gate failures that reproduce identically
+  at the outgoing pin — `[deps] stdlib` listed `cyml`, which
+  6.1.24 folded into the `bayan` bundle, leaving no standalone
+  `lib/cyml.cyr` to resolve, so `cyrius deps` exited 1 on any
+  fresh checkout from 2.2.3 on (vestigial entry either way —
+  the grammar loader scans `.cyml` itself in `src/grammar.cyr`);
+  and eleven `var` names re-declared inside the test suite's
+  single 3,100-line `fn main()` failed to compile, meaning
+  2.2.3 shipped with a red test gate. Vendored `lib/` re-cut
+  from the 6.5.4 snapshot — it was 6.0.x-vintage, because
+  `cyrius deps` treats an existing `lib/<mod>.cyr` as
+  satisfied and never refreshes it, so the pin had been
+  silently ignored at build time since 2.2.2. 45 grammars,
+  840/840 tests, no benchmark regression, `build/vyk` down
+  390,784 → 371,472 bytes.
 
 ### Forward plan
 
-**Empty / TBD.** The 2.1.5 audit queue is fully drained as
-of 2.2.1; no minor or patch cut is currently scheduled.
+**Nothing scheduled, as of 2.3.0.** The 2.1.5 audit queue
+drained at 2.2.1 and has stayed drained. Every cut since
+(2.2.2, 2.2.3, 2.3.0) was the upstream-toolchain forcing
+function firing, not planned work — the model below is
+holding; that one trigger just fires more often than the
+old "empty / TBD" framing implied.
 
 The next cut waits on a forcing function — a real consumer
 asking for a grammar, a profiler complaining about a hot
@@ -228,6 +260,17 @@ path, an upstream toolchain refresh, or an audit finding.
 No speculative batches; the previous cycle of pre-scheduling
 1.3.x – 1.13.x ahead of consumer demand drifted out of
 sync with reality and was cut.
+
+**One known follow-up, not owned here.** `owl`, `cyim`, and
+`vidya` all still pin `tag = "2.2.3"`. `dist/vyakarana.cyr`
+is byte-identical across the 2.3.0 cut apart from its
+version header, so re-pinning buys nothing but the tag and
+costs nothing but the one-liner — no downstream churn to
+chase, and no toolchain move forced on them either: the
+bundle still compiles at the pins they run today (owl
+`6.2.37`, cyim `6.2.36`, vidya `6.4.2`), none of which is
+`6.5.4`. Whether to take the tag is their call, not
+vyakarana's.
 
 `docs/development/state.md` has a §Next up section listing
 candidate directions if work resumes (state-machine drain

@@ -33,6 +33,16 @@ Run all five on session entry. Don't take
 face value until you've seen the commands pass. Use `cyrius build`,
 never raw `cc3`/`cc5`.
 
+**`cyrius deps` does not refresh a `lib/` that already exists.**
+It treats a present `lib/<mod>.cyr` as satisfied, so the vendored
+stdlib silently stays at whatever snapshot first populated it —
+the pin is then ignored at build time and the gates prove nothing
+about the version you think you're on. This is exactly what
+happened between 2.2.2 and 2.3.0: `lib/` sat at a 6.0.x vintage
+across two pin bumps. **After any pin change, `rm -rf lib &&
+cyrius deps`,** then confirm with `diff lib/str.cyr
+~/.cyrius/versions/<pin>/lib/str.cyr`.
+
 **Lint + fmt are mandatory pre-release.** CI runs them; failing
 either blocks the tag. The wrapper at `scripts/lint-fmt.sh`
 iterates every `src/*.cyr` and `src/grammars/*.cyr` (skipping
@@ -44,8 +54,9 @@ warning or formatting drift.
 (gitignored — every fresh checkout needs this step before the
 first build). Inlines `grammars/*.cyml` into Cyrius string
 literals so `dist/vyakarana.cyr` is self-contained for `cyrius
-deps` consumers; also required before `cyrius distlib`. See
-ADR 0014.
+deps` consumers. **Required before `cyrius distlib`** — since
+6.2.52 distlib exits 1 on a missing `[lib] modules` entry rather
+than quietly emitting a truncated bundle. See ADR 0014.
 
 ## Work loop (continuous)
 
@@ -156,16 +167,38 @@ Cyrius code. When dialect is unclear, read `cyrius/programs/*.cyr`
 
 - `if (cond) {` / `while (cond) {` — parens required around the
   condition.
-- `var buf[N]` is **N bytes**, not N elements.
-- `&&` / `||` short-circuit; mixed requires parens:
-  `a && (b || c)`. Better yet, nest `if` blocks for clarity.
+- `var buf[N]` **inside a function** is N bytes, not N elements.
+  A bare **top-level** `var X[N]` is `N × 8` bytes as of 6.4.10
+  (it was under-sized before that). vyakarana declares no arrays
+  at either scope — keep it that way and use `alloc(N)`.
+- `&&` / `||` short-circuit. `&&` binds tighter than `||` as of
+  6.3.36 (they were equal precedence before, so `a || b && c`
+  mis-parsed). Keep writing the parens anyway — `a && (b || c)`
+  reads the same at every pin. Better yet, nest `if` blocks.
 - No closures — use named functions.
 - `break` inside a `while` with `var` declarations is unreliable;
   use a flag + `continue` pattern instead.
 - `return;` without a value is invalid — always `return 0;` (or
   the real value).
 - No negative literals. Write `(0 - N)`, not `-N`.
-- All `var` declarations are function-scoped — no block scoping.
+- `var` is **block-scoped**. Re-declaring a name already bound in
+  the *same* block is a `duplicate variable` error; shadowing an
+  enclosing block or reusing a name in a sibling block is legal;
+  a block-local does not survive its closing brace. This is what
+  kept `tests/vyakarana.tcyr` from compiling until 2.3.0 — its
+  3,100-line `fn main()` had eleven names re-declared in the one
+  top-level block.
+  **The compiler under-reports it.** Error recovery swallows the
+  statement after each duplicate, so a run surfaces roughly half
+  the sites and can emit a bogus `undefined variable` cascade on
+  top. Enumerate the duplicates statically and fix them in one
+  pass; do not iterate against compiler output.
+- Never name a function `X_str`, `X_int`, or `X_cstr` unless it
+  really is the same-arity type variant of a sibling `X`. Those
+  are reserved overload-dispatch suffixes — the compiler rewrites
+  `X(a, …)` to the suffixed name when arg 1 matches, so a
+  lookalike silently hijacks calls to its base and binds the
+  missing arguments to garbage.
 - Top-level args pattern: `args_init(); var ac = argc(); var a =
   argv(i);` (not `fn main(argc, argv)` — `argc`/`argv` are
   functions).
@@ -179,8 +212,11 @@ Cyrius code. When dialect is unclear, read `cyrius/programs/*.cyr`
   `[lib] modules = [...]` distlib shapes.
 - Heap-allocate large buffers with `alloc(N)` — `var buf[256000]`
   bloats the binary by 256KB.
-- Enum values for constants — don't consume `gvar_toks` slots (256
-  initialized-global limit per compilation unit).
+- Enum values for constants — don't consume `gvar_toks` slots.
+  The initialized-global cap per compilation unit is **4096** as
+  of 6.3.41 (it was 1024, and this file long carried a stale 256).
+  Only non-literal top-level initializers take a slot, so the
+  ceiling is distant — but enums still read better for constants.
 - Test exit pattern: `syscall(60, assert_summary())`.
 
 ## Do not
@@ -188,8 +224,9 @@ Cyrius code. When dialect is unclear, read `cyrius/programs/*.cyr`
 - **Do not commit or push** — the user handles all git operations.
 - **Do not use `gh` CLI** — if GitHub-API calls are needed, use
   `curl` against the REST API.
-- Do not modify files in `lib/` — vendored stdlib, re-synced by
-  `cyrius deps`.
+- Do not modify files in `lib/` — vendored stdlib. Re-vendor with
+  `rm -rf lib && cyrius deps`; a plain `cyrius deps` will not
+  refresh an existing tree.
 - Do not depend on `owl` or any other consumer — vyakarana is
   upstream of all of them.
 - Do not add a token kind, change the `Token` layout, or rename

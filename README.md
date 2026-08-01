@@ -7,10 +7,11 @@
 stream of typed tokens. That's the whole job.
 
 Consumers decide what to do with the tokens — `owl` colors them for
-terminal display, a future editor (`cyim`) colors them in a buffer,
-`agnoshi` colors fenced code blocks when an LLM returns code, and
-`vidya` renders code samples in the reference library. The tokenizer
-and the renderer stay on opposite sides of a small, stable contract.
+terminal display, the `cyim` editor colors them in a buffer, and
+`vidya` renders code samples in the reference library. Those three
+are the whole downstream list — they are the only repos that declare
+`[deps.vyakarana]`. The tokenizer and the renderer stay on opposite
+sides of a small, stable contract.
 
 **vidya is also a corpus supplier.** Its
 `content/lexing_and_parsing/` directory ships hand-written reference
@@ -75,22 +76,29 @@ pkg install vyakarana
 # From source
 git clone https://github.com/MacCracken/vyakarana
 cd vyakarana
-cyrius deps
+cyriusly use 6.5.4                  # match the pin in cyrius.cyml first
+cyrius deps                         # vendors lib/ from the pinned toolchain
 sh scripts/embed-grammars.sh        # inlines grammars/*.cyml; gitignored
 cyrius build src/main.cyr build/vyk
 ```
 
+Both pre-build steps are mandatory: `lib/` and `src/grammar_blobs.cyr`
+are gitignored, so a fresh checkout has neither. On an *existing*
+checkout, picking up a pin bump takes `cyriusly use <pin>` and then
+`rm -rf lib && cyrius deps` — `cyrius deps` treats an already-present
+`lib/<mod>.cyr` as satisfied and will not refresh it.
+
 ## `vyk` — the demo CLI
 
 ```sh
-vyk --version              # prints `vyk 2.2.3`
+vyk --version              # prints `vyk 2.3.0`
 vyk --list-kinds           # print the ten token kinds
 vyk --list-languages       # list loaded grammars (45 bundled)
 vyk file.rs                # NDJSON tokens for any bundled grammar
-vyk --language=shell -     # explicit grammar override; reads stdin
+vyk --language=shell setup # explicit grammar override (extensionless)
 ```
 
-`--theme <name> file.py` previews the grammar via owl's palette
+`--theme=<name> file.py` previews the grammar via owl's palette
 without running owl; `--handcoded file.sh` exercises the M1 hand-
 coded shell oracle for regression diffs.
 
@@ -102,8 +110,10 @@ The 2.0+ public surface is a streaming primitive. Push bytes via
 `_feed`, drain tokens whenever you want, finish to flush:
 
 ```cyrius
-# After adding a [deps.vyakarana] block to your cyrius.cyml:
-include "vyakarana/dist/vyakarana.cyr"
+# After adding a [deps.vyakarana] block to your cyrius.cyml,
+# `cyrius deps` vendors the bundle to lib/vyakarana.cyr —
+# include it by that name, not by its path in this repo:
+include "lib/vyakarana.cyr"
 
 var s  = tokenize_stream_new("rust");
 var tb = tokenbuf_new();
@@ -123,10 +133,17 @@ was removed in 2.0.0 (ADR 0017).
 
 ## Status
 
-**2.2.3** (2026-06-10) — 45 bundled grammars, push + pull
+**2.3.0** (2026-07-31) — 45 bundled grammars, push + pull
 streaming primitive, 4/4 fuzz harnesses green, 840/840 tests
-passing. Toolchain pinned at `cyrius 6.1.24`. Pin bump cut:
-toolchain pin bumped 6.0.3 → 6.1.24, no vyakarana code changes.
+passing. Toolchain pinned at `cyrius 6.5.4`. Toolchain catch-up
+cut: the pin moved 6.1.24 → 6.5.4, four minor lines in one step —
+minor rather than patch because it took source changes to get
+there. `cyrius.cyml` shed a vestigial `cyml` stdlib entry that
+made `cyrius deps` exit 1 on a fresh checkout, and eleven
+duplicate variable names in `tests/vyakarana.tcyr` were renamed
+so the suite compiles again. Both defects predate the bump and
+reproduce at 6.1.24 — 2.2.3 shipped with a red test gate. No
+public-API, token-layout, or grammar changes.
 
 `docs/development/state.md` is the authoritative live tracker;
 `CHANGELOG.md` is the per-cut log;
