@@ -41,10 +41,11 @@ var GRAMMAR_FILE_CAP = 32768;
 #  152  case_insensitive_kw i64  (0/1) — keyword lookup folds A-Z to a-z
 #  160  compose_rules       Vec<ComposeRule> — embedded-grammar routing
 #  168  compose_fenced_rules Vec<ComposeFencedRule> — captured-tag routing (ADR 0016)
+#  176  compose_region_rules Vec<ComposeRegionRule> — open-ended region routing (ADR 0019)
 #  -----
-#  176 bytes total
+#  184 bytes total
 
-var GRAMMAR_SIZE = 176;
+var GRAMMAR_SIZE = 184;
 
 fn grammar_new() {
     var g = alloc(GRAMMAR_SIZE);
@@ -62,6 +63,7 @@ fn grammar_new() {
     store64(g + 128, vec_new());   # words_rules
     store64(g + 160, vec_new());   # compose_rules
     store64(g + 168, vec_new());   # compose_fenced_rules
+    store64(g + 176, vec_new());   # compose_region_rules
     return g;
 }
 
@@ -87,6 +89,7 @@ fn grammar_char_literal(g)   { return load64(g + 144); }
 fn grammar_case_insensitive_kw(g) { return load64(g + 152); }
 fn grammar_compose_rules(g)        { return load64(g + 160); }
 fn grammar_compose_fenced_rules(g) { return load64(g + 168); }
+fn grammar_compose_region_rules(g) { return load64(g + 176); }
 
 # ── Rule sub-records ────────────────────────
 
@@ -151,6 +154,32 @@ fn compose_fenced_rule_new(start, end) {
 }
 fn compose_fenced_rule_start(r) { return load64(r); }
 fn compose_fenced_rule_end(r)   { return load64(r + 8); }
+
+# Compose-region rule — routes an OPEN-ENDED region through
+# another grammar. Differs from ComposeRule (ADR 0013) in the two
+# ways CYML needs and `compose` cannot express (see ADR 0019):
+#
+#   1. `end_before` is a LOOKAHEAD terminator. The region stops
+#      just before it and the marker bytes are left for the outer
+#      grammar. `compose` consumes its `end`, which would eat the
+#      `[[entries]]` that begins CYML's next TOML header.
+#   2. Reaching EOF without the terminator is SUCCESS, not
+#      failure — the region simply runs to the end of input.
+#      `compose` bails and emits nothing, so CYML's final body
+#      (always EOF-terminated) got no routing at all.
+#
+# An empty `end_before` means "always run to EOF".
+var COMPOSE_REGION_RULE_SIZE = 24;
+fn compose_region_rule_new(start, end_before, inner_name) {
+    var r = alloc(COMPOSE_REGION_RULE_SIZE);
+    store64(r,      start);
+    store64(r + 8,  end_before);
+    store64(r + 16, inner_name);
+    return r;
+}
+fn compose_region_rule_start(r)      { return load64(r); }
+fn compose_region_rule_end_before(r) { return load64(r + 8); }
+fn compose_region_rule_inner(r)      { return load64(r + 16); }
 
 # ── Char-class lookup tables ────────────────
 # A 256-byte table indexed by byte; value is 0 or 1. Built from a
@@ -479,6 +508,7 @@ fn _gp_apply_kv(g, current_rule, section, buf, len, key_pos, key_len, value_pos)
             if (streq(mname, "words")   == 1) { mt = 3; }
             if (streq(mname, "compose") == 1)        { mt = 4; }
             if (streq(mname, "compose_fenced") == 1) { mt = 5; }
+            if (streq(mname, "compose_region") == 1) { mt = 6; }
             store64(current_rule + 8, mt);
             return 0;
         }
@@ -488,6 +518,14 @@ fn _gp_apply_kv(g, current_rule, section, buf, len, key_pos, key_len, value_pos)
             return 0;
         }
         if (_gp_slice_eq(buf, key_pos, key_len, "end") == 1) {
+            _gp_parse_string(buf, len, value_pos, out_str_slot);
+            store64(current_rule + 24, load64(out_str_slot));
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "end_before") == 1) {
+            # compose_region's lookahead terminator. Shares slot 24
+            # with `end` — a rule declares one or the other, and
+            # only mt==6 reads it as non-consuming. See ADR 0019.
             _gp_parse_string(buf, len, value_pos, out_str_slot);
             store64(current_rule + 24, load64(out_str_slot));
             return 0;
@@ -573,6 +611,16 @@ fn _gp_close_rule(g, rule_acc) {
         # See ADR 0016.
         vec_push(grammar_compose_fenced_rules(g),
         compose_fenced_rule_new(start, endp));
+        return 0;
+    }
+    if (mt == 6) {
+        # Compose-region: `end_before` shares slot 24 with `end`
+        # (a rule declares one or the other, never both), and the
+        # inner-grammar name rides slot 40 exactly as for mt==4.
+        # See ADR 0019.
+        var region_inner = words;
+        vec_push(grammar_compose_region_rules(g),
+        compose_region_rule_new(start, endp, region_inner));
         return 0;
     }
     return 0;

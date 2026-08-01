@@ -4,8 +4,15 @@
 > (1.x and 2.x cuts), plus any session that shifts the gates'
 > colour or the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.3.0 are
-> shipped. **2.3.0 is the toolchain catch-up** — pin 6.1.24 →
+> **Read this file before doing anything.** 1.0.0–2.3.1 are
+> shipped. **2.3.1 makes CYML parse as CYML** — its markdown
+> bodies now route to the markdown grammar through the new
+> `compose_region` rule type ([ADR 0019](../adr/0019-compose-region-rule.md)),
+> where 1.9.0–2.3.0 merged TOML and markdown into one rule set
+> and mis-typed body headings and fenced code blocks. The same
+> cut fixed `markdown` emitting `TK_ERROR` for `"`, `'` and `$`,
+> which had made this repo's own `README.md` exit 1. 850/850
+> tests. **2.3.0 was the toolchain catch-up** — pin 6.1.24 →
 > 6.5.4, four minor lines in one step — and it cleared two
 > pre-existing gate failures on the way: a vestigial `cyml` entry
 > in `[deps] stdlib` that made `cyrius deps` exit 1 on a fresh
@@ -42,10 +49,45 @@
 
 ## Current status (2026-07-31)
 
-- **Version:** `2.3.0` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `2.3.1` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`.
 - **Toolchain pin:** `cyrius = "6.5.4"` (bumped from 6.1.24
   in 2.3.0). Local devs run `cyriusly use 6.5.4`.
+- **Gates:** build OK · **850/850** tests · smoke OK · lint+fmt
+  exit 0 · fuzz 4/4 · bench 8 rows flat. Verified from a clean
+  `rm -rf build lib src/grammar_blobs.cyr` rebuild.
+- **What 2.3.1 added (CYML composition):**
+  - **`match = "compose_region"` rule type**
+    ([ADR 0019](../adr/0019-compose-region-rule.md)). Routes an
+    open-ended region through a named grammar. Its `end_before`
+    is a *lookahead* terminator left unconsumed for the outer
+    grammar, and hitting EOF without it is a normal ending — the
+    two things ADR 0013's `compose` cannot do, and both of which
+    CYML needs. `GRAMMAR_SIZE` 176 → 184 for the new vec.
+  - **`grammars/cyml.cyml` migrated to it.** Bodies route to
+    markdown, so a body `# Heading` is a heading rather than a
+    TOML comment, and a fence reaches markdown's `compose_fenced`
+    and routes on to the tagged grammar — ` ```cyrius ` inside a
+    CYML body yields real keywords, two levels deep. The grammar
+    had named composition as the fix since 1.9.0; composition
+    landed in 1.11.0 and cyml was never migrated.
+  - **`grammars/markdown.cyml` prose fix.** `"`, `'` and `$` were
+    in neither the operator nor the punctuation list and fell
+    through to `TK_ERROR`; `README.md` tripped it 8 times and
+    `CONTRIBUTING.md` 21. Pre-existing and independent — found
+    only because routing CYML bodies to markdown surfaced it.
+  - **`---` in CYML is now `punctuation`, was `operator`** — it
+    is a region start marker now. The cut's one visible
+    token-output change.
+  - `tests/corpus/phase_d.cyml` (vidya snapshot, ADR 0001) plus
+    ten `tcyr` probes. The old corpus had neither a body heading
+    nor a fence, which is exactly why twelve minor releases of
+    green gates proved nothing here.
+  - **Open:** a sweep of every printable ASCII byte through all
+    45 grammars found 44 with at least one `TK_ERROR` hole. Some
+    are correct (a backtick really is invalid in C); some are
+    not — backtick command substitution is standard `shell` and
+    `ruby` and currently errors. Only `markdown` was fixed here.
 - **What 2.3.0 added (toolchain catch-up):**
   - **Toolchain pin `6.1.24` → `6.5.4`.** Four minor lines in
     one step. Every remaining declared stdlib module resolves;

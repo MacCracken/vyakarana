@@ -5,6 +5,11 @@
 #
 #   0. [[rules]] match="compose" (ADR 0013)           → recursive
 #      (start marker + inner-grammar body + end marker)
+#   0b. [[rules]] match="compose_fenced" (ADR 0016)   → recursive
+#      (inner grammar captured per-fence from the info string)
+#   0c. [[rules]] match="compose_region" (ADR 0019)   → recursive
+#      (start marker + inner-grammar body; ends BEFORE an
+#       unconsumed lookahead terminator, or at EOF)
 #   1. shebang (#! on line 0, column 0)              → preprocessor
 #   2. [[rules]] match="line"                         → kind
 #   3. [[rules]] match="pair"                         → kind
@@ -194,6 +199,76 @@ fn _ds_try_compose_rules(g, src, src_len, i, tb) {
             # End marker not found — fall through (next compose
             # rule, or normal pipeline). Don't half-consume.
             return 0;
+        }
+        r_i = r_i + 1;
+    }
+    return 0;
+}
+
+# Try each [[rules]] match="compose_region" at the cursor.
+#
+# Same routing as `compose`, with the two differences CYML needs
+# (ADR 0019). `end_before` is a LOOKAHEAD terminator: the region
+# stops just before it and those bytes are left for the outer
+# grammar, so the `[[entries]]` that opens CYML's next TOML header
+# survives as TOML. And running out of input is success, not
+# failure — the region simply ends at EOF, which is how every
+# CYML file's last body terminates.
+#
+# Emits the start marker plus the routed body. There is no end
+# token: the terminator was never ours to consume.
+fn _ds_try_compose_region_rules(g, src, src_len, i, tb) {
+    var rules = grammar_compose_region_rules(g);
+    if (rules == 0) { return 0; }
+    var n = vec_len(rules);
+    var r_i = 0;
+    while (r_i < n) {
+        var r = vec_get(rules, r_i);
+        var start = compose_region_rule_start(r);
+        var slen = strlen(start);
+        if ((i + slen <= src_len) && (memeq(src + i, start, slen) == 1)) {
+            var endb = compose_region_rule_end_before(r);
+            var elen = 0;
+            if (endb != 0) { elen = strlen(endb); }
+            var body_start = i + slen;
+            # Scan for the terminator. Falling off the end is the
+            # EOF case, and body_end is already correct for it.
+            var body_end = src_len;
+            if (elen > 0) {
+                var j = body_start;
+                var found = 0;
+                while ((j < src_len) && (found == 0)) {
+                    if ((j + elen <= src_len) && (memeq(src + j, endb, elen) == 1)) {
+                        body_end = j;
+                        found = 1;
+                    }
+                    j = j + 1;
+                }
+            }
+            tokenbuf_push(tb, TK_PUNCTUATION, i, slen);
+            var body_len = body_end - body_start;
+            if (body_len > 0) {
+                var inner_name = compose_region_rule_inner(r);
+                var inner_g = registry_find_by_name(inner_name);
+                if (inner_g != 0) {
+                    var inner_tb = tokenbuf_new();
+                    tokenize_with_grammar(inner_g, src + body_start, body_len, inner_tb);
+                    var k = 0;
+                    var nk = tokenbuf_count(inner_tb);
+                    while (k < nk) {
+                        var ik = tokenbuf_kind(inner_tb, k);
+                        var is = tokenbuf_start(inner_tb, k);
+                        var il = tokenbuf_len(inner_tb, k);
+                        tokenbuf_push(tb, ik, is + body_start, il);
+                        k = k + 1;
+                    }
+                } else {
+                    # Inner grammar missing — same graceful degrade
+                    # as `compose`: body becomes one string span.
+                    tokenbuf_push(tb, TK_STRING, body_start, body_len);
+                }
+            }
+            return slen + body_len;
         }
         r_i = r_i + 1;
     }
@@ -640,6 +715,16 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
         var cflen = _ds_try_compose_fenced_rules(g, src, src_len, i, tb);
         if (cflen > 0) {
             i = i + cflen;
+            continue;
+        }
+
+        # 0c. Compose-region rules (ADR 0019). Open-ended regions:
+        # the body runs to a lookahead terminator (left unconsumed)
+        # or to EOF. CYML's `---` opens a markdown body that ends
+        # before the next TOML header, or at end of input.
+        var crlen = _ds_try_compose_region_rules(g, src, src_len, i, tb);
+        if (crlen > 0) {
+            i = i + crlen;
             continue;
         }
 

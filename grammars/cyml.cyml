@@ -22,14 +22,25 @@
 #   ---                          |
 #   [[entries]]                  | Next header block...
 #
-# A proper grammar would route header bytes to TOML and body
-# bytes to Markdown via grammar composition (1.11.0). For 1.9.0
-# we tokenize both halves with a single rule set tuned for the
-# union: TOML's strings + section headers + assignments, plus
-# backtick inline code, `**`/`*`/`_` emphasis, and the `---`
-# separator. Coverage holds; downstream consumers that want
-# distinct colouring per half can switch by tracking which side
-# of the most recent `---` they're on.
+# Bodies are routed to the markdown grammar with a
+# `compose_region` rule (2.3.1, [ADR 0019](../docs/adr/0019-compose-region-rule.md)).
+# The header keeps this file's own TOML-shaped rules.
+#
+# Why `compose_region` and not the `compose` of ADR 0013: CYML's
+# body has no closing delimiter. It runs from `---` until the
+# next TOML header line or end of file, so the routing needs a
+# terminator that is *not* consumed (the `[[entries]]` belongs to
+# the header that follows) and it needs EOF to count as a normal
+# ending (the last body in every file terminates that way).
+# `compose` consumes its `end` and emits nothing at all when the
+# marker is absent, so it could express neither.
+#
+# 1.9.0 through 2.3.0 shipped a single union rule set instead,
+# and it mis-typed exactly what a CYML body is for: `#` headings
+# came back as TOML comments, and a ``` fence opened a backtick
+# pair rule that swallowed the whole code block into one string.
+# The bundled corpus had neither shape, so the gates stayed green
+# across twelve minor releases.
 #
 # Stand-in corpus: NOT a stand-in! `tests/corpus/dependencies.cyml`
 # is a real vidya snapshot from
@@ -37,13 +48,19 @@
 # bundled grammar where vidya already shipped a sample for the
 # language.
 #
-# Known gaps (not triggered by the corpus):
+# Known gaps:
 #   - Multi-line TOML strings `"""…"""`. Not in the sample.
 #     If a real CYML uses them, add the same pair rule
 #     [ADR 0008](../docs/adr/0008-toml-triple-quoted-strings.md)
 #     introduced for TOML.
-#   - Markdown-style code fences ``` ``` ```. Tokenize as three
-#     ` operators; cosmetic.
+#   - A body line beginning with `[` ends the region early —
+#     `end_before` is a literal `\n[`, not a line-anchored TOML
+#     header match. In practice that means a markdown link-
+#     reference definition (`[1]: https://…`) at column 0 hands
+#     the rest of the body back to the header rules. Same class
+#     of documented literal-prefix limit as html's `<script>`
+#     vs `<script type="module">` (ADR 0013 §When to revisit).
+#     Indented or inline `[` is unaffected.
 #   - Setext-heading underlines `===` (markdown-body level).
 #     The `---` separator would also match a setext underline,
 #     but the convention is that `---` lives between header
@@ -98,6 +115,22 @@ punctuation = [
 
 
 # ── Rules ──────────────────────────────────────────────────────────
+
+# Markdown body. Opens at `---` and runs to the next TOML header
+# line or EOF, whichever comes first. `end_before` is a lookahead:
+# the `\n[` stays behind so `[[entries]]` tokenizes as the TOML it
+# is. Runs at scanner step 0c, ahead of the `#` line rule below —
+# which is the whole point, since a body's `# Heading` is markdown,
+# not a TOML comment.
+#
+# `---` inside a header comment or string is safe: the scanner
+# advances token-by-token, so the cursor never lands inside one.
+[[rules]]
+match = "compose_region"
+start = "---"
+end_before = "\n["
+inner = "markdown"
+
 
 [[rules]]
 kind = "comment"

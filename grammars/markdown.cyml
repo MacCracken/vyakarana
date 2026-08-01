@@ -59,13 +59,24 @@ operators = [
     "===", "---", "***", "___",
     "**", "__", "~~",
     "=", "*", "_", "~", "-", "+", "/", "\\",
-    "<", ">", "|", ":", "@", "%", "^", "&", "?", "!",
+    "<", ">", "|", ":", "@", "%", "^", "&", "?", "!", "$",
 ]
 
-# Structural punctuation for links, images, and inline groups.
+# Structural punctuation for links, images, and inline groups,
+# plus the prose characters that carry no markdown meaning.
+#
+# `"` and `'` are here because markdown has no string type — a
+# quote is literal text, exactly like the `,` `;` `.` above.
+# Through 2.3.0 they were in neither list and fell through to
+# TK_ERROR, so any prose containing a quotation mark or an
+# apostrophe (`It's`, `"hi"`) emitted error tokens and made `vyk`
+# exit 1. This repo's own README.md tripped it 8 times.
+# `tests/corpus/concept.md` happens to contain not one `"` or
+# `'`, which is why every gate stayed green. Fixed in 2.3.1.
 punctuation = [
     "[", "]", "(", ")", "{", "}",
     ",", ";", ".",
+    "\"", "'",
 ]
 
 

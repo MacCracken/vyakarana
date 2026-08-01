@@ -6,6 +6,93 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [2.3.1] — 2026-07-31
+
+**CYML finally parses as CYML.** The grammar for vyakarana's own
+native format merged TOML and markdown into one rule set instead
+of routing each half, which mis-typed exactly the things a CYML
+body exists to hold. Patch rather than minor: no token kind, no
+`Token` layout change, no public-API change — incorrect output
+made correct.
+
+### Fixed
+
+- **CYML markdown bodies are routed to the markdown grammar**
+  ([ADR 0019](docs/adr/0019-compose-region-rule.md)). Through
+  2.3.0 a body's `# Heading` matched the TOML `#` line-comment
+  rule and came back as one `comment` token spanning the line,
+  and a ` ``` ` fence met the backtick pair rule — the third
+  backtick opened a span that swallowed the whole code block into
+  a single `string`, info string and all. A ` ```cyrius ` block
+  inside a CYML body now routes two composition levels deep and
+  yields real `fn` / `return` keywords.
+
+  `grammars/cyml.cyml` had named composition as the proper fix
+  since 1.9.0 and called the union rule set a stopgap.
+  Composition shipped in 1.11.0; cyml was never migrated. Twelve
+  minor releases, on the format this repo's own 45 grammar files
+  are written in.
+
+- **`markdown` no longer emits error tokens for ordinary prose.**
+  `"`, `'` and `$` were in neither the operator nor the
+  punctuation list, so they fell through to `TK_ERROR`. Any
+  markdown containing a quotation mark, an apostrophe (`It's`) or
+  a dollar sign made `vyk` exit 1 — this repo's own `README.md`
+  tripped it 8 times, `CONTRIBUTING.md` 21. Quotes and
+  apostrophes join `,` `;` `.` as punctuation, `$` joins `@ % ^ &`
+  as an operator. Pre-existing and independent of the CYML work;
+  found because routing CYML bodies to markdown surfaced it.
+
+### Added
+
+- **`match = "compose_region"` rule type**
+  ([ADR 0019](docs/adr/0019-compose-region-rule.md)) — routes an
+  open-ended region through a named inner grammar. Two properties
+  ADR 0013's `compose` cannot provide, both of which CYML needs:
+  `end_before` is a **lookahead** terminator left unconsumed for
+  the outer grammar (so the `[[entries]]` that ends a body still
+  tokenizes as TOML), and reaching **EOF** without the terminator
+  is a normal ending rather than a failure (so a file's last body,
+  always EOF-terminated, is routed at all). `compose` consumes its
+  `end` and emits nothing when the marker is absent.
+
+- `tests/corpus/phase_d.cyml` — a byte-for-byte vidya snapshot
+  ([ADR 0001](docs/adr/0001-corpus-sync-policy.md)) of
+  `cyrius/field_notes/mabda_v3_gpu/phase_d.cyml`, 229 lines
+  carrying real fenced blocks. The existing
+  `tests/corpus/dependencies.cyml` has neither a body heading nor
+  a fence, which is the entire reason this survived: every gate
+  was green because nothing in the corpus exercised the gap. Ten
+  new `tcyr` probes lock the heading, terminator, EOF and fenced
+  cases directly.
+
+### Changed
+
+- **`---` in a CYML file is now `punctuation`, was `operator`.**
+  It is the start marker of a compose region, so it takes the
+  same kind `compose` gives `<style>`. This is the cut's one
+  visible token-output change.
+- `GRAMMAR_SIZE` 176 → 184 bytes for the new
+  `compose_region_rules` vec. Internal to `src/grammar.cyr`, not
+  part of any published contract.
+
+### Known gaps
+
+- A CYML body line beginning with `[` at column 0 ends the region
+  early — `end_before` is a literal `\n[`, not a line-anchored
+  TOML-header match, so a markdown link-reference definition
+  (`[1]: https://…`) hands the rest of the body back to the header
+  rules. Indented or inline `[` is unaffected. Same class of
+  documented literal-prefix limit as `<script>` vs
+  `<script type="module">` (ADR 0013).
+- A sweep of every printable ASCII byte through all 45 grammars
+  found 44 with at least one character that yields `TK_ERROR`.
+  Many are correct — a backtick genuinely is invalid in C — but
+  some are not: backtick command substitution is standard in both
+  `shell` and `ruby` and currently errors. Only the `markdown`
+  holes are fixed here; the rest need per-grammar judgment against
+  each language's real syntax and are left for their own pass.
+
 ## [2.3.0] — 2026-07-31
 
 **Toolchain catch-up.** Moves the pin `6.1.24` → `6.5.4`, four

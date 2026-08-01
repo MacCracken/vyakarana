@@ -1757,13 +1757,17 @@ fn main() {
     assert_eq(tokenbuf_kind(tb_cy1, 1), TK_IDENT,       "entries ident");
     assert_eq(tokenbuf_kind(tb_cy1, 2), TK_PUNCTUATION, "]] punct");
 
-    # `---` divider as 3-byte operator.
+    # `---` divider. 2.3.1 turns this into the start marker of a
+    # compose_region rule (ADR 0019), so it is punctuation now —
+    # the same kind `compose` gives `<style>` — where 1.9.0-2.3.0
+    # tokenized it as a bare 3-byte operator. With nothing after
+    # it the region body is empty and the marker stands alone.
     var tb_cy2 = tokenbuf_new();
     var src_cy2 = "---";
     tokenize_with_grammar(gcyml, src_cy2, strlen(src_cy2), tb_cy2);
-    assert_eq(tokenbuf_count(tb_cy2), 1,             "--- one token");
-    assert_eq(tokenbuf_kind(tb_cy2, 0), TK_OPERATOR, "--- operator");
-    assert_eq(tokenbuf_len(tb_cy2, 0),  3,           "--- len 3");
+    assert_eq(tokenbuf_count(tb_cy2), 1,                "--- one token");
+    assert_eq(tokenbuf_kind(tb_cy2, 0), TK_PUNCTUATION, "--- region start marker");
+    assert_eq(tokenbuf_len(tb_cy2, 0),  3,              "--- len 3");
 
     # Backtick inline code as TK_STRING.
     var tb_cy3 = tokenbuf_new();
@@ -1778,6 +1782,106 @@ fn main() {
         cy3i = cy3i + 1;
     }
     assert_eq(saw_backtick_string, 1, "`cyrius deps` is one string token");
+
+    test_group("2.3.1 cyml compose_region — body routes to markdown (ADR 0019)");
+
+    # A `#` line in the markdown body is a heading, not a TOML
+    # comment. Through 2.3.0 the union rule set swallowed the whole
+    # line as one TK_COMMENT; routed to markdown, `#` is a 1-byte
+    # operator and the words after it stay idents.
+    var tb_rgn1 = tokenbuf_new();
+    var src_cr1 = "[a]\n---\n# Heading\n";
+    tokenize_with_grammar(gcyml, src_cr1, strlen(src_cr1), tb_rgn1);
+    var cr1_comment_len = 0;
+    var cr1i = 0;
+    while (cr1i < tokenbuf_count(tb_rgn1)) {
+        if (tokenbuf_kind(tb_rgn1, cr1i) == TK_COMMENT) {
+            cr1_comment_len = cr1_comment_len + tokenbuf_len(tb_rgn1, cr1i);
+        }
+        cr1i = cr1i + 1;
+    }
+    assert_eq(cr1_comment_len, 0, "body heading is not a comment");
+
+    # The lookahead terminator is NOT consumed: the `[[entries]]`
+    # that ends a body belongs to the TOML header after it. This is
+    # the property plain `compose` (ADR 0013) cannot provide, since
+    # it eats its own end marker.
+    var tb_rgn2 = tokenbuf_new();
+    var src_cr2 = "[a]\n---\nbody text\n[[entries]]\nn = 1\n";
+    tokenize_with_grammar(gcyml, src_cr2, strlen(src_cr2), tb_rgn2);
+    var cr2_saw_open = 0;
+    var cr2_saw_close = 0;
+    var cr2i = 0;
+    while (cr2i < tokenbuf_count(tb_rgn2)) {
+        if (tokenbuf_kind(tb_rgn2, cr2i) == TK_PUNCTUATION) {
+            if (tokenbuf_len(tb_rgn2, cr2i) == 2) {
+                var cr2s = tokenbuf_start(tb_rgn2, cr2i);
+                if (memeq(src_cr2 + cr2s, "[[", 2) == 1) { cr2_saw_open = 1; }
+                if (memeq(src_cr2 + cr2s, "]]", 2) == 1) { cr2_saw_close = 1; }
+            }
+        }
+        cr2i = cr2i + 1;
+    }
+    assert_eq(cr2_saw_open,  1, "[[ survives the region terminator");
+    assert_eq(cr2_saw_close, 1, "]] survives the region terminator");
+
+    # Reaching EOF with no terminator is a normal ending, not a
+    # failure. `compose` emits nothing at all in this case, which
+    # is why every CYML file's final body went unrouted until now.
+    var tb_rgn3 = tokenbuf_new();
+    var src_cr3 = "[a]\n---\n# Trailing body to EOF\n";
+    tokenize_with_grammar(gcyml, src_cr3, strlen(src_cr3), tb_rgn3);
+    assert_eq(tb_coverage_sum(tb_rgn3), strlen(src_cr3), "EOF-terminated region covers input");
+    var cr3_comment_len = 0;
+    var cr3i = 0;
+    while (cr3i < tokenbuf_count(tb_rgn3)) {
+        if (tokenbuf_kind(tb_rgn3, cr3i) == TK_COMMENT) {
+            cr3_comment_len = cr3_comment_len + tokenbuf_len(tb_rgn3, cr3i);
+        }
+        cr3i = cr3i + 1;
+    }
+    assert_eq(cr3_comment_len, 0, "EOF-terminated body is routed, not comment-swallowed");
+
+    # A fenced block inside a body reaches markdown's compose_fenced
+    # (ADR 0016) and routes on to the tagged grammar. Through 2.3.0
+    # the third backtick opened a pair rule that ate the whole block
+    # as one string, so `fn` never surfaced as a keyword.
+    var tb_rgn4 = tokenbuf_new();
+    var src_cr4 = "[a]\n---\n```cyrius\nfn f() { return 0; }\n```\n";
+    tokenize_with_grammar(gcyml, src_cr4, strlen(src_cr4), tb_rgn4);
+    var cr4_saw_fn_kw = 0;
+    var cr4i = 0;
+    while (cr4i < tokenbuf_count(tb_rgn4)) {
+        if (tokenbuf_kind(tb_rgn4, cr4i) == TK_KEYWORD) {
+            if (tokenbuf_len(tb_rgn4, cr4i) == 2) {
+                var cr4s = tokenbuf_start(tb_rgn4, cr4i);
+                if (memeq(src_cr4 + cr4s, "fn", 2) == 1) { cr4_saw_fn_kw = 1; }
+            }
+        }
+        cr4i = cr4i + 1;
+    }
+    assert_eq(cr4_saw_fn_kw, 1, "fenced cyrius block routes through to keywords");
+    assert_eq(tb_coverage_sum(tb_rgn4), strlen(src_cr4), "fenced body covers input");
+
+    test_group("2.3.1 markdown prose punctuation — quotes, apostrophes, $");
+
+    # Quotation marks, apostrophes and `$` are ordinary prose bytes
+    # in markdown, but were in neither the operator nor the
+    # punctuation list through 2.3.0, so they fell through to
+    # TK_ERROR. vyakarana's own README.md emitted 8 of them.
+    var gmd_p = grammar_load("grammars/markdown.cyml");
+    assert_neq(gmd_p, 0, "grammar_load markdown returned non-null");
+    var tb_mp = tokenbuf_new();
+    var src_mp = "It's \"quoted\" and costs $5.";
+    tokenize_with_grammar(gmd_p, src_mp, strlen(src_mp), tb_mp);
+    var mp_errors = 0;
+    var mpi = 0;
+    while (mpi < tokenbuf_count(tb_mp)) {
+        if (tokenbuf_kind(tb_mp, mpi) == TK_ERROR) { mp_errors = mp_errors + 1; }
+        mpi = mpi + 1;
+    }
+    assert_eq(mp_errors, 0, "markdown prose punctuation yields no error kinds");
+    assert_eq(tb_coverage_sum(tb_mp), strlen(src_mp), "markdown prose covers input");
 
     test_group("1.9.0 llvm_ir grammar — loads and tokenizes cleanly");
     var gll = grammar_load("grammars/llvm_ir.cyml");

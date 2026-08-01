@@ -406,6 +406,7 @@ dockerfile:tests/corpus/Dockerfile
 makefile:tests/corpus/Makefile
 ini:tests/corpus/concept.ini
 cyml:tests/corpus/dependencies.cyml
+cyml:tests/corpus/phase_d.cyml
 llvm_ir:tests/corpus/concept.ll
 powershell:tests/corpus/concept.ps1
 crystal:tests/corpus/concept.cr
