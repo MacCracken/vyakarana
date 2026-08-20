@@ -27,9 +27,6 @@
 #
 # Known gaps (not triggered by the stand-in):
 #   - Float numbers (same gap as css.cyml).
-#   - Sass placeholder selectors `%placeholder`. The `%`
-#     would need to be in `ident_start` or operators. Cosmetic;
-#     not in the stand-in.
 
 [grammar]
 name = "scss"

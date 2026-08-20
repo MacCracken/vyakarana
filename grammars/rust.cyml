@@ -16,20 +16,12 @@
 #   - Block comments `/* ... */` (Rust's are nestable).
 #   - Raw strings `r"..."`, `r#"..."#`, `r##"..."##`, etc.
 #   - Byte strings `b"..."`, byte chars `b'x'`.
-#   - Char literals `'x'`, `'+'`, etc. Currently `'` is a 1-byte
-#     operator; a char literal splits into three tokens (op + body
-#     + op) instead of a single `string` token. The vidya sample has
-#     16 char literals + 1 lifetime (`'_`) — all tokenize correctly
-#     in the coverage-and-no-errors sense, but a theme can't
-#     distinguish `'+'` from three standalone `'+` `'` operators.
-#     Distinguishing char-literals from lifetimes cleanly requires
-#     2-3 char lookahead; a `char_literal = true` default + lookahead
-#     in the scanner is the likely fix, promoted to an ADR once C
-#     shows the same pattern.
 #   - Numeric literal suffixes (`42_u32`, `3.14_f64`) and floats.
 #     Integer literals with `_` separators tokenize as ident inside
 #     a number... actually no: ident_start excludes digits, so `42u32`
-#     would scan as number(42) + ident(u32). Good enough for now.
+#     would scan as number(42) + ident(u32). Accepted: coverage and
+#     the zero-error bar both hold, and no consumer has asked for
+#     suffix-aware number tokens.
 
 [grammar]
 name = "rust"

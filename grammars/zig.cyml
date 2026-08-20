@@ -20,15 +20,6 @@
 # regular comments can post-process the comment-token text.
 #
 # Known gaps for future ADRs (not triggered by the vidya sample):
-#   - Char literals `'x'`. Same pattern as C / Rust / Go. The
-#     canonical sample has 13 simple-ASCII char literals (`'+'`,
-#     `'0'`, `' '`, …) and they all tokenize as op + ident/op + op.
-#     Zero `error` kinds; coverage holds. Will close out together
-#     with the C/Rust char-literal ADR.
-#   - Multi-line strings (lines starting with `\\`). Not present
-#     in the canonical sample. Distinct from C-style strings; would
-#     need a new line-rule shape that consumes from `\\` to end of
-#     line.
 #   - Builtins as a distinct kind. `@import` tokenizes as `ident`,
 #     not `keyword`. Same call as ADR 0004 — themes can apply a
 #     secondary palette via the `@` prefix.

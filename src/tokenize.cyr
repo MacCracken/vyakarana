@@ -91,6 +91,25 @@ var VYK_STREAM_INIT_CAP = 4096;
 # input size. Total input can exceed this freely.
 var VYK_STREAM_CAP = 16777216;
 
+# Hard ceiling on a stream's TOTAL input, distinct from the live-
+# window cap above. `Token.start` / `Token.len` are u32 (ADR 0002's
+# 12-byte layout), but `abs_offset` is an i64 that accumulates over
+# every byte ever fed. Past 2^32 the `store32` in `tokenbuf_push`
+# wraps silently: a token at absolute offset 4294967301 reads back
+# as 5, so a consumer indexing `src[start .. start+len)` gets
+# unrelated bytes and the coverage invariant stops holding with no
+# error anywhere.
+#
+# FINDING-005 (2026-04-23 audit) rated this LOW as "theoretical",
+# correctly — back then the only entry point was `tokenize_source`,
+# bounded by VYK_SRC_CAP at 1 MiB. 2.0.0 replaced it with this
+# streaming API, whose own header advertises "Total input can
+# exceed this freely", and the LOW rating was never revisited.
+# Widening Token is a layout change (ADR + minor bump), so 2.3.4
+# does the patch-safe half: refuse the input rather than corrupt
+# the output. See CHANGELOG 2.3.4.
+var VYK_OFFSET_CAP = 4294967295;
+
 var STREAM_REC_SIZE = 88;
 
 # Error codes returned by tokenize_stream_feed.
@@ -246,6 +265,10 @@ fn _stream_grow(s, needed) {
     if (new_cap < needed) { return 0; }
     var old_buf = load64(s);
     var new_buf = alloc(new_cap);
+    # FINDING-002: `alloc` returns 0 on OOM. Report failure through
+    # the existing channel (feed turns this into VYK_ERR_OVERFLOW)
+    # rather than copying into a NULL buffer.
+    if (new_buf == 0) { return 0; }
     var len = load64(s + 8);
     var i = 0;
     while (i < len) {
@@ -265,6 +288,21 @@ fn tokenize_stream_feed(s, chunk, n) {
     if (load64(s + 32) == 1) { return VYK_ERR_FINISHED; }
     if (n <= 0) { return VYK_OK; }
     var len = load64(s + 8);
+    # Reject an `n` so large that `len + n + 1` wraps i64 negative.
+    # A negative `needed` makes _stream_grow's `cap >= needed` test
+    # trivially true, so it would return success WITHOUT growing and
+    # the copy loop below would run off the end of `buf`. Only a
+    # garbage length from the caller gets here, but the failure mode
+    # is an unbounded OOB write, so it is worth one compare.
+    if (n > VYK_STREAM_CAP) { return VYK_ERR_OVERFLOW; }
+    # Refuse bytes that would push any future token's absolute
+    # start past the u32 ceiling (see VYK_OFFSET_CAP). abs_offset
+    # is the offset of buf[0]; abs_offset + len is the offset one
+    # past the live window, so that plus `n` is the highest offset
+    # this feed could produce.
+    if (load64(s + 48) + len + n > VYK_OFFSET_CAP) {
+        return VYK_ERR_OVERFLOW;
+    }
     var needed = len + n + 1;   # +1 for trailing NUL
     if (_stream_grow(s, needed) == 0) { return VYK_ERR_OVERFLOW; }
     var buf = load64(s);
@@ -451,20 +489,35 @@ fn _stream_compose_prefix_hold(g, buf, buf_len, temp_tb, n_temp) {
             var k = 0;
             var k_limit = buf_len - slen;
             while (k <= k_limit) {
-                var k_emitted = 0;
-                var ti = 0;
-                while ((ti < n_temp) && (k_emitted == 0)) {
-                    if (tokenbuf_kind(temp_tb, ti) == TK_PUNCTUATION) {
-                        var ts = tokenbuf_start(temp_tb, ti);
-                        var tl = tokenbuf_len(temp_tb, ti);
-                        if ((k >= ts) && (k < ts + tl)) {
-                            k_emitted = 1;
+                # Order matters for cost, not for meaning. Both
+                # conditions must hold — "k is not inside an already
+                # emitted TK_PUNCTUATION token" AND "the start marker
+                # is at k" — but the emitted-check is O(n_temp) while
+                # the memeq is O(slen) and fails on the first byte
+                # almost everywhere. Testing memeq FIRST turns this
+                # loop from O(buf_len x n_temp) into O(buf_len x slen)
+                # plus O(matches x n_temp), with matches ~0.
+                #
+                # This loop runs per compose rule, twice per drain,
+                # and the buffer does not compact while a compose
+                # opener is held — so the old ordering compounded to
+                # roughly O(N^2.9). Measured before this change:
+                # 1,113 B of HTML with a <style> block took 196 ms at
+                # chunk=64, 2,169 B took 1.49 s, 4,281 B took 11.4 s.
+                if (memeq(buf + k, startm, slen) == 1) {
+                    var k_emitted = 0;
+                    var ti = 0;
+                    while ((ti < n_temp) && (k_emitted == 0)) {
+                        if (tokenbuf_kind(temp_tb, ti) == TK_PUNCTUATION) {
+                            var ts = tokenbuf_start(temp_tb, ti);
+                            var tl = tokenbuf_len(temp_tb, ti);
+                            if ((k >= ts) && (k < ts + tl)) {
+                                k_emitted = 1;
+                            }
                         }
+                        ti = ti + 1;
                     }
-                    ti = ti + 1;
-                }
-                if (k_emitted == 0) {
-                    if (memeq(buf + k, startm, slen) == 1) {
+                    if (k_emitted == 0) {
                         var end_search_from = k + slen;
                         var end_pos = (0 - 1);
                         var ep = end_search_from;
@@ -668,6 +721,34 @@ fn tokenize_stream_drain(s, out_tb) {
             if (elen > 0) {
                 if (new_resume > elen - 1) { new_resume = new_resume - (elen - 1); }
             }
+            # ...and back off over a trailing RUN of escape bytes, so
+            # an escape pair split across the feed boundary is
+            # re-scanned as a pair instead of half-seen.
+            #
+            # Without this, a single-byte close marker (JSON/most
+            # string rules: endp = "\"", elen = 1) gets `elen - 1`
+            # = 0 back-off, i.e. none. A buffer ending on `\` then
+            # resumed at exactly buf_len sees the next feed's `"`
+            # with its escaping backslash already behind the resume
+            # point, closes the string on an ESCAPED quote, and
+            # mis-tokenizes everything after it. Reproduced on
+            # `tests/corpus/concept.json` at chunk=3: the string
+            # `"Scanning until '\"' - breaks on escaped quotes"`
+            # came back as a 19-byte token instead of 50.
+            #
+            # Backing off over the whole run (not just one byte) is
+            # what makes it sound: `\\` is an escaped backslash, so
+            # resuming one byte in would mis-pair it. The byte before
+            # a maximal escape run is by definition not an escape, so
+            # the run start always begins a fresh pair — scanning
+            # from there matches scanning from the token start. Runs
+            # are short, so this stays O(N).
+            if (escape != 0) {
+                while ((new_resume > slen) &&
+                  (load8(buf + new_resume - 1) == escape)) {
+                    new_resume = new_resume - 1;
+                }
+            }
             if (new_resume < slen) { new_resume = slen; }
             store64(s + 80, new_resume);
             if (finishing == 1) {
@@ -689,6 +770,15 @@ fn tokenize_stream_drain(s, out_tb) {
     tokenize_with_grammar(g, buf, buf_len, temp_tb);
     var n_temp = tokenbuf_count(temp_tb);
     var commit_count = n_temp;
+    # `_stream_compose_prefix_hold` is called from two sibling
+    # blocks below with IDENTICAL arguments — `buf`, `buf_len`,
+    # `temp_tb` and `n_temp` are all unchanged between them — so
+    # the second call recomputed the first's answer. It is the most
+    # expensive thing in the drain, so that was a flat 2x on every
+    # drain of every compose grammar. Cache it here, at a scope
+    # that encloses both uses. (0 - 1) means "not computed yet";
+    # a real hold is always >= 0.
+    var ph_cache = (0 - 1);
     if (finishing == 0) {
         commit_count = 0;
         var i = 0;
@@ -757,7 +847,10 @@ fn tokenize_stream_drain(s, out_tb) {
             }
         }
         if (skip_prefix_hold == 0) {
-            var prefix_hold = _stream_compose_prefix_hold(g, buf, buf_len, temp_tb, n_temp);
+            if (ph_cache < 0) {
+                ph_cache = _stream_compose_prefix_hold(g, buf, buf_len, temp_tb, n_temp);
+            }
+            var prefix_hold = ph_cache;
             if (prefix_hold > 0) {
                 var safe_end = buf_len - prefix_hold;
                 var ph_done = 0;
@@ -771,15 +864,25 @@ fn tokenize_stream_drain(s, out_tb) {
             }
         }
     }
+    # Count what actually landed, not what we attempted.
+    # `tokenbuf_push` drops the token (rather than writing through a
+    # NULL data pointer) when its buffer cannot grow — see
+    # FINDING-002 in src/token.cyr. Incrementing `emitted`
+    # unconditionally made drain over-report under that condition,
+    # and `emitted` is what the caller uses to decide whether more
+    # tokens are available. Comparing the count across the loop
+    # keeps the return honest without giving `tokenbuf_push` a
+    # status return it is not allowed to have (public surface).
+    var before_push = tokenbuf_count(out_tb);
     var j = 0;
     while (j < commit_count) {
         tokenbuf_push(out_tb,
           tokenbuf_kind(temp_tb, j),
           abs_offset + tokenbuf_start(temp_tb, j),
           tokenbuf_len(temp_tb, j));
-        emitted = emitted + 1;
         j = j + 1;
     }
+    emitted = emitted + (tokenbuf_count(out_tb) - before_push);
     # 2.0.3 — detect pending pair-rule state for the NEXT drain.
     # If a trailing partial pair-rule open is uncommitted, save
     # its rule index + how far we've already scanned the body.
@@ -800,7 +903,10 @@ fn tokenize_stream_drain(s, out_tb) {
         # ` ``` ` open marker). Surfaced by streaming.fcyr's
         # markdown/fence-rust random-split case.
         var hold_overlaps = 0;
-        var prefix_hold2 = _stream_compose_prefix_hold(g, buf, buf_len, temp_tb, n_temp);
+        if (ph_cache < 0) {
+            ph_cache = _stream_compose_prefix_hold(g, buf, buf_len, temp_tb, n_temp);
+        }
+        var prefix_hold2 = ph_cache;
         if (prefix_hold2 > 0) {
             var hold_start = buf_len - prefix_hold2;
             if (p_start >= hold_start) { hold_overlaps = 1; }
@@ -901,21 +1007,40 @@ fn tokenize_stream_next(s) {
 }
 
 # Read the kind of the *current* token (the one most recently
-# returned by `_next == 1`). Behaviour is undefined if called
-# before the first successful `_next`.
+# returned by `_next == 1`). Calling before the first successful
+# `_next`, or after `_free`, is a caller error and yields 0 — it
+# used to yield a crash.
+#
+# `_next` already guards `s == 0` and `_discard_consumed` already
+# guards `staging == 0` (2.1.5 audit); these three accessors were
+# the gap. Unguarded they did `load64(0 + 56)` on a NULL stream,
+# `tokenbuf_kind(0, ...)` on a freed one, and — before the first
+# `_next` — indexed `idx = -1`, reading 12 bytes BEFORE the
+# tokenbuf allocation. Returning 0 cannot break a correct consumer,
+# which by definition never reaches these paths.
+fn _stream_cur_ok(s) {
+    if (s == 0) { return 0; }
+    if (load64(s + 56) == 0) { return 0; }
+    if (load64(s + 64) <= 0) { return 0; }
+    return 1;
+}
+
 fn tokenize_stream_kind(s) {
+    if (_stream_cur_ok(s) == 0) { return 0; }
     var staging = load64(s + 56);
     var idx = load64(s + 64) - 1;
     return tokenbuf_kind(staging, idx);
 }
 
 fn tokenize_stream_start(s) {
+    if (_stream_cur_ok(s) == 0) { return 0; }
     var staging = load64(s + 56);
     var idx = load64(s + 64) - 1;
     return tokenbuf_start(staging, idx);
 }
 
 fn tokenize_stream_len(s) {
+    if (_stream_cur_ok(s) == 0) { return 0; }
     var staging = load64(s + 56);
     var idx = load64(s + 64) - 1;
     return tokenbuf_len(staging, idx);
@@ -980,7 +1105,16 @@ fn tokenize_stream_free(s) {
     store64(s + 48, 0);
     store64(s + 56, 0);   # staging_tb (2.0.2)
     store64(s + 64, 0);   # next_idx
-    store64(s + 72, 0);   # pending_idx (2.0.3)
+    # pending_idx's "none" sentinel is -1, NOT 0 — 0 is a valid
+    # pair-rule index. Every other field here poisons safely to 0,
+    # and two call sites lean on that ("_free zeroes every field"
+    # in _stream_grow; the staging guard in _discard_consumed), so
+    # this one must poison to its own inert value or the poison
+    # contract is a half-truth. Currently unreachable — drain's
+    # `buf_len == 0` early return and _stream_grow's `cap <= 0`
+    # guard both fire first on a freed record — but relaxing
+    # either would expose vec_get(pair_rules, 0) on a NULL grammar.
+    store64(s + 72, (0 - 1));   # pending_idx (2.0.3)
     store64(s + 80, 0);   # scan_resume
     return 0;
 }

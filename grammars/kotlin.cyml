@@ -27,9 +27,6 @@
 #     Add a pair rule ahead of the regular string rule when a
 #     corpus needs them — see [ADR 0008](../docs/adr/0008-toml-triple-quoted-strings.md)
 #     for the same shape in TOML.
-#   - Backtick-quoted identifiers (`` `class` ``) — used to
-#     reference Java reserved words from Kotlin. Could be added
-#     as a pair rule emitting `ident` if a corpus surfaces them.
 #   - Numeric suffixes (`42L`, `1.5f`, `1_000_000`). Same story
 #     as java.cyml — cosmetic; coverage holds.
 

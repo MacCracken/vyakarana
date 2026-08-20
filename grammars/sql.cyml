@@ -20,9 +20,10 @@
 #     strings (`$tag$ … $tag$`), and a wider type vocabulary.
 #     Could be a fork (`grammars/postgresql.cyml`) if real PG
 #     corpora surface enough delta.
-#   - MySQL accepts backtick-quoted identifiers (`` `id` ``)
-#     and `#` line comments alongside `--`. Add to a
-#     `grammars/mysql.cyml` fork if needed.
+#   - MySQL `#` line comments alongside `--`. Add to a
+#     `grammars/mysql.cyml` fork if needed. (Backtick-quoted
+#     identifiers are handled in the baseline as of 2.3.2 — they
+#     were emitting error tokens, see ADR 0020.)
 #   - SQLite is closest to ANSI but adds `PRAGMA` directives;
 #     fork as needed.
 #   - T-SQL has `BEGIN`/`END` blocks and `GO` batch separators
@@ -32,7 +33,6 @@
 #   - Dollar-quoted strings (PostgreSQL `$$ … $$`, `$tag$ … $tag$`).
 #     Variable-length-delimiter form — same scanner-shape gap
 #     as Lua's `[==[…]==]`, Ruby/PHP heredocs, Swift raw strings.
-#   - Backtick identifiers (MySQL): not in the ANSI baseline.
 #   - Numeric literal suffixes / scientific notation
 #     (`1.5e3`): same number-scanner limitation as java.cyml.
 

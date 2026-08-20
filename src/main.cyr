@@ -25,8 +25,23 @@ var EXIT_USAGE        = 2;
 var EXIT_IO           = 3;
 var EXIT_NO_GRAMMAR   = 4;
 
-# Source-buffer cap for `vyk <file>`. M1 reads up to 1 MB; M5's
-# streaming tokenizer will remove this ceiling.
+# Source-buffer cap for `vyk <file>`. The CLI slurps the whole
+# file into one buffer, so this is a hard ceiling on what `vyk`
+# will tokenize.
+#
+# It is NOT a library limit: `tokenize_stream_*` has no total-input
+# ceiling (VYK_STREAM_CAP bounds only the live unconsumed window),
+# so consumers are unaffected. Routing the CLI through the stream
+# would lift this — tracked in CHANGELOG 2.3.4 §Notes, not done
+# here because detection and themed output both want the whole
+# buffer addressable.
+#
+# Exceeding it is a hard error, never a silent truncation: through
+# 2.3.3 `vyk` on a 1.5 MB file exited 0 with ~450 KB dropped and
+# nothing on stderr. The largest file `vyk` accepts is therefore
+# VYK_SRC_CAP - 2 = 1,048,574 bytes: `file_read_all` stops at
+# `maxlen`, so a read of exactly `maxlen` cannot be told apart
+# from a truncated one and is refused too.
 var VYK_SRC_CAP = 1048576;
 
 fn print_version() {
@@ -96,8 +111,8 @@ fn print_list_kinds() {
 fn print_list_languages() {
     # Enumerate loaded grammars via the registry (src/grammar.cyr).
     # bootstrap_grammars ensures the bundled grammars are loaded —
-    # this path doesn't go through tokenize_source / has_grammar so
-    # it needs to trigger the load explicitly.
+    # this path doesn't go through tokenize_stream_new / has_grammar
+    # so it needs to trigger the load explicitly.
     bootstrap_grammars();
     var names = vec_new();
     list_languages_into(names);
@@ -202,6 +217,23 @@ fn no_grammar_error(path) {
     eprint(safe, strlen(safe));
     var m2 = "\nvyk: try --language=<name> (run --list-languages to see all)\n";
     eprint(m2, strlen(m2));
+    return 0;
+}
+
+# `vyk` slurps the source into one VYK_SRC_CAP buffer. A file at
+# or over the cap would tokenize only its prefix, and every
+# consumer contract we publish — the coverage invariant above
+# all — silently stops holding at the cut point. Refuse loudly
+# instead. Exit code is EXIT_IO: the read is what failed.
+fn too_large_error(path) {
+    var m1 = "vyk: file too large: ";
+    eprint(m1, strlen(m1));
+    var safe = _sanitize_for_stderr(path);
+    eprint(safe, strlen(safe));
+    var m2 = "\nvyk: the CLI tokenizes at most 1048574 bytes in one buffer\n";
+    eprint(m2, strlen(m2));
+    var m3 = "vyk: (the tokenize_stream_* library API has no such limit)\n";
+    eprint(m3, strlen(m3));
     return 0;
 }
 
@@ -442,6 +474,14 @@ fn main() {
     var n = file_read_all(path, buf, VYK_SRC_CAP - 1);
     if (n < 0) {
         io_error(path);
+        return EXIT_IO;
+    }
+    # `file_read_all` stops once it has filled `maxlen`, so hitting
+    # the cap exactly is indistinguishable from "there was more".
+    # Treat both as too-large rather than emitting a prefix that
+    # violates the coverage invariant without saying so.
+    if (n >= VYK_SRC_CAP - 1) {
+        too_large_error(path);
         return EXIT_IO;
     }
     store8(buf + n, 0);

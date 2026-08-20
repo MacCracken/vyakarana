@@ -29,9 +29,6 @@
 #     stand-in. Variable-length-delimiter form — same scanner-
 #     shape gap as Lua's `[==[…]==]`, Ruby/PHP heredocs, Swift
 #     raw strings.
-#   - Polymorphic variants `` `Foo `` (backtick prefix). Not
-#     in the stand-in. Treated as backtick + ident if a corpus
-#     surfaces them (need to add `` ` `` as operator).
 #   - Numeric underscores (`1_000_000`) — number scanner stops
 #     at `_`; cosmetic.
 

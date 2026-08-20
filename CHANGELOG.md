@@ -6,6 +6,288 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [2.3.4] — 2026-08-20
+
+**Hardening + security sweep.** First full audit since 2.1.x — all of
+2.2.x and 2.3.x had shipped without one. 14 defects fixed across
+memory safety, silent truncation, streaming correctness, and language
+detection; full write-up with reproductions in
+[docs/audit/2026-08-20-2.3.x-hardening-audit.md](docs/audit/2026-08-20-2.3.x-hardening-audit.md).
+No token kind, no `Token` layout change, no public-API signature
+change. 898/898 tests, smoke OK, lint+fmt exit 0, fuzz 4/4.
+
+Two themes ran through nearly every finding, and both are worth
+carrying forward:
+
+- **Silent degradation was the default failure mode.** Oversize
+  source, oversize grammars, failed allocations and >4 GiB stream
+  offsets all produced *plausible wrong output with exit 0*. Four
+  fixes below turn silence into a loud error.
+- **The gates asserted the right things on inputs too narrow to
+  exercise them.** `fuzz/streaming.fcyr` has asserted chunk-
+  invariance since 2.1.4 and passes — while 9 of 14 real corpora
+  violate it. Same root cause the 2.3.2 `TK_ERROR` audit named, now
+  hit twice.
+
+### Fixed
+
+- **`vyk` silently truncated any file over 1 MiB.** `file_read_all`
+  stops at `maxlen` and nothing checked for it, so a larger file was
+  tokenized to its prefix and reported success. Measured: a
+  1,500,027-byte script exited 0 with an empty stderr and ~450 KB —
+  30% of the file — discarded; the coverage invariant stopped holding
+  at the cut point with no signal. Now a hard error (exit 3) naming
+  the limit. Largest accepted file is 1,048,574 bytes, because a read
+  of exactly `maxlen` cannot be distinguished from a truncated one.
+  Closes **FINDING-003**, open since 2026-04-23.
+
+- **Streaming a document with an embedded block hung.**
+  `_stream_compose_prefix_hold` ran an O(`n_temp`) "is this byte
+  already emitted" scan for *every byte position* and then the cheap
+  `memeq` start-marker test — both conditions must hold, so the
+  ordering was pure cost — and the whole function was called **twice
+  per drain with identical arguments**. Valid HTML with one inline
+  `<style>` block, fed in 4 KB chunks: 16 KB took 1,893 ms and 32 KB
+  took 19,644 ms, growing ~O(N^2.3–2.9); a 128 KB stylesheet
+  extrapolated to ~30 minutes. Now 32 ms and 89 ms — **59× and
+  221×** — with growth ~O(N^1.6). The unterminated-`<style>` case
+  went from 28,399 ms to 100 ms at 32 KB (**284×**) and from
+  "did not finish in 90 s" to 310 ms at 64 KB. Both changes are
+  semantically neutral: the chunk-invariance sweep returns
+  byte-identical results before and after. Affects html, markdown,
+  vue, svelte and cyml — i.e. what `owl` and `vidya` stream.
+
+- **Chunked streaming closed strings on escaped quotes.** The
+  pending-pair `scan_resume` back-off subtracts `elen - 1`, which is
+  **zero** for the single-byte close markers JSON and most string
+  rules use. A buffer ending on `\` resumed past it, so the next
+  feed's `"` was read without its escape. On
+  `tests/corpus/concept.json` at chunk=3, `"Scanning until '\"' —
+  breaks on escaped quotes"` came back as a 19-byte token instead of
+  50, and everything after it was mis-tokenized. Now backs off over
+  the trailing *run* of escape bytes — the run start always begins a
+  fresh pair, so this is sound where a one-byte back-off would
+  mis-pair `\\`. JSON is now chunk-invariant at every tested chunk
+  size.
+
+- **Shebangs with interpreter arguments failed detection entirely.**
+  `_detect_shebang` scanned the whole line for the last `/` or space,
+  so any argument captured the interpreter word: `#!/bin/bash -e`
+  resolved to `-e`. `#!/bin/bash -e`, `#!/bin/sh -eu`,
+  `#!/usr/bin/python3 -u` and `#!/usr/bin/env -S python3 -u` all
+  exited 4, "no grammar matched" — `-e` and `-eu` are ordinary, so
+  extensionless shell and python files were rejected wholesale. Now
+  takes the basename of the first word and steps over `env`'s own
+  options. Seven regression cases added to `scripts/smoke.sh`.
+
+- **One-byte out-of-bounds read in `_ds_scan_tag`.** The first `if`
+  incremented `p`, the second re-read `load8(src + p)` at the new
+  position **without re-testing `p < src_len`**, so a fence tag
+  running to the end of the buffer read `src[src_len]`. Value-neutral
+  — the function returns `src_len` either way — but a genuine OOB
+  read that faults when `src_len` ends on a page boundary. `vyk` hid
+  it by NUL-terminating at `buf[n]`; `tokenize_with_grammar` is
+  public surface and an exactly-sized caller buffer is exposed.
+  (`_ds_scan_to_lf` looks like the same shape but is safe: it
+  increments last.)
+
+- **Stream offsets past 4 GiB wrapped silently.** `Token.start` /
+  `len` are u32 (ADR 0002) but `abs_offset` is an i64 accumulating
+  over every byte fed. Verified: pushing start `4294967301` reads
+  back as `5`. Past 2³² every offset wraps and consumers index
+  unrelated bytes with no error. `tokenize_stream_feed` now returns
+  `VYK_ERR_OVERFLOW` instead. Widening `Token` needs an ADR and a
+  minor bump, so this is the patch-safe half — refuse the input
+  rather than corrupt the output. See §Notes for how this finding
+  went untracked for four minor lines.
+
+- **Oversize grammars were parsed truncated.** The blob path clamped
+  to `GRAMMAR_FILE_CAP - 1` (FINDING-007's fix — memory-safe, but it
+  then parsed a grammar cut mid-rule as if complete) and the file
+  path had no check at all. A truncated grammar yields a tokenizer
+  that is subtly wrong, which is worse than one that is absent. Both
+  paths now refuse. Unreachable today — largest bundled grammar is
+  6,722 B against a 32,768 B cap — so this is defence for the day one
+  grows. All 45 still register.
+
+- **`alloc()` return values were unchecked** at four sites; `alloc`
+  returns 0 on OOM, on a negative size, and past `ALLOC_MAX` (2 GiB),
+  so a failed grow stored a NULL data pointer and the next push wrote
+  through it. Guarded in `tokenbuf_new`, `_tokenbuf_grow`,
+  `_stream_grow` and the `tokenbuf_push` path. Closes
+  **FINDING-002**, open since 2026-04-23. `tokenbuf_push` **keeps its
+  always-`0` return** — it ships in `dist/vyakarana.cyr`, so a status
+  return would silently change meaning for consumers that test it; on
+  failure it drops the token rather than corrupting the heap.
+
+- **Integer overflow in `tokenize_stream_feed`.** `len + n + 1` wraps
+  i64 negative for an absurd `n`, making `_stream_grow`'s
+  `cap >= needed` trivially true — it returned success without
+  growing and the copy ran off the end of the buffer.
+
+- **`tokenize_stream_drain` over-reported `emitted`**, counting
+  tokens that `tokenbuf_push` dropped. `emitted` is what callers use
+  to decide whether more tokens are available; now counted from
+  `tokenbuf_count` across the loop.
+
+- **`tokenize_stream_free` poisoned `pending_idx` to `0`**, but the
+  "none" sentinel is `-1` and `0` is a valid pair-rule index. `free`
+  zeroes every field deliberately and two sites rely on that, so this
+  one field broke the poison contract. Currently unreachable —
+  drain's `buf_len == 0` return and `_stream_grow`'s `cap <= 0` guard
+  both fire first — but relaxing either would expose
+  `vec_get(pair_rules, 0)` on a NULL grammar.
+
+- **Pull-adapter accessors** `_kind` / `_start` / `_len` lacked the
+  `s == 0` and `staging == 0` guards `_next` and `_discard_consumed`
+  already have, and indexed `idx = -1` before the first `_next` — a
+  12-byte read *before* the tokenbuf allocation. They return 0 now,
+  which cannot affect a correct consumer.
+
+### Changed — stale text removed or corrected
+
+The maintainer asked for a deferral-language audit specifically:
+every "for now" / "not yet" / "TODO" / "known gap" / "future ADR"
+across `src/**`, `grammars/*.cyml`, `docs/**` and the root docs was
+classified real-pending, stale, or misphrased.
+
+**Mostly legitimate.** "Known gaps" appears in 39 grammar files and
+"stand-in" in 34 — ADR-0006 scope documentation, left alone. All 22
+"vidya doesn't ship an X reference sample yet" claims were checked
+against `vidya/content/lexing_and_parsing/` and **all 22 are still
+accurate**.
+
+**Stale — removed**, each verified against the same file's own rules:
+
+- `c.cyml`, `rust.cyml`, `zig.cyml`, `go.cyml` all still described
+  char/rune literals as splitting into three operator tokens and
+  proposed a `char_literal` ADR as future work. ADR 0010 shipped and
+  `char_literal = true` is set in every one of them.
+- `go.cyml` called the backtick raw-string rule a "trivial follow-on"
+  — the rule is at `go.cyml:133`. `zig.cyml` said `\\` multi-line
+  strings "would need a new line-rule shape" — it is at
+  `zig.cyml:145`. `kotlin.cyml` (rule at :145), `sql.cyml` (:196) and
+  `ocaml.cyml` said the same about backtick identifiers and
+  polymorphic variants. `scss.cyml` said `%placeholder` "would need
+  `%` in ident_start or operators"; `%` is in operators.
+- `asm_x86_64.cyml` said AT&T operand sigils were "punted to a future
+  ADR" — ADR 0020 landed them in 2.3.2. `asm_aarch64.cyml` told ARM
+  users to always pass `--language` and called content-based
+  detection a "future pass (1.13.0)"; it landed in 1.11.2.
+
+**Misphrased — reworded** so they stop advertising pending work:
+`src/theme.cyr` predicted a theme-file format "likely in 1.11.0"
+(export shipped in 1.12.1/1.13.0; import does not exist and nothing
+has asked for it); `src/main.cyr` said "M5's streaming tokenizer will
+remove this ceiling" and `default_scanner.cyr` anchored an
+optimization to "M5 benchmark time" — M5 landed in 2.0.0–2.0.2;
+`rust.cyml`'s "Good enough for now"; `c.cyml`'s "ADR-worthy later".
+
+`cyrlint` reports **0 untracked deferrals** across every hand-edited
+source file. Removing the stale text shrank the embedded grammar blob
+from 217,790 to 215,902 bytes.
+
+- **Four present-tense references to `tokenize_source`** — removed in
+  2.0.0 — corrected in `src/token.cyr`, `src/main.cyr` and
+  `src/grammar.cyr` (×2). Historical references that say "was
+  removed" were left as they are.
+
+- **`CLAUDE.md`'s frozen-API rule named `tokenize_source`**, so the
+  actual 2.x contract was unguarded. It now names the
+  `tokenize_stream_*` surface and notes that
+  `tokenize_source_handcoded` is a diagnostics oracle outside the
+  rule.
+
+- **`docs/development/state.md`'s cross-repo section** said the 2.3.0
+  bundle was "byte-identical apart from its version header, so
+  bumping [consumers] buys nothing". True when written — 2.2.3 →
+  2.3.0 is literally 2 changed lines — but 2.3.1 and 2.3.2 landed
+  real grammar fixes after it. Measured: **2.2.3 → 2.3.3 is 241
+  changed lines, +19,565 bytes**. Corrected, with the measurement.
+
+### Added
+
+- **`scripts/smoke.sh`** gained two regression groups: oversize input
+  must exit 3 with a diagnostic and emit nothing (and the largest
+  accepted size must still tokenize with the coverage invariant
+  intact), and seven shebang forms with interpreter arguments must
+  route to the right grammar. Both groups were confirmed to **fail
+  against the pre-fix binary** — they have teeth.
+
+- **`docs/audit/2026-08-20-2.3.x-hardening-audit.md`** — full audit
+  with reproductions, the chunk-invariance baseline table, the
+  clean-check list, and prioritized follow-ups.
+
+### Notes
+
+- **The audit ledger lost a finding, and it was the one that
+  mattered.** `2026-04-23-audit.md` defines **FINDING-005** as
+  "`Token.start` / `Token.len` are u32". Both the 1.13 and 2.1.x
+  carryover tables instead record FINDING-005 as
+  "`_sanitize_for_stderr` truncates at first control byte". That
+  description is *also* wrong about the code — the sanitizer replaces
+  control bytes with `?` and does not truncate; verified:
+  `--bo<ESC>[31mgus<BEL>TAIL` echoes as `--bo?[31mgus?TAIL`, full
+  string preserved, ANSI defanged. So the ledger carried a phantom
+  open finding for two audits while the real FINDING-005 fell out of
+  tracking. Its LOW rating rested on "practical file sizes don't
+  approach this" — true when the only entry point was capped at
+  1 MiB, invalidated the moment 2.0.0 shipped a streaming API whose
+  header advertises "Total input can exceed this freely". Nobody
+  re-rated it because its ID was occupied. **Rule going forward:** a
+  carryover table copies the finding's *title* verbatim, never a
+  re-description, and an architectural rewrite re-rates the findings
+  whose preconditions it changes.
+
+- **Streaming is not chunk-invariant, and that is a documented
+  contract.** `fuzz/streaming.fcyr` states it plainly: "any chunking
+  strategy produces the same (kind, start, len) tokens as a
+  single-shot feed". A differential probe over the real corpora — one
+  feed vs 7 chunk sizes, comparing every token — finds it violated in
+  9 of 14 grammars: cyml 7/7 chunk sizes differing, markdown 5/7,
+  html 5/7, python 5/7, rust 4/7, go 4/7, vue 3/7, css 1/7, toml 1/7;
+  json, shell, yaml, typescript, javascript and cyrius are clean. The
+  **coverage invariant holds throughout** — no bytes are lost — but
+  token boundaries shift with chunk size, so a streaming consumer
+  gets a different tokenization from a whole-buffer one. The escape
+  fix above closed json; at least two causes remain
+  (`_stream_is_trailing_complete` matching *any* same-kind pair
+  rule's end marker, and compose-region routing not surviving chunk
+  boundaries — which is why cyml, the grammar 2.3.1 was written for,
+  is the worst row). Not fixed here: three interacting causes in the
+  drain path, and changing token boundaries is observable behaviour,
+  i.e. ADR-and-minor-bump territory. Measured identically against the
+  pre-audit tree, so this is long-standing, not a 2.3.4 regression.
+
+- **A held compose opener turns `VYK_STREAM_CAP` into a total-input
+  ceiling**, contradicting `src/tokenize.cyr`'s "Total input can
+  exceed this freely". Isolated directly: with no compose opener, the
+  same grammar and bytes accept **32,768,000 bytes** — 2× the cap —
+  with `live_buf_len` compacting to 1; with an unterminated `<style>`
+  fed first, the buffer grows monotonically until feed returns
+  `VYK_ERR_OVERFLOW` permanently. Holding the body is semantically
+  required (the scanner refuses to half-consume a compose rule whose
+  end marker is absent), so the fix is to *bound* the hold and fall
+  back to emitting the body as `TK_STRING` — an observable-behaviour
+  decision that needs an ADR.
+
+- **No `openqasm` grammar.** `vidya` ships
+  `content/lexing_and_parsing/openqasm.qasm` and renders its samples
+  through vyakarana; 11 of its 12 tokenize cleanly and that one exits
+  4. Adding a grammar is feature-sized (corpus, registration, and the
+  hardcoded `45` in `fuzz/grammar_load.fcyr`), so it is not folded
+  into a hardening patch.
+
+- **Clean checks, no findings:** `load8` zero-extends (verified:
+  `0xFF → 255`), so the 256-byte char-class table is in-bounds for
+  every input byte, and no grammar feeds a high byte into a
+  char-class spec (all non-ASCII in `.cyml` files is in comments);
+  the CYML escape decoder's sizing and writing loops advance
+  identically; `detect.cyr` is bounds-clean apart from the shebang
+  logic error; there is **no dead code** (all eight functions
+  unreachable from the CLI are live library surface, test-suite or
+  fuzz entry points); no command-injection or path-traversal vector.
+
 ## [2.3.3] — 2026-08-20
 
 **Toolchain catch-up: pin `6.5.4` → `6.5.32`, and the first cut

@@ -13,12 +13,6 @@
 # so the same simple greedy match used in C works.
 #
 # Known gaps for future ADRs (not triggered by the vidya sample):
-#   - Raw strings `` `…` `` (backtick-delimited, no escapes,
-#     embedded newlines allowed). The canonical sample has zero.
-#     Trivial follow-on: a third `[[rules]] match = "pair"` with
-#     `start = end = "`"`, no escape.
-#   - Rune literals `'x'`. Same pattern as Rust / C — splits into
-#     op/body/op. Cosmetic; coverage holds.
 #   - Type literals with explicit underscores in numbers
 #     (`1_000_000`). Today's number scanner stops at the `_`,
 #     yielding `number + ident`. Cosmetic; coverage holds.

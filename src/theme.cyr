@@ -17,9 +17,16 @@
 #     non-tty contexts.
 #
 # Adding a theme means adding a clause to `theme_color()` and
-# a name to `theme_resolve()`. There is no theme-file format
-# yet — when one materializes (likely in 1.11.0 for owl
-# coordination), it uses the same kind-name keys.
+# a name to `theme_resolve()`.
+#
+# Theme *export* shipped in 1.12.1 / 1.13.0 — see
+# `src/theme_export.cyr` and `vyk --export-theme=vscode|helix|
+# iterm`. There is still no theme *import* format: themes are
+# compiled in, not loaded from disk, and nothing has asked for
+# the reverse direction. (This note used to predict a theme-file
+# format "likely in 1.11.0 for owl coordination"; 1.11.0 shipped
+# long ago and export landed a version later, so the prediction
+# was doubly stale.)
 #
 # Theme handle: a plain i64 tag. 0 = none, 1 = default,
 # 2 = dark. Direct integer because Cyrius enums consume

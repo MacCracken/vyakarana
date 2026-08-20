@@ -38,11 +38,11 @@
 #     tokenizes as `number(1)` + `ident(.5)`. Asm samples typically
 #     use `.float 1.5` directive form anyway; if a corpus emerges
 #     that needs raw `1.5`, the fix is grammar-specific.
-#   - AT&T-syntax operand sigils (`%rax`, `$0x10`). The canonical
-#     sample uses Intel syntax (`mov rax, 1`); AT&T-flavoured asm
-#     would need `%` and `$` either as `special_vars` or in
-#     ident_start. Punted to a future ADR if a real AT&T corpus
-#     surfaces.
+#     (AT&T-syntax operand sigils used to be listed here as
+#     "punted to a future ADR". They are handled: `$` and `@` are
+#     in the operator list as of 2.3.2, because real GNU `as` from
+#     /usr/lib produced 91 error tokens in a single file without
+#     them. See ADR 0020.)
 #   - `;` line comments (NASM/MASM convention). GAS uses `#`,
 #     which is what vidya's sample uses; if a NASM corpus shows
 #     up, switch the line-comment rule.

@@ -28,9 +28,14 @@
 # `len` on each iteration and a fallback error emits 1 byte when no
 # rule matched.
 #
-# Perf notes for later: the operators / punctuation lists are scanned
-# linearly longest-first; a trie or length-indexed bucket scan is an
-# easy speedup at M5 benchmark time.
+# Known optimization, not taken: the operators / punctuation lists
+# are scanned linearly longest-first; a trie or length-indexed
+# bucket scan would cut the per-token constant. Deliberately still
+# open — the tokenize rows in `docs/development/performance.md` are
+# dominated by streaming call overhead, not this scan, so it is not
+# the profitable lever yet. (This used to say "an easy speedup at
+# M5 benchmark time"; M5 landed in 2.0.0-2.0.2, so that framing
+# was stale — the work was never the milestone's.)
 
 include "src/token.cyr"
 include "src/grammar.cyr"
@@ -316,8 +321,22 @@ fn _ds_scan_tag(src, src_len, start) {
     var p = start;
     var done = 0;
     while ((p < src_len) && (done == 0)) {
-        if (_ds_is_tag_byte(load8(src + p)) == 1) { p = p + 1; }
+        # Read ONCE per iteration and advance only if the byte was
+        # a tag byte. The previous shape incremented `p` in the
+        # first `if` and then re-read `load8(src + p)` in the
+        # second WITHOUT re-testing `p < src_len`, so a tag running
+        # to the end of the buffer read `src[src_len]` — one byte
+        # past the caller's allocation.
+        #
+        # `vyk` hid it: the CLI NUL-terminates at `buf[n]`, so the
+        # stray byte was its own terminator. `tokenize_with_grammar`
+        # is public surface though, and a consumer handing over an
+        # exactly-sized buffer whose last page ends at src_len takes
+        # a SIGSEGV. `_ds_scan_to_lf` below looks like the same
+        # pattern but is safe — it increments last, so the loop
+        # condition catches `p == src_len` before the next read.
         if (_ds_is_tag_byte(load8(src + p)) == 0) { done = 1; }
+        if (done == 0) { p = p + 1; }
     }
     return p;
 }

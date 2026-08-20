@@ -250,9 +250,18 @@ Cyrius code. When dialect is unclear, read `cyrius/programs/*.cyr`
   refresh an existing tree.
 - Do not depend on `owl` or any other consumer — vyakarana is
   upstream of all of them.
-- Do not add a token kind, change the `Token` layout, or rename
-  the public `tokenize_source` signature without an ADR under
-  `docs/adr/` and a CHANGELOG entry.
+- Do not add a token kind, change the `Token` layout, or change
+  the public streaming API — `tokenize_stream_new` / `_feed` /
+  `_drain` / `_finish` / `_free`, plus `has_grammar`,
+  `list_languages_into`, `bootstrap_grammars` (the list in
+  `src/tokenize.cyr`'s header is authoritative) — without an ADR
+  under `docs/adr/` and a CHANGELOG entry. This rule used to name
+  `tokenize_source`, which 2.0.0 **removed** with no compat shim
+  ([ADR 0017](./docs/adr/0017-streaming-api.md)); the only
+  surviving `tokenize_source*` symbol is
+  `tokenize_source_handcoded`, a `--handcoded` diagnostics oracle
+  that is explicitly **not** public surface and is not covered by
+  this rule.
 - Do not hardcode toolchain versions in CI YAML — `cyrius.cyml`'s
   `cyrius = "X.Y.Z"` is the single source of truth.
 - Do not take three failed attempts at the same problem — see

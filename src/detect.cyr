@@ -213,6 +213,29 @@ fn _detect_index_of(src, src_len, start, needle) {
 # first line; the interp name is the *last* slash-separated
 # component, with any trailing args/whitespace dropped (e.g.
 # `#!/usr/bin/env python3` → `python3` → match `python` prefix).
+# First whitespace at or after `from`, clamped to `line_end`.
+fn _dsb_word_end(src, line_end, from) {
+    var p = from;
+    var done = 0;
+    while ((p < line_end) && (done == 0)) {
+        var b = load8(src + p);
+        if ((b == 32) || (b == 9)) { done = 1; }
+        if (done == 0) { p = p + 1; }
+    }
+    return p;
+}
+
+# Offset just past the last '/' in [from, word_end); `from` if none.
+fn _dsb_basename(src, from, word_end) {
+    var start = from;
+    var p = from;
+    while (p < word_end) {
+        if (load8(src + p) == 47) { start = p + 1; }
+        p = p + 1;
+    }
+    return start;
+}
+
 fn _detect_shebang(src, src_len) {
     if (src_len < 2) { return 0; }
     if (load8(src) != 35) { return 0; }      # '#'
@@ -227,52 +250,51 @@ fn _detect_shebang(src, src_len) {
         if (b != 10) { i = i + 1; }
     }
 
-    # Walk back from line_end to find the start of the last word
-    # (after the last '/' or first space).
-    var word_start = 2;
-    var sp = 2;
-    while (sp < line_end) {
-        var b = load8(src + sp);
-        if (b == 32)               { word_start = sp + 1; }   # space
-        if ((b == 9))              { word_start = sp + 1; }   # tab
-        if (b == 47)               { word_start = sp + 1; }   # '/'
-        sp = sp + 1;
-    }
-
-    # Word goes from `word_start` to first whitespace after it (or
-    # `line_end`). After `env`, there can be a space + the actual
-    # interp; handle by matching `env`, then re-running the
-    # word-start logic on the remainder.
-    var word_end = line_end;
-    var we = word_start;
-    while (we < line_end) {
-        var b2 = load8(src + we);
-        if ((b2 == 32) || (b2 == 9)) { word_end = we; we = line_end; }
-        if ((b2 != 32) && (b2 != 9)) { we = we + 1; }
-    }
-
+    # The interpreter is the FIRST word on the line, and within it
+    # the basename. The previous implementation scanned the whole
+    # line for the last '/' OR space, so any interpreter ARGUMENT
+    # captured `word_start`: `#!/bin/bash -e` resolved the interp
+    # word to `-e` and detection failed outright. `-e` / `-eu` /
+    # `-u` are ordinary in real scripts, so extensionless shell and
+    # python files were simply rejected. Fixed 2.3.4.
+    #
+    # `_dsb_word_end` = first whitespace at/after `from`, else
+    # `line_end`. `_dsb_basename` = after the last '/' strictly
+    # inside the word (never past its end).
+    var path_end = _dsb_word_end(src, line_end, 2);
+    var word_start = _dsb_basename(src, 2, path_end);
+    var word_end = path_end;
     var wlen = word_end - word_start;
 
-    # `env` — the actual interpreter is the next non-empty word.
+    # `env` — the real interpreter is the next word, skipping any
+    # options `env` itself takes (`env -S python3 -u`, `env -i sh`).
     if ((wlen == 3) && (memeq(src + word_start, "env", 3) == 1)) {
         var j = word_end;
-        while (j < line_end) {
-            var bj = load8(src + j);
-            if ((bj == 32) || (bj == 9)) { j = j + 1; }
-            if ((bj != 32) && (bj != 9)) { j = line_end + 1; }
+        var scanning = 1;
+        while (scanning == 1) {
+            # Skip whitespace.
+            while ((j < line_end) &&
+              ((load8(src + j) == 32) || (load8(src + j) == 9))) {
+                j = j + 1;
+            }
+            if (j >= line_end) { return 0; }
+            var w_end = _dsb_word_end(src, line_end, j);
+            # An `env` option (`-S`, `-i`, `-u NAME`) is not the
+            # interpreter — step over it and keep looking.
+            # Latch the test BEFORE mutating `j`: reading
+            # `load8(src + j)` again after `j = w_end` tests the
+            # byte at the NEW position (the following space), so
+            # both branches fired and the option was treated as the
+            # interpreter. Same two-`if` hazard as `_ds_scan_tag`.
+            var is_opt = 0;
+            if (load8(src + j) == 45) { is_opt = 1; }
+            if (is_opt == 1) { j = w_end; }
+            if (is_opt == 0) {
+                word_start = _dsb_basename(src, j, w_end);
+                word_end = w_end;
+                scanning = 0;
+            }
         }
-        # `j` overshot to break the loop — back up.
-        if (j > line_end) { j = j - line_end - 1; }
-        # Clamp.
-        if (j >= line_end) { return 0; }
-        word_start = j;
-        var k = j;
-        while (k < line_end) {
-            var bk = load8(src + k);
-            if ((bk == 32) || (bk == 9)) { word_end = k; k = line_end; }
-            if ((bk != 32) && (bk != 9)) { k = k + 1; }
-        }
-        if (k == line_end) { word_end = line_end; }
         wlen = word_end - word_start;
     }
 
@@ -281,8 +303,10 @@ fn _detect_shebang(src, src_len) {
     if ((wlen >= 4) && (memeq(src + word_start, "bash", 4) == 1)) { return "shell"; }
     if ((wlen >= 3) && (memeq(src + word_start, "zsh",  3) == 1)) { return "shell"; }
     if ((wlen >= 4) && (memeq(src + word_start, "dash", 4) == 1)) { return "shell"; }
-    if ((wlen == 2) && (memeq(src + word_start, "sh",   2) == 1)) { return "shell"; }
-    if ((wlen >= 2) && (memeq(src + word_start, "sh",   2) == 1) && (wlen <= 3)) { return "shell"; }
+    # `sh`, `ksh`-style short names: prefix match bounded to 3 so
+    # `shellcheck` doesn't read as a shell interpreter. (Was two
+    # overlapping checks, the first fully subsumed by the second.)
+    if ((wlen >= 2) && (wlen <= 3) && (memeq(src + word_start, "sh", 2) == 1)) { return "shell"; }
     if ((wlen >= 6) && (memeq(src + word_start, "python", 6) == 1)) { return "python"; }
     if ((wlen >= 4) && (memeq(src + word_start, "node", 4) == 1)) { return "javascript"; }
     if ((wlen >= 4) && (memeq(src + word_start, "ruby", 4) == 1)) { return "ruby"; }

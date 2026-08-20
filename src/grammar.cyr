@@ -5,8 +5,8 @@
 #   - Grammar record layout and accessors
 #   - A minimal TOML-ish parser (purpose-built for the grammar files
 #     in grammars/*.cyml — not a general CYML/TOML implementation)
-#   - A tiny registry so tokenize_source can look up "shell" and
-#     find its loaded grammar.
+#   - A tiny registry so `tokenize_stream_new` / `has_grammar` can
+#     look up "shell" and find its loaded grammar.
 #
 # File cap per grammar: 32KB (plenty; shell.cyml is ~2KB).
 
@@ -758,13 +758,21 @@ fn grammar_load(path) {
         # cstrs out of slices, so we can't hand it the literal —
         # copy into a writable buffer first. Same buffer shape as
         # the file path so the parser sees identical input.
-        # Clamp length defensively against GRAMMAR_FILE_CAP per
-        # FINDING-007 (2026-05-09 audit) — today the largest
-        # bundled grammar is ~7KB vs a 32KB cap, but a future
-        # grammar growth past the cap would overflow the alloc'd
-        # buffer without this clamp.
+        # Refuse a blob that doesn't fit rather than clamping it.
+        # FINDING-007 (2026-05-09 audit) added a clamp here to stop
+        # the copy overflowing `buf`; that fixed the memory safety
+        # but left the behaviour silent — a >32KB grammar would be
+        # cut mid-rule and parsed as if complete, yielding a
+        # tokenizer that is subtly wrong rather than absent. 2.3.4
+        # makes it loud: return 0, which `bootstrap_grammars` turns
+        # into "language not registered" and the CLI reports as
+        # `no grammar matched`. Today's largest bundled grammar is
+        # 6,722 B against a 32,768 B cap, so this is unreachable —
+        # it exists so that growing past the cap fails visibly
+        # instead of corrupting output. Same reasoning as the
+        # VYK_SRC_CAP guard in `src/main.cyr` (2.3.4).
         var bn = strlen(blob);
-        if (bn > GRAMMAR_FILE_CAP - 1) { bn = GRAMMAR_FILE_CAP - 1; }
+        if (bn > GRAMMAR_FILE_CAP - 1) { return 0; }
         var i = 0;
         while (i < bn) {
             store8(buf + i, load8(blob + i));
@@ -775,13 +783,19 @@ fn grammar_load(path) {
     }
     var n = file_read_all(path, buf, GRAMMAR_FILE_CAP - 1);
     if (n <= 0) { return 0; }
+    # `file_read_all` stops once it has filled `maxlen`, so a read
+    # of exactly the cap cannot be distinguished from a truncated
+    # one. Refuse both — parsing a half-read grammar file silently
+    # produces a wrong tokenizer. (Dev-workflow path only; the
+    # bundled grammars come through the blob branch above.)
+    if (n >= GRAMMAR_FILE_CAP - 1) { return 0; }
     store8(buf + n, 0);
     return _gp_parse(buf, n);
 }
 
 # ── Registry ────────────────────────────────
 # A flat vec of grammar handles. `registry_init` is idempotent so
-# tokenize_source can call it lazily.
+# `bootstrap_grammars` can call it lazily.
 
 var _registry = 0;
 

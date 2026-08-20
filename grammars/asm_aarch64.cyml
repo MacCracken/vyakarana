@@ -14,12 +14,13 @@
 #     length-1 ident — `_ds_scan_ident` returns 1 when the next
 #     byte is whitespace.
 #
-# Dispatch: `.s` and `.S` are shared with `asm_x86_64`; the
-# hardcoded `detect_language` in `src/main.cyr` defaults `.s`
-# to `asm_x86_64`. ARM users invoke `vyk --language=asm_aarch64
-# file.s`. A future content-based detection pass (1.13.0 in the
-# roadmap) could sniff `.arch`/`.cpu` directives or
-# ARM-specific register names and route automatically.
+# Dispatch: `.s` and `.S` are shared with `asm_x86_64`. Routing is
+# automatic — `_detect_asm_flavor` in `src/detect.cyr` sniffs the
+# buffer and votes ARM vs x86 (ADR 0015), so `vyk file.s` picks
+# this grammar on ARM sources without `--language`. `--language=
+# asm_aarch64` still forces it. (This note used to tell ARM users
+# to always pass `--language` and called content-based detection a
+# "future pass (1.13.0)"; it landed in 1.11.2.)
 #
 # Opcodes (`mov`, `bl`, `stp`, `ldp`, `ldrb`, `cmp`, `b.eq`,
 # `ret`, …) and registers (`x0`-`x30`, `w0`-`w30`, `sp`, `pc`,

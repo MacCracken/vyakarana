@@ -4,8 +4,28 @@
 > (1.x and 2.x cuts), plus any session that shifts the gates'
 > colour or the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.3.3 are
-> shipped. **2.3.3 is the toolchain catch-up** — pin 6.5.4 →
+> **Read this file before doing anything.** 1.0.0–2.3.4 are
+> shipped. **2.3.4 is the hardening + security sweep** — the first
+> full audit since 2.1.x; all of 2.2.x and 2.3.x had shipped without
+> one. 14 defects fixed, reproductions in
+> [`../audit/2026-08-20-2.3.x-hardening-audit.md`](../audit/2026-08-20-2.3.x-hardening-audit.md).
+> Headlines: `vyk` **silently truncated** any file over 1 MiB
+> (exit 0, 30% of a 1.5 MB file dropped); streaming a document with
+> an embedded `<style>`/fence block was **near-cubic and hung**
+> (32 KB: 19.6 s → 89 ms, 221×); chunked streaming **closed strings
+> on escaped quotes**; and `#!/bin/bash -e` — any shebang with an
+> interpreter argument — **failed detection entirely**. Also a
+> one-byte OOB read in `_ds_scan_tag`, the u32 offset wrap past
+> 4 GiB, and FINDING-002/003 closed after four months open.
+>
+> **Two things to carry forward.** (1) Silent degradation was the
+> default failure mode everywhere — oversize input, oversize
+> grammars, failed `alloc`, wrapped offsets all produced plausible
+> wrong output with exit 0. (2) The gates asserted the right things
+> on inputs too narrow to exercise them: `fuzz/streaming.fcyr` has
+> asserted chunk-invariance since 2.1.4 and passes, while **9 of 14
+> real corpora violate it** (see §Next up). Same root cause the
+> 2.3.2 `TK_ERROR` audit named. **2.3.3 was the toolchain catch-up** — pin 6.5.4 →
 > 6.5.32, `lib/` re-cut at the new pin, and no source-behaviour
 > change: no token kind, no `Token` layout change, no public-API
 > change, no grammar edit. The bump is measurably inert — the
@@ -72,15 +92,25 @@
 
 ## Current status (2026-08-20)
 
-- **Version:** `2.3.3` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `2.3.4` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`.
 - **Toolchain pin:** `cyrius = "6.5.32"` (bumped from 6.5.4 in
   2.3.3; 6.5.4 came from 6.1.24 in 2.3.0). Local devs run
   `cyriusly use 6.5.32`.
 - **Gates:** build OK · **898/898** tests · smoke OK · **lint+fmt
-  exit 0 (genuinely, as of 2.3.3)** · fuzz 4/4 · bench 8 rows
-  within noise of 6.5.4 on the same tree. Verified from a clean
-  `rm -rf build src/grammar_blobs.cyr` rebuild on 6.5.32.
+  exit 0** · fuzz 4/4 · 0 untracked deferrals. `scripts/smoke.sh`
+  gained two regression groups in 2.3.4 (oversize input must fail
+  loudly; shebangs with interpreter arguments must route) — both
+  verified to fail against the pre-fix binary.
+- **Known contract violation (open):** streaming is **not
+  chunk-invariant**, which `fuzz/streaming.fcyr` documents as a
+  correctness contract. 9 of 14 real corpora produce different
+  `(kind, start, len)` tokens depending on chunk size — cyml 7/7
+  chunk sizes differing, markdown/html/python 5/7, rust/go 4/7,
+  vue 3/7, css/toml 1/7; json/shell/yaml/typescript/javascript/
+  cyrius clean. Coverage never breaks; boundaries move. Long-
+  standing, not a 2.3.4 regression. **This is the top follow-up** —
+  see §Next up.
 - **`lib/` is inert at build time.** On 6.5.32 `cycc` resolves
   stdlib from `~/.cyrius/versions/<pin>/lib`, so the **pin** —
   not the vendored `lib/` — decides what is compiled. Verified
@@ -101,6 +131,29 @@
   rows — the hot path consumers actually run — are all
   fractionally *faster*. Table not refreshed: the documented
   cadence is minor-release boundaries, and this is a patch.
+- **What 2.3.4 changed (hardening + security sweep):**
+  - **Four P1s**, all reproduced before fixing: the 1 MiB silent
+    truncation, the near-cubic compose-hold hang, escaped-quote
+    string closure under chunking, and shebang-with-arguments
+    detection failure.
+  - **Six P2s**, including a one-byte OOB read in `_ds_scan_tag`
+    (public `tokenize_with_grammar` is exposed; `vyk` masked it by
+    NUL-terminating), the u32 offset wrap, oversize-grammar
+    truncation, and the `alloc()`-unchecked family.
+  - **The audit ledger itself was defective.** FINDING-005 (u32
+    token fields) was mislabeled in the 1.13 and 2.1.x carryover
+    tables as a `_sanitize_for_stderr` issue — which is *also* not
+    a real defect; the sanitizer replaces control bytes, it does
+    not truncate. So the real finding fell out of tracking and was
+    never re-rated when 2.0.0's streaming rewrite invalidated its
+    "practical file sizes don't approach this" premise. Carryover
+    tables must copy titles verbatim from now on.
+  - **Deferral-language audit** (explicitly requested): 10 stale
+    grammar-header claims removed after verifying each against the
+    same file's own rules, 6 misphrased permanent decisions
+    reworded, 4 stale `tokenize_source` references corrected.
+    Blob shrank 217,790 → 215,902 bytes.
+
 - **What 2.3.3 changed (toolchain catch-up):**
   - **Pin 6.5.4 → 6.5.32**, four minor lines in one step, with
     **zero dialect fixes needed in `src/`**. Contrast 2.3.0,
@@ -850,6 +903,42 @@ over an unchanged public API.
 
 ## Next up — open queue
 
+**Priority order after the 2.3.4 audit** (detail and reproductions
+in [`../audit/2026-08-20-2.3.x-hardening-audit.md`](../audit/2026-08-20-2.3.x-hardening-audit.md)):
+
+1. **Restore chunk-invariance.** The single biggest open item. Two
+   known causes remain after 2.3.4 closed the escape one:
+   `_stream_is_trailing_complete` matches *any* same-kind pair
+   rule's end marker, and compose-region routing is not
+   reconstructed across chunk boundaries (which is why `cyml` — the
+   grammar 2.3.1 was written for — is the worst row at 7/7). Then
+   point `fuzz/streaming.fcyr`'s existing assertions at
+   `tests/corpus/` so the contract is actually gated; that turns
+   the gate red until the fix lands, so it ships **with** the fix,
+   not before. Changing token boundaries is observable behaviour →
+   ADR + minor bump.
+2. **Bound the compose hold.** While an opener is held the buffer
+   never compacts, so `VYK_STREAM_CAP` becomes a *total-input*
+   ceiling — contradicting the documented "total input can exceed
+   this freely". Measured: no opener → 32.8 MB accepted, buffer
+   compacts to 1; unterminated `<style>` → grows until feed returns
+   `VYK_ERR_OVERFLOW` forever. Holding is semantically required, so
+   the fix is to bound it and fall back to emitting the body as
+   `TK_STRING` (what the scanner already does when the inner
+   grammar is missing). ADR.
+3. **Decide `Token.start`/`len` width.** 2.3.4 made the >4 GiB case
+   an explicit `VYK_ERR_OVERFLOW` instead of silent wraparound.
+   Either widen the layout (ADR 0002 revision, minor bump) or
+   formally document the 4 GiB stream ceiling in
+   `../architecture/`.
+4. **`openqasm` grammar.** `vidya` ships
+   `content/lexing_and_parsing/openqasm.qasm` and renders its
+   samples through vyakarana; 11 of 12 tokenize, that one exits 4.
+   Needs a corpus entry and the `45` in `fuzz/grammar_load.fcyr`.
+5. **Bump consumers off `2.2.3`** — they are 241 lines / +19,565
+   bytes behind and still emit error tokens for Go struct tags,
+   shell backtick substitution and AT&T `$` immediates.
+
 Closed waves:
 
 - **1.11.x — external integrations.** LSP bridge (1.11.0,
@@ -969,9 +1058,20 @@ Post-1.1 roadmap ([./roadmap.md](./roadmap.md) has the detail):
 
 - **Consumers all sit at `tag = "2.2.3"`** — `owl`, `cyim`, and
   `vidya`, each pulling `dist/vyakarana.cyr` via
-  `[deps.vyakarana]`. The 2.3.0 bundle is byte-identical apart
-  from its version header, so bumping them buys nothing but the
-  tag; there is no downstream churn to chase.
+  `[deps.vyakarana]`. **They are now materially behind, and this
+  entry used to say the opposite.** The "2.3.0 bundle is
+  byte-identical apart from its version header, so bumping buys
+  nothing" line was accurate when written — 2.2.3 → 2.3.0 is
+  literally 2 changed lines, both the version header — but 2.3.1
+  and 2.3.2 landed real grammar fixes after it and nobody
+  re-checked. Measured 2026-08-20: **2.2.3 → 2.3.3 is 241 changed
+  lines, +19,565 bytes.** A consumer on 2.2.3 is missing the
+  CYML compose-region routing fix (2.3.1) and the 37-grammar
+  `TK_ERROR` adjudication (2.3.2) — i.e. it still emits error
+  tokens for Go struct tags, shell backtick substitution, AT&T
+  `$` immediates and the rest. **Bumping consumers now buys
+  correctness, not just a tag.** Re-measure before repeating any
+  "no churn to chase" claim.
 - **owl** (`/home/macro/Repos/owl`) — its M3b was blocked on M1;
   it has long since declared `[deps.vyakarana]` at a cut tag
   (currently 2.2.3). Do **not** sidestep with a path hack.
@@ -983,8 +1083,9 @@ Post-1.1 roadmap ([./roadmap.md](./roadmap.md) has the detail):
   `src/main.cyr` — added in vidya 2.7.0 against vyakarana
   1.11.1, migrated to streaming in vidya 2.7.1.
 - **cyrius** (`/home/macro/Repos/cyrius`) — toolchain. Pinned at
-  `6.5.4` in `cyrius.cyml` (bumped from 6.1.24 in 2.3.0; 6.1.24
-  came from 6.0.3 in 2.2.3, and 6.0.3 from 5.10.5 in 2.2.2; see
+  `6.5.32` in `cyrius.cyml` (bumped from 6.5.4 in 2.3.3; 6.5.4
+  came from 6.1.24 in 2.3.0; 6.1.24 from 6.0.3 in 2.2.3, and
+  6.0.3 from 5.10.5 in 2.2.2; see
   [ADR 0018](../adr/0018-vendored-stdlib-gitignored.md)). The
   2026-05-07 `include`-graph
   regression filed against 5.9.32

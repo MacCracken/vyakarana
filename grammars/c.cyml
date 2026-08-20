@@ -12,14 +12,13 @@
 # files that lead with a `/* Vidya — … */` header.
 #
 # Known gaps for future ADRs (not triggered by the vidya sample):
-#   - Char literals `'x'` split into three operator tokens. Same
-#     pattern as Rust; promoting to an ADR for a `char_literal`
-#     default with small lookahead is the likely fix.
 #   - Preprocessor directives (`#include`, `#define`, `#ifdef`) are
 #     tokenized as `#` op + keyword-or-ident + ... rather than a
 #     unified `preprocessor` kind. `<stdio.h>` becomes
 #     `<` + ident + `.` + ident + `>`. Coverage and no-error bars
-#     hold; a principled preprocessor mode is ADR-worthy later.
+#     hold. A unified `preprocessor` kind would need an ADR and a
+#     token-kind decision; deliberately still open, and not blocking
+#     any consumer — see CHANGELOG 2.3.4 §Notes.
 
 [grammar]
 name = "c"

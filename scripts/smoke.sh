@@ -496,4 +496,84 @@ printf '<?xml version="1.0"?>\n<root><child/></root>\n' > "$XML_FIXTURE"
 [ -s "$TMPDIR/xml.ndjson" ] \
     || fail "xml signature detection: empty NDJSON"
 
+# ── Shebangs with interpreter ARGUMENTS must still detect ──
+# Regression for the 2.3.4 audit finding. `_detect_shebang` used to
+# scan the whole line for the last '/' or space, so any argument
+# captured the interpreter word: `#!/bin/bash -e` resolved to `-e`
+# and detection failed outright (exit 4, "no grammar matched").
+# `-e` / `-eu` / `-u` are ordinary in real scripts, so extensionless
+# shell and python files were being rejected wholesale. The existing
+# shebang probe above only covers the no-argument `env python3`
+# form, which is why this survived twelve releases.
+#
+# Discriminators: `$HOME` tokenizes cleanly under shell but emits an
+# `error` token under python; `def` is a keyword only under python.
+# Both assertions therefore fail loudly on a misroute, not just on a
+# hard detection failure.
+sb_shell() {
+    printf '%s\nif true; then echo $HOME; fi\n' "$1" > "$TMPDIR/sb_fixture"
+    "$BIN" "$TMPDIR/sb_fixture" > "$TMPDIR/sb.ndjson" 2> "$TMPDIR/sb.err" \
+        || fail "shebang '$1': exit non-zero (stderr: $(cat "$TMPDIR/sb.err"))"
+    head -1 "$TMPDIR/sb.ndjson" | grep -q '"kind":"preprocessor","start":0' \
+        || fail "shebang '$1': first token not preprocessor@0 ($(head -1 "$TMPDIR/sb.ndjson"))"
+    grep -q '"kind":"error"' "$TMPDIR/sb.ndjson" \
+        && fail "shebang '$1': error tokens present — misrouted, not shell"
+    return 0
+}
+sb_python() {
+    printf '%s\ndef f(): pass\n' "$1" > "$TMPDIR/sb_fixture"
+    "$BIN" "$TMPDIR/sb_fixture" > "$TMPDIR/sb.ndjson" 2> "$TMPDIR/sb.err" \
+        || fail "shebang '$1': exit non-zero (stderr: $(cat "$TMPDIR/sb.err"))"
+    head -1 "$TMPDIR/sb.ndjson" | grep -q '"kind":"preprocessor","start":0' \
+        || fail "shebang '$1': first token not preprocessor@0 ($(head -1 "$TMPDIR/sb.ndjson"))"
+    grep -q '"kind":"keyword","len":3' "$TMPDIR/sb.ndjson" \
+        || grep -q '"kind":"keyword"' "$TMPDIR/sb.ndjson" \
+        || fail "shebang '$1': no keyword token — 'def' did not route to python"
+}
+sb_shell  '#!/bin/bash -e'
+sb_shell  '#!/bin/sh -eu'
+sb_shell  '#!/usr/bin/env -i sh'
+sb_shell  '#!/bin/bash'
+sb_python '#!/usr/bin/python3 -u'
+sb_python '#!/usr/bin/env -S python3 -u'
+sb_python '#!/usr/bin/env python3'
+
+# ── Oversize input must FAIL LOUDLY, never truncate silently ──
+# Regression for the 2.3.4 audit finding. Through 2.3.3, `vyk` on a
+# file at/over VYK_SRC_CAP (1 MiB) read only the prefix, tokenized
+# it, and exited 0 with nothing on stderr — the coverage invariant
+# quietly stopped holding at the cut point. The small corpora above
+# never approach the cap, which is exactly why it survived twelve
+# releases. Assert the loud-failure behaviour directly.
+BIG_FIXTURE="$TMPDIR/oversize.sh"
+awk 'BEGIN { for (i = 0; i < 120000; i++) print "echo hello_" i }' \
+    > "$BIG_FIXTURE"
+big_bytes=$(wc -c < "$BIG_FIXTURE" | tr -d ' ')
+[ "$big_bytes" -gt 1048574 ] \
+    || fail "oversize fixture is only $big_bytes bytes; needs > 1048574"
+set +e
+"$BIN" "$BIG_FIXTURE" > "$TMPDIR/big.ndjson" 2> "$TMPDIR/bigerr"
+big_rc=$?
+set -e
+[ "$big_rc" = "3" ] \
+    || fail "oversize input: exit $big_rc (expected 3); silent truncation regression?"
+grep -q "file too large" "$TMPDIR/bigerr" \
+    || fail "oversize input: no 'file too large' diagnostic (stderr: $(cat "$TMPDIR/bigerr"))"
+[ -s "$TMPDIR/big.ndjson" ] \
+    && fail "oversize input: emitted tokens despite being over the cap"
+
+# The largest accepted size must still tokenize with the coverage
+# invariant intact — proves the guard rejects only the unsafe side.
+OK_FIXTURE="$TMPDIR/atcap.sh"
+awk 'BEGIN { for (i = 0; i < 60000; i++) print "echo ok_" i }' > "$OK_FIXTURE"
+ok_bytes=$(wc -c < "$OK_FIXTURE" | tr -d ' ')
+[ "$ok_bytes" -le 1048574 ] \
+    || fail "under-cap fixture is $ok_bytes bytes; must be <= 1048574"
+"$BIN" "$OK_FIXTURE" > "$TMPDIR/atcap.ndjson" 2> "$TMPDIR/err" \
+    || fail "under-cap input: exit non-zero (stderr: $(cat "$TMPDIR/err"))"
+ok_sum=$(grep -oE '"len":[0-9]+' "$TMPDIR/atcap.ndjson" | cut -d: -f2 \
+    | awk '{s+=$1} END {print s+0}')
+[ "$ok_sum" = "$ok_bytes" ] \
+    || fail "under-cap coverage: token len sum $ok_sum != file bytes $ok_bytes"
+
 echo "smoke: OK ($v_long) — M0 + M1 + M2 + M3 gates passing"

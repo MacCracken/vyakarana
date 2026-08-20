@@ -40,7 +40,9 @@ fn kind_name(kind) {
 
 # Coverage check helper — exported in `[lib] modules` so downstream
 # consumers can validate `kind` values they receive from
-# `tokenize_source`.
+# `tokenize_stream_kind` / `tokenbuf_kind`. (Read
+# `tokenize_source` before 2.3.4; that entry point was removed in
+# 2.0.0 — ADR 0017.)
 fn kind_is_valid(kind) {
     if (kind < 0) { return 0; }
     if (kind >= TK_COUNT) { return 0; }
@@ -68,10 +70,18 @@ var TOKEN_SIZE = 12;
 
 var _TB_INIT_CAP = 64;   # initial record capacity (768 bytes)
 
+# Returns 0 if either allocation failed. Every caller in-tree
+# already treats a 0 tokenbuf as "no grammar / give up" (see
+# `tokenize_buf` in src/main.cyr), so propagating 0 is the
+# existing contract rather than a new one. Last of the
+# FINDING-002 family — `_tokenbuf_grow` and `_stream_grow` are
+# guarded above.
 fn tokenbuf_new() {
     var tb = alloc(24);
+    if (tb == 0) { return 0; }
     var bytes = _TB_INIT_CAP * TOKEN_SIZE;
     var data = alloc(bytes);
+    if (data == 0) { return 0; }
     store64(tb, data);
     store64(tb + 8, 0);        # count
     store64(tb + 16, bytes);   # byte_cap
@@ -82,11 +92,24 @@ fn tokenbuf_count(tb) {
     return load64(tb + 8);
 }
 
+# Returns 1 on success, 0 if the buffer could not be grown.
+# `alloc` returns 0 on OOM, on a negative size, and on anything over
+# ALLOC_MAX (2 GiB) — FINDING-002 (2026-04-23 audit) flagged that
+# vyakarana never checked it. Unchecked, a failed grow stored a NULL
+# data pointer and the next push wrote through it. Doubling from 768
+# bytes reaches ALLOC_MAX at ~178M tokens, so this is an
+# out-of-memory path rather than an everyday one, but a tokenizer
+# library must not take its host process down with a NULL write.
 fn _tokenbuf_grow(tb) {
     var old_data = load64(tb);
     var old_bytes = load64(tb + 16);
     var new_bytes = old_bytes * 2;
+    # A zero byte_cap makes the doubling above make no progress.
+    # Only reachable on a zeroed/reused handle; same guard shape as
+    # `_stream_grow`'s cap check (FINDING-008).
+    if (old_bytes <= 0) { return 0; }
     var new_data = alloc(new_bytes);
+    if (new_data == 0) { return 0; }
     var i = 0;
     while (i < old_bytes) {
         store8(new_data + i, load8(old_data + i));
@@ -94,15 +117,27 @@ fn _tokenbuf_grow(tb) {
     }
     store64(tb, new_data);
     store64(tb + 16, new_bytes);
-    return 0;
+    return 1;
 }
 
+# Always returns 0 — the return value is NOT a status code, and must
+# stay that way: `tokenbuf_push` ships in `dist/vyakarana.cyr`, so
+# giving it a success/failure return would silently change meaning
+# for any consumer that tests it (CLAUDE.md §Do not — public API
+# changes need an ADR).
+#
+# If the buffer cannot grow (`alloc` returned 0 — OOM or past
+# ALLOC_MAX), the token is DROPPED rather than written through a
+# NULL data pointer. Dropping breaks the coverage invariant, which
+# is bad; writing to NULL takes down the host process, which is
+# worse. Callers that need to detect it compare `tokenbuf_count`
+# across the call. See FINDING-002.
 fn tokenbuf_push(tb, kind, start, len) {
     var count = load64(tb + 8);
     var byte_cap = load64(tb + 16);
     var used = count * TOKEN_SIZE;
     if (used >= byte_cap) {
-        _tokenbuf_grow(tb);
+        if (_tokenbuf_grow(tb) == 0) { return 0; }   # drop, don't corrupt
     }
     var data = load64(tb);
     var slot = data + count * TOKEN_SIZE;
