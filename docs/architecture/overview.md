@@ -11,7 +11,7 @@ on every release. Live status lives in
 
 Source-code tokenizer for the AGNOS stack. Take source bytes →
 yield `(kind, start, len)` spans into the caller's buffer, fast
-and without surprises. Consumers (owl, cyim, agnoshi, vidya)
+and without surprises. Consumers (owl, cyim, vidya)
 decide what to do with the tokens; vyakarana never renders, never
 parses past the lexical layer.
 
@@ -54,7 +54,7 @@ parses past the lexical layer.
               ▼                                            ▼
    ┌────────────────────┐                     ┌─────────────────────────┐
    │    src/main.cyr    │                     │ downstream consumers    │
-   │   `vyk` CLI        │                     │ (owl, cyim, agnoshi,    │
+   │   `vyk` CLI        │                     │ (owl, cyim, vidya)      │
    │   --version, NDJSON│                     │  vidya) via             │
    │   emit, etc.       │                     │ [deps.vyakarana]        │
    └────────────────────┘                     └─────────────────────────┘
@@ -67,7 +67,7 @@ path can never silently drift away from the M1 reference.
 
 ## File-by-file
 
-- **`grammars/*.cyml`** — 45 grammar files (see "Bundled
+- **`grammars/*.cyml`** — 46 grammar files (see "Bundled
   grammars" below). Each is a `[grammar]` header, a `[defaults]`
   table for built-in scanner stages, and `[[rules]]` entries for
   line / pair / words / compose / compose_fenced.
@@ -163,8 +163,8 @@ altered.
 | python      | vidya `python.py` (8528B)           | 1790 | triple-quoted + walrus. |
 | go          | vidya `go.go` (7402B)               | 2151 | Added in 1.2.0. `:=`, `<-`, `...`, `&^`; `/* … */` block comments. |
 | zig         | vidya `zig.zig` (~6500B)            | 2279 | Added in 1.2.0. `@`-builtins via `ident_start`; `=>`, `**`, `++`, saturating/wrapping ops. |
-| asm_x86_64  | vidya `asm_x86_64.s` (8167B)        | 1655 | Added in 1.2.2. Intel syntax; `.`-prefixed directives via `ident_start`; opcodes/registers as ident per ADR 0004. AT&T syntax (`%rax`, `$1`) deferred. |
-| asm_aarch64 | vidya `asm_aarch64.s` (8037B)       | 1367 | Added in 1.2.3. ARM GAS; `//` line comments; `#` immediate prefix as operator; `.` in BOTH ident_start and ident_cont so `b.eq`/`b.ne`/`b.lt` are one ident. Shares `.s`/`.S` with asm_x86_64 — pass `--language=asm_aarch64` explicitly (default routes to x86_64). |
+| asm_x86_64  | vidya `asm_x86_64.s` (8167B)        | 1655 | Added in 1.2.2. Intel syntax; `.`-prefixed directives via `ident_start`; opcodes/registers as ident per ADR 0004. AT&T syntax handled since 2.3.2 — `$` and `@` are operators (ADR 0020); real GNU `as` produced 91 error tokens in one file without them. |
+| asm_aarch64 | vidya `asm_aarch64.s` (8037B)       | 1367 | Added in 1.2.3. ARM GAS; `//` line comments; `#` immediate prefix as operator; `.` in BOTH ident_start and ident_cont so `b.eq`/`b.ne`/`b.lt` are one ident. Shares `.s`/`.S` with asm_x86_64; `_detect_asm_flavor` votes ARM vs x86 from the buffer (ADR 0015, since 1.11.2), so `--language` is no longer required. |
 | java        | stand-in `concept.java` (~5KB)      | 1705 | Added in 1.3.0. ADR 0006 stand-in (vidya doesn't ship Java yet). `@` in `ident_start` so `@Override` is one ident. Standard C-family operators plus `->` (lambda), `::` (method ref), `>>>` (unsigned right shift). |
 | kotlin      | stand-in `concept.kt` (~4KB)        | 1320 | Added in 1.3.0. ADR 0006 stand-in. `@` and `$` in `ident_start`. Operators include `?:` (Elvis), `?.` (safe-call), `!!` (not-null assert), `..` (range), `===` / `!==` (referential). |
 | cpp         | stand-in `concept.cpp` (~5KB)       | 1686 | Added in 1.3.0. ADR 0006 stand-in. `::` scope-resolution, `<=>` three-way compare, `->*` / `.*` member-pointer, `...` parameter packs. Templates / generics handled by existing `<` `>` operator pair (consumer-side disambiguation). |
@@ -195,6 +195,7 @@ altered.
 | svelte      | stand-in `concept.svelte` (~2.7KB)  |  949 | Added in 2.1.1. ADR 0006 stand-in. Vue-shape minus `<template>` (template lives at file top level). `$` in operators for reactive declarations. Same compose-rule routing for `<script>` / `<style>` bodies. |
 | nix         | stand-in `concept.nix` (~2.6KB)     |  596 | Added in 2.1.2. ADR 0006 stand-in. Functional config language for NixOS / home-manager. `//` is set-merge (NOT line comment); `++` list concat, `->` implication, `@` "as" pattern, `?` has-attribute. `'` (Haskell-prime) and `-` in `ident_cont` (kebab-case). `''…''` indented multi-line strings as 2-byte pair rule. Block + `# …` line comments. |
 | terraform   | stand-in `concept.tf` (~2.8KB)      |  464 | Added in 2.1.3. ADR 0006 stand-in. HashiCorp Configuration Language (.tf / .tfvars / .hcl). Both `#` and `//` line comments + `/* */` block. `=>` for-expressions, `...` spread, kebab-case idents. Block syntax (`resource "type" "name" { … }`) tokenizes naturally without special-casing. **Closes the 2.1.x grammar wave** — 7 grammars added (38 → 45). |
+| openqasm    | vidya `openqasm.qasm` (775B)        |  135 | Added in 2.3.5. **Not** an ADR 0006 stand-in — vidya ships this sample and renders it through vyakarana, and it was the one vidya sample `vyk` could not tokenize (exit 4) until now; the 2.3.4 audit surfaced the gap. Keyword set spans OpenQASM 2.0 and 3.x. Standard-library gate names (`h`, `cx`, `rz`) stay `ident` per ADR 0004 — they come from `qelib1.inc` and are redefinable via `gate`. `->` for `measure`. Floats split (`2.0` → number + `.` + number): scanner-wide gap, same as css / scss / protobuf / java. |
 
 ---
 
@@ -243,3 +244,14 @@ behaviour:
 - [ADR 0007 — Rust grammar treats `$` as `ident_start`](../adr/0007-rust-dollar-in-ident-start.md)
 - [ADR 0008 — TOML grammar handles triple-quoted strings](../adr/0008-toml-triple-quoted-strings.md)
 - [ADR 0009 — `unicode_ident` default + C block comments](../adr/0009-unicode-ident-default.md)
+- [ADR 0010 — `char_literal` default](../adr/0010-char-literal-default.md)
+- [ADR 0011 — `case_insensitive_keywords` default](../adr/0011-case-insensitive-keywords-default.md)
+- [ADR 0012 — LSP semantic-tokens bridge mapping](../adr/0012-lsp-semantic-tokens-bridge.md)
+- [ADR 0013 — Grammar composition rule](../adr/0013-grammar-composition-rule.md)
+- [ADR 0014 — Embedded grammar blobs in the dist bundle](../adr/0014-embedded-grammar-blobs.md)
+- [ADR 0015 — Content-based language detection](../adr/0015-content-based-detection.md)
+- [ADR 0016 — `match = "compose_fenced"` for markdown fences](../adr/0016-compose-fenced-rule.md)
+- [ADR 0017 — Streaming tokenizer API (2.0)](../adr/0017-streaming-api.md)
+- [ADR 0018 — Vendored stdlib snapshot is gitignored](../adr/0018-vendored-stdlib-gitignored.md)
+- [ADR 0019 — `match = "compose_region"` for open-ended regions](../adr/0019-compose-region-rule.md)
+- [ADR 0020 — When `TK_ERROR` is correct and when it is a hole](../adr/0020-tk-error-adjudication.md)

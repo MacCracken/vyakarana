@@ -29,9 +29,11 @@ cp ../../../vidya/content/lexing_and_parsing/shell.sh ./shell.sh
 
 ## Status
 
-45 corpus files (one per bundled grammar). Mix of vidya
-snapshots (where vidya ships a real sample) and ADR-0006
-stand-ins (hand-written `concept.<ext>` files where vidya
-coverage is light). Per-grammar provenance is in
+47 corpus files across 46 bundled grammars — `cyml` carries two
+(`dependencies.cyml` and `phase_d.cyml`), every other grammar
+exactly one. Mix of vidya snapshots (where vidya ships a real
+sample — `openqasm.qasm` is the newest, synced in 2.3.5) and
+ADR-0006 stand-ins (hand-written `concept.<ext>` files where
+vidya coverage is light). Per-grammar provenance is in
 [docs/architecture/overview.md](../../docs/architecture/overview.md)'s
 "Bundled grammars" table.

@@ -124,6 +124,7 @@ fn _detect_5plus(path, n) {
         if (memeq(path + n - 5, ".yaml", 5) == 1) { return "yaml"; }
         if (memeq(path + n - 5, ".psm1", 5) == 1) { return "powershell"; }
         if (memeq(path + n - 5, ".psd1", 5) == 1) { return "powershell"; }
+        if (memeq(path + n - 5, ".qasm", 5) == 1) { return "openqasm"; }
     }
     if (n >= 6) {
         if (memeq(path + n - 6, ".swift", 6) == 1) { return "swift"; }

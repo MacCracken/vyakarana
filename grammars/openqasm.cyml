@@ -1,0 +1,157 @@
+# openqasm — OpenQASM tokenizer grammar (2.0 + 3.x)
+#
+# Rule scheme per ADR 0005. Mechanical C-family at the token level:
+# `//` and `/* */` comments, double-quoted strings, decimal and
+# radix-prefixed numbers, semicolon statement terminators, and a
+# keyword set spanning both language versions.
+#
+# Corpus per [ADR 0001](../docs/adr/0001-corpus-sync-policy.md) —
+# **not** a stand-in. vidya ships
+# `content/lexing_and_parsing/openqasm.qasm` and renders its samples
+# *through vyakarana*, so `tests/corpus/openqasm.qasm` is a synced
+# snapshot of that file. It was the one vidya sample vyakarana could
+# not tokenize (`vyk` exited 4, "no grammar matched") — the gap the
+# 2.3.4 audit surfaced and 2.3.5 closes.
+#
+# Version span. The sample is OpenQASM 2.0 (`OPENQASM 2.0;`,
+# `qreg`/`creg`, `gate`, `measure ->`), but the keyword list also
+# carries 3.x: the typed-declaration heads (`qubit`, `bit`, `int`,
+# `angle`, `complex`, `duration`), the classical control flow
+# (`for`/`in`/`while`/`else`/`break`/`continue`/`return`), the
+# subroutine heads (`def`, `defcal`, `extern`, `cal`), and the gate
+# modifiers (`ctrl`, `negctrl`, `inv`, `pow`). Covering both costs
+# nothing at the token level and means a 3.x file does not come back
+# as a wall of idents.
+#
+# Standard-library gate names (`h`, `cx`, `x`, `rz`, `ccx`, …) are
+# deliberately **`ident`, not `keyword`** — they come from
+# `qelib1.inc`, are user-redefinable via `gate`, and are not reserved
+# words. Same call as [ADR 0004](../docs/adr/0004-shell-builtins-as-ident.md)
+# for shell built-ins: `keyword` means *reserved*.
+#
+# `pi` is a keyword: it is a built-in constant in both versions and
+# cannot be redefined.
+#
+# Known gaps:
+#   - **Float literals split.** `OPENQASM 2.0;` tokenizes as
+#     `number(2)` + `punctuation(.)` + `number(0)`, and every other
+#     decimal fraction does the same. This is not an openqasm
+#     decision — the scanner has no float support at all
+#     (`src/grammar.cyr` understands only `number_decimal`,
+#     `number_0x`, `number_0b`, `number_0o`), so css, scss,
+#     protobuf, java and graphql all carry the identical gap.
+#     Coverage and the zero-error bar hold; the version header is
+#     three tokens instead of two. Removing `.` from punctuation
+#     would make it *worse* — the `.` would become TK_ERROR. A
+#     `number_float` default is a cross-grammar scanner change
+#     (all 46 grammars) and wants its own ADR; see CHANGELOG 2.3.5
+#     §Notes.
+#   - Timing literals (`100ns`, `2us`, `1dt` — OpenQASM 3 durations).
+#     The number scanner stops at the unit, yielding `number` +
+#     `ident`. Same shape as java.cyml's numeric suffixes; coverage
+#     and the zero-error bar both hold.
+#   - Bit-string literals (`"1011"` with a width, 3.x). Tokenize as
+#     ordinary strings, which is the right span either way.
+#   - `pragma` / `defcalgrammar` free-text bodies run to end of line
+#     and tokenize as ordinary idents rather than one opaque span.
+#     A `line` rule could claim them if a corpus needs it.
+
+[grammar]
+name = "openqasm"
+extensions = [".qasm"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+ident_start = "A-Za-z_"
+ident_cont  = "A-Za-z0-9_"
+
+number_decimal = true
+number_0x      = true
+number_0b      = true
+number_0o      = true
+
+special_vars = false
+# OpenQASM identifiers are ASCII per spec, but non-ASCII shows up in
+# comment prose (the synced sample has an em dash and box-drawing
+# rules). The comment rules claim those bytes first; this is the
+# belt-and-braces half of the 2.3.2 `unicode_ident` sweep so a stray
+# UTF-8 byte outside a comment can never become TK_ERROR.
+unicode_ident = true
+char_literal  = false
+
+# Longest-match order matters: `->` before `-`, the compound
+# assignments before their bare operators, `==`/`!=`/`<=`/`>=`
+# before `=`/`!`/`<`/`>`, and `<<`/`>>` before `<`/`>`.
+operators = [
+    "->", "==", "!=", "<=", ">=", "&&", "||", "<<", ">>",
+    "+=", "-=", "*=", "/=", "^=", "&=", "|=", "%=",
+    "++", "--",
+    "=", "+", "-", "*", "/", "%", "^", "!", "~", "&", "|",
+    "<", ">", "@",
+]
+
+punctuation = [
+    "(", ")", "{", "}", "[", "]",
+    ";", ",", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+[[rules]]
+kind = "comment"
+match = "line"
+start = "//"
+
+
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "/*"
+end = "*/"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "'"
+end = "'"
+escape = "\\"
+
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # ── Version / file heads ──
+    "OPENQASM", "include",
+    # ── 2.0 declarations ──
+    "qreg", "creg", "gate", "opaque",
+    "U", "CX",
+    # ── 3.x typed declarations ──
+    "qubit", "bit", "int", "uint", "float", "angle", "bool",
+    "complex", "duration", "stretch", "array", "const", "let",
+    "input", "output", "readonly", "mutable", "sizeof",
+    "durationof",
+    # ── Subroutines / calibration (3.x) ──
+    "def", "defcal", "defcalgrammar", "extern", "cal", "pragma",
+    # ── Statements, both versions ──
+    "measure", "reset", "barrier", "delay", "box", "end",
+    # ── Control flow (3.x) ──
+    "if", "else", "for", "in", "while", "break", "continue",
+    "return", "switch", "case", "default",
+    # ── Gate modifiers (3.x) ──
+    "ctrl", "negctrl", "inv", "pow",
+    # ── Built-in constants / literals ──
+    "pi", "tau", "euler", "true", "false", "im",
+]

@@ -29,9 +29,12 @@
 #
 # Known gaps (not triggered by the stand-in):
 #   - Variable-padded long brackets (see above).
-#   - Lua 5.3+ integer-division `//` IS in operators below.
-#   - Lua bitwise operators (`&`, `|`, `~`, `<<`, `>>`) IS in
-#     operators below; Lua 5.3+.
+#
+# Explicitly NOT gaps (these were filed under "Known gaps" through
+# 2.3.4, which read as pending work when both already ship):
+#   - Lua 5.3+ integer division `//` — in the operator list below.
+#   - Lua 5.3+ bitwise operators (`&`, `|`, `~`, `<<`, `>>`) — in
+#     the operator list below.
 
 [grammar]
 name = "lua"

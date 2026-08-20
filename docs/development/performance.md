@@ -65,7 +65,7 @@ The 1.13.0 cut formalised a **soft 300 KB target** for
 `build/vyk`. Today's binary is ~63 KB over that target, down
 from ~82 KB at 2.2.1 — this cut closed roughly a quarter of the
 overage without touching the dominant contributor, the embedded
-grammar blobs (45 grammars × ADR 0014 inlining). 2.1.x audit
+grammar blobs (46 grammars × ADR 0014 inlining). 2.1.x audit
 (2026-05-09) flagged the cap revisit as a 2.x roadmap item; not
 a security or correctness concern. See ADR 0014 for why inlining
 is the right trade-off (downstream `cyrius deps` consumers no

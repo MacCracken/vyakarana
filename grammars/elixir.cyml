@@ -23,10 +23,11 @@
 #   - Sigils `~r/.../`, `~w()`, `~s"…"`. The `~` is currently
 #     in operators; sigil bodies tokenize as op + ident +
 #     pair-string + ident-flags. Cosmetic; coverage holds.
-#   - Heredoc strings `"""…"""` would benefit from a pair rule
-#     ahead of `"…"` (same shape as TOML
-#     [ADR 0008](../docs/adr/0008-toml-triple-quoted-strings.md)).
-#     Added below.
+#   (Heredoc strings `"""…"""` are NOT a gap — the pair rule sits
+#   ahead of `"…"` below, same shape as TOML
+#   [ADR 0008](../docs/adr/0008-toml-triple-quoted-strings.md).
+#   It was filed under "Known gaps" through 2.3.4 with "Added
+#   below" tacked on, which read as pending work.)
 #   - String interpolation `#{expr}` stays inside the string-
 #     pair span per [ADR 0003](../docs/adr/0003-string-expansion-not-retokenized.md).
 #   - Atoms `:foo` tokenize as `:` punctuation + `foo` ident.

@@ -6,6 +6,155 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [2.3.5] — 2026-08-20
+
+**The `openqasm` grammar, plus the documentation repairs 2.3.4's
+audit turned up.** 46 bundled grammars (was 45), 909/909 tests (was
+898). No token kind, no `Token` layout change, no public-API
+signature change, no scanner change.
+
+### Added
+
+- **`grammars/openqasm.cyml` — OpenQASM 2.0 + 3.x.** This was the
+  one sample in `vidya/content/lexing_and_parsing/` that vyakarana
+  could not tokenize: `vyk openqasm.qasm` exited 4, "no grammar
+  matched", while the other 11 round-tripped clean. vidya renders
+  those samples *through* vyakarana, so it was a live consumer gap —
+  surfaced by the 2.3.4 audit and closed here.
+
+  The corpus is a **sync, not a stand-in**: vidya ships the file, so
+  `tests/corpus/openqasm.qasm` follows
+  [ADR 0001](docs/adr/0001-corpus-sync-policy.md) rather than
+  [ADR 0006](docs/adr/0006-standin-corpus-policy.md). It tokenizes
+  with **zero error tokens** and the coverage invariant exact
+  (775/775 bytes).
+
+  Shape notes:
+  - The keyword set spans **both language versions** — 2.0's
+    `qreg`/`creg`/`gate`/`opaque`/`U`/`CX` and 3.x's typed
+    declarations (`qubit`, `bit`, `angle`, `complex`, `duration`),
+    classical control flow, subroutine heads (`def`, `defcal`,
+    `extern`, `cal`) and gate modifiers (`ctrl`, `negctrl`, `inv`,
+    `pow`). Costs nothing at the token level and stops a 3.x file
+    coming back as a wall of idents. Verified: a 3.x sample
+    tokenizes with zero errors.
+  - **Standard-library gate names stay `ident`, not `keyword`.**
+    `h`, `cx`, `rz`, `ccx` come from `qelib1.inc` and are
+    redefinable via `gate` — they are not reserved words. Same call
+    as [ADR 0004](docs/adr/0004-shell-builtins-as-ident.md) for
+    shell built-ins. `pi` *is* a keyword: built-in and not
+    redefinable.
+  - `->` is ordered ahead of `-` so `measure q -> c;` yields one
+    2-byte operator.
+
+  Registered in `bootstrap_grammars`, `_detect_5plus` (`.qasm`),
+  the smoke suite's language list and corpus round-trip loop, and
+  `fuzz/grammar_load.fcyr`'s blob-count assertion (45 → 46). Eleven
+  new assertions in `tests/vyakarana.tcyr`.
+
+### Fixed — documentation drift from the 2.3.4 audit
+
+The audit found more doc drift than 2.3.4 had room for. Cleared here.
+Historical references (CHANGELOG entries, ADR 0020's account of the
+2.3.2 sweep) were deliberately **left alone** — only present-tense
+claims about current state were touched.
+
+- **`src/tokenize.cyr`'s public-symbol list was wrong in two ways**,
+  which matters more than usual because 2.3.4 pointed CLAUDE.md's
+  frozen-API rule at it. It listed `tokenize_source_handcoded` under
+  "Removed in 2.0.0" — that function is *live*, defined in the same
+  file, called by `src/main.cyr`, and shipped in the bundle; only
+  `tokenize_source` was removed. And it omitted the entire pull
+  adapter (`tokenize_stream_next` / `_kind` / `_start` / `_len` /
+  `_discard_consumed`) while a comment above still said the pull
+  adapter "is queued for 2.0.2" — it shipped *in* 2.0.2.
+
+- **Grammar counts.** `45` → `46` in README, `docs/architecture/overview.md`,
+  `docs/development/{performance,distribution,roadmap,state}.md` and
+  `docs/guides/consumer-integration.md`. Architecture note 003 said
+  the pipeline order "holds across all **23** bundled grammars" —
+  off by 23. `tests/corpus/README.md` claimed "45 corpus files (one
+  per bundled grammar)"; there are **47 across 46 grammars**, because
+  `cyml` carries two.
+
+- **Architecture note 002's normative pipeline table** listed only
+  `match = "compose"` at step 0, missing `compose_fenced`
+  ([ADR 0016](docs/adr/0016-compose-fenced-rule.md), markdown
+  fences) and `compose_region`
+  ([ADR 0019](docs/adr/0019-compose-region-rule.md), CYML bodies).
+  Now 0a/0b/0c in the order the scanner actually tries them.
+
+- **`overview.md`'s Decision index stopped at ADR 0009.** ADRs
+  0010–0020 exist; all eleven added.
+
+- **`agnoshi` was still listed as a downstream consumer** in
+  `overview.md` (prose and diagram) and
+  `004-theme-palette-contract.md`. `state.md` recorded it as "not a
+  consumer and never was" back in 2.2.x; the architecture docs never
+  got the memo.
+
+- **`overview.md`'s bundled-grammar table** still said AT&T syntax
+  was "deferred" for `asm_x86_64` (ADR 0020 landed it in 2.3.2) and
+  told `asm_aarch64` users to pass `--language` explicitly
+  (`_detect_asm_flavor` has routed it automatically since 1.11.2).
+
+- **`SECURITY.md`'s trust boundary** described `tokenize_source`'s
+  arguments — a removed function. Now names
+  `tokenize_stream_feed` / `tokenize_with_grammar`, and the
+  API-misuse bullet records what 2.3.4 hardened. The same stale name
+  appeared in a CI comment.
+
+- **`state.md`'s "waiting on a future ADR" list** asked for "a
+  `char_literal = true` default with 2-3 char lookahead" — that is
+  ADR 0010, shipped in **1.2.1**, and set in seven grammars today.
+  Removed, with a note. Python INDENT/DEDENT was filed in the same
+  list while its own bullet said it was unnecessary; moved to an
+  explicit "out of scope, not deferred" heading. **M4** was left
+  unmarked while M5 and M6 beside it read "Landed" — M4 landed as
+  `004-theme-palette-contract.md` plus `--theme=` / `--export-theme=`.
+
+- **Grammar headers filing shipped work under "Known gaps"**:
+  `lua.cyml` listed integer division `//` and the 5.3+ bitwise
+  operators as gaps and then said both "IS in operators below";
+  `elixir.cyml` listed heredocs as a gap ending in "Added below".
+  Both now sit under explicit not-a-gap headings. `graphql.cyml`'s
+  float bullet was *kept* — it is a real gap — but reworded to say
+  what it actually is (the scanner-wide float limitation, not a
+  graphql decision).
+
+- **`html.cyml` proposed "a regex-y attribute tolerance"** for
+  `<script type="module">`. The design spec rules regex out of
+  grammar files deliberately ("performance cliffs and grammar
+  authors debugging regex engines"), so that pointed a future
+  maintainer at a decision already made. Reworded toward the shape
+  that fits — a prefix-plus-scan-to-`>` compose start.
+
+- **README's Install block led with `pkg install vyakarana`**, a
+  command that does not exist. From-source now leads; the package
+  manager is a commented-out "NOT yet available" line.
+
+### Notes
+
+- **Floats are the one visible rough edge in the new grammar.**
+  `OPENQASM 2.0;` — the header every file opens with — tokenizes as
+  `number(2)` + `punctuation(.)` + `number(0)`. That is not an
+  openqasm decision: the scanner has no float support at all
+  (`src/grammar.cyr` understands `number_decimal`, `number_0x`,
+  `number_0b`, `number_0o` and nothing else), so css, scss,
+  protobuf, java and graphql carry the identical gap. Coverage and
+  the zero-error bar hold. Removing `.` from punctuation would make
+  it *worse* — the `.` would become `TK_ERROR`. A `number_float`
+  default touches all 46 grammars and wants its own ADR; it is now
+  tracked in `state.md`'s cosmetic-only list rather than buried in
+  one grammar header.
+
+- **The 2.3.4 audit's three deferred code items are unchanged and
+  still open**: streaming chunk-invariance (9 of 14 corpora), the
+  unbounded compose hold that turns `VYK_STREAM_CAP` into a
+  total-input ceiling, and the `Token.start`/`len` u32 width
+  decision. All three are ADR-and-minor-bump work; see
+  `docs/development/state.md` §Next up.
+
 ## [2.3.4] — 2026-08-20
 
 **Hardening + security sweep.** First full audit since 2.1.x — all of

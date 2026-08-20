@@ -107,8 +107,14 @@ punctuation = [
 # `<script type="module">` etc.; the compose rule's start is
 # a fixed prefix, so attribute-bearing forms fall back to
 # normal HTML tokenization (the body is structural, not
-# routed). A future extension could add a regex-y attribute
-# tolerance — until then, this is a documented limitation.
+# routed).
+#
+# Any fix here must NOT be "regex-y": the design spec rules regex
+# out of grammar files deliberately (§Rule types — "regex in
+# grammar files leads to performance cliffs and grammar authors
+# debugging regex engines"). The shape that fits the existing
+# machinery is a prefix-plus-scan-to-`>` compose start, not a
+# pattern language. Documented limitation until then.
 [[rules]]
 match = "compose"
 start = "<style>"

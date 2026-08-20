@@ -289,7 +289,7 @@ roadmap.
 - **Regex rule type** — reopens
   [ADR 0005](../adr/0005-m2-rule-type-scope.md) only if a
   grammar genuinely cannot be expressed via the current rule
-  set. None of the 45 bundled grammars have hit that wall.
+  set. None of the 46 bundled grammars have hit that wall.
 
 ---
 

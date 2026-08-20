@@ -70,7 +70,7 @@ jobs:
         run: sh scripts/smoke.sh build/vyk
 
       # Fuzz harnesses — one per public API entry. Random /
-      # adversarial inputs through tokenize_source, the three
+      # adversarial inputs through the streaming API, the three
       # detect_language* entries, and the CYML grammar parser.
       # All hold the documented invariants (coverage, no crash,
       # registered-name return). Audit doc 2026-05-09 §3.

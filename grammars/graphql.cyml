@@ -28,8 +28,14 @@
 # ident. Same call as Java / Kotlin / Zig.
 #
 # Known gaps (not triggered by the stand-in):
-#   - Float / scientific notation (`3.14`, `1.5e3`). Not in the
-#     stand-in.
+#   - Float / scientific notation (`3.14`, `1.5e3`) is not ONE
+#     token — it comes back as `number` + `.` + `number` (plus an
+#     `e`/sign ident for the exponent). Every byte is still
+#     covered and nothing errors; the operators block below
+#     explains which pieces claim `.`, `-` and the exponent. This
+#     is the scanner-wide float gap (`number_decimal` / `_0x` /
+#     `_0b` / `_0o` only), shared with css, scss, protobuf, java
+#     and openqasm — not a graphql-specific decision.
 #   - Custom directive bodies are tokenized as ident + arg
 #     list; renderers can re-pair the directive form by token
 #     text.

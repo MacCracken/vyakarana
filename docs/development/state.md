@@ -4,8 +4,18 @@
 > (1.x and 2.x cuts), plus any session that shifts the gates'
 > colour or the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.3.4 are
-> shipped. **2.3.4 is the hardening + security sweep** — the first
+> **Read this file before doing anything.** 1.0.0–2.3.5 are
+> shipped. **2.3.5 adds the `openqasm` grammar** (46 bundled, was
+> 45) — the one sample in `vidya/content/lexing_and_parsing/` that
+> `vyk` could not tokenize, exiting 4 while the other 11 round-
+> tripped clean. vidya renders those samples *through* vyakarana,
+> so it was a live consumer gap. Corpus is an ADR-0001 sync, not an
+> ADR-0006 stand-in. 909/909 tests. 2.3.5 also cleared the
+> documentation drift 2.3.4's audit found but had no room for —
+> grammar counts, note 002's pipeline table, the ADR index,
+> `agnoshi` as a phantom consumer, and several grammar headers
+> filing shipped work under "Known gaps".
+> **2.3.4 was the hardening + security sweep** — the first
 > full audit since 2.1.x; all of 2.2.x and 2.3.x had shipped without
 > one. 14 defects fixed, reproductions in
 > [`../audit/2026-08-20-2.3.x-hardening-audit.md`](../audit/2026-08-20-2.3.x-hardening-audit.md).
@@ -71,7 +81,7 @@
 > 6.0.3 → 6.1.24; 2.2.2 was the modernization cut: pin 5.10.5 →
 > 6.0.3, vendored `lib/` moved to the `cyrius deps` model —
 > gitignored, ADR 0018.) No public-API, token-layout, or grammar
-> changes. 45 bundled grammars; 4 fuzz harnesses. No work
+> changes. 46 bundled grammars; 4 fuzz harnesses. No work
 > currently in flight. See §Next up.
 >
 > **Where to find what.** Architecture (system map, frozen
@@ -92,13 +102,13 @@
 
 ## Current status (2026-08-20)
 
-- **Version:** `2.3.4` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `2.3.5` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`.
 - **Toolchain pin:** `cyrius = "6.5.32"` (bumped from 6.5.4 in
   2.3.3; 6.5.4 came from 6.1.24 in 2.3.0). Local devs run
   `cyriusly use 6.5.32`.
-- **Gates:** build OK · **898/898** tests · smoke OK · **lint+fmt
-  exit 0** · fuzz 4/4 · 0 untracked deferrals. `scripts/smoke.sh`
+- **Gates:** build OK · **909/909** tests · smoke OK · **lint+fmt
+  exit 0** · fuzz 4/4 · 0 untracked deferrals. **46 grammars.** `scripts/smoke.sh`
   gained two regression groups in 2.3.4 (oversize input must fail
   loudly; shebangs with interpreter arguments must route) — both
   verified to fail against the pre-fix binary.
@@ -131,6 +141,29 @@
   rows — the hot path consumers actually run — are all
   fractionally *faster*. Table not refreshed: the documented
   cadence is minor-release boundaries, and this is a patch.
+- **What 2.3.5 changed:**
+  - **`openqasm` grammar** (2.0 + 3.x keyword span). Registered in
+    `bootstrap_grammars`, `_detect_5plus` (`.qasm`), the smoke
+    language list and corpus loop, and `fuzz/grammar_load.fcyr`'s
+    blob count (45 → 46). Gate names stay `ident` per ADR 0004;
+    `pi` is a keyword. Zero error tokens, coverage exact on the
+    synced vidya sample.
+  - **Doc drift from the 2.3.4 audit, cleared.** `tokenize.cyr`'s
+    public-symbol list (it wrongly listed the live
+    `tokenize_source_handcoded` as removed, and omitted the whole
+    pull adapter — and CLAUDE.md now points at that list);
+    architecture note 002's pipeline table (missing
+    `compose_fenced` / `compose_region`); the ADR index stopping at
+    0009; `agnoshi` as a phantom consumer; `SECURITY.md`'s trust
+    boundary naming a removed function; and grammar counts across
+    nine files. Historical references were left alone — only
+    present-tense claims changed.
+  - **Deferral cleanup, round two.** `state.md` still asked for a
+    `char_literal` default that shipped in 1.2.1; `lua.cyml` and
+    `elixir.cyml` filed shipped features under "Known gaps";
+    `html.cyml` proposed a "regex-y" fix the design spec rules out
+    by name; M4 was unmarked beside two "Landed" siblings.
+
 - **What 2.3.4 changed (hardening + security sweep):**
   - **Four P1s**, all reproduced before fixing: the 1 MiB silent
     truncation, the near-cubic compose-hold hang, escaped-quote
@@ -847,18 +880,37 @@ Closed in 1.1.0:
   default flag + a `/* … */` pair rule in `c.cyml`. ADR 0009.
   Was: 8 errors per typical vidya C sample.
 
-Still cosmetic-only and waiting on a future ADR:
+Still cosmetic-only and genuinely open:
 
-- **Char literals** (`'x'`, `'\0'`) and byte-char-with-escape
-  (`b'\n'`): Rust + C still split into op/body/op triples.
-  Needs a `char_literal = true` default with 2-3 char lookahead.
 - **F-string prefix**: `f"..."` → `ident(f) + string("...")` in
   Python. Same for r/b/rb/fr prefixes.
 - **Block comments in Rust** — Rust's `/* */` is *nestable*, so
   the simple pair rule used for C won't work. Needs a nesting
   variant. Not triggered by the canonical sample.
+- **Float literals** — `2.0` splits into `number` + `.` +
+  `number`. The scanner has no float support at all
+  (`number_decimal` / `_0x` / `_0b` / `_0o` only), so css, scss,
+  protobuf, java, graphql and openqasm all carry it. A
+  `number_float` default touches every grammar → wants an ADR.
+  Surfaced most visibly by 2.3.5's openqasm grammar, where the
+  version header `OPENQASM 2.0;` is three tokens.
+
+**Closed, was listed here through 2.3.4:**
+
+- **Char literals** (`'x'`, `'\0'`) — this section asked for "a
+  `char_literal = true` default with 2-3 char lookahead". That is
+  [ADR 0010](../adr/0010-char-literal-default.md), shipped in
+  1.2.1, and `char_literal = true` is set in c / rust / go / zig /
+  kotlin / ocaml / lua today. Stale since 1.2.1; caught by the
+  2.3.4 deferral audit.
+
+**Out of scope, not deferred:**
+
 - **Python INDENT/DEDENT**: structural tokens Python parsers want
-  aren't emitted. Not needed for the tokenizer's correctness bar.
+  aren't emitted. Not needed for the tokenizer's correctness bar —
+  vyakarana yields spans, not structure. Listed under "waiting on
+  a future ADR" through 2.3.4 while the bullet itself said it was
+  unnecessary; moved here so it stops reading as pending work.
 
 ---
 
@@ -1042,8 +1094,12 @@ starting 1.2.0 so they don't drift away):
 
 Post-1.1 roadmap ([./roadmap.md](./roadmap.md) has the detail):
 
-- **M4** — Theme-palette contract with owl. Shared palette header
-  is the likely shape.
+- **M4** — Theme-palette contract with owl. **Landed** — the
+  contract is
+  [`../architecture/004-theme-palette-contract.md`](../architecture/004-theme-palette-contract.md),
+  with `vyk --theme=` and `--export-theme=` as the shipped
+  surface. (Left unmarked through 2.3.4 while M5 and M6 in the
+  same list were marked "Landed".)
 - **M5** — Streaming tokenizer (iterator API). Memory goes
   O(tokens in flight); enables `owl huge.log`. **Landed** —
   2.0.0–2.0.2.

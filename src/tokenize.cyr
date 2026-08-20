@@ -21,7 +21,9 @@
 # would track scanner state explicitly so drain only scans new
 # bytes since the previous commit.
 #
-# A pull adapter (`tokenize_stream_next`) is queued for 2.0.2.
+# The pull adapter (`tokenize_stream_next` + the `_kind` / `_start`
+# / `_len` accessors) shipped in 2.0.2 and lives at the bottom of
+# this file; `tokenize_stream_discard_consumed` joined it in 2.1.4.
 #
 # Stream layout (heap-allocated; opaque to callers):
 #
@@ -60,19 +62,31 @@
 #   -----
 #   88 bytes total
 #
-# Bundled into `dist/vyakarana.cyr`. Public symbols:
-#   tokenize_stream_new
-#   tokenize_stream_feed
-#   tokenize_stream_drain
-#   tokenize_stream_finish
-#   tokenize_stream_free
-#   has_grammar
-#   list_languages_into
-#   bootstrap_grammars
+# Bundled into `dist/vyakarana.cyr`. Public symbols — this list is
+# what CLAUDE.md's frozen-API rule points at, so keep it accurate:
+#
+#   push API      tokenize_stream_new
+#                 tokenize_stream_feed
+#                 tokenize_stream_drain
+#                 tokenize_stream_finish
+#                 tokenize_stream_free
+#   pull adapter  tokenize_stream_next        (2.0.2)
+#                 tokenize_stream_kind
+#                 tokenize_stream_start
+#                 tokenize_stream_len
+#                 tokenize_stream_discard_consumed  (2.1.4)
+#   registry      has_grammar
+#                 list_languages_into
+#                 bootstrap_grammars
 #
 # Removed in 2.0.0 (no compat shim):
 #   tokenize_source
-#   tokenize_source_handcoded
+#
+# NOT public, but still present: `tokenize_source_handcoded` — the
+# `vyk --handcoded` regression oracle. It is defined at the bottom
+# of this file and ships in the bundle, so listing it as "removed"
+# (as this header did through 2.3.4) was simply wrong; consumer DCE
+# builds strip it.
 #
 # See `docs/adr/0017-streaming-api.md` for the design rationale
 # and the migration recipe for 1.x consumers.
@@ -213,6 +227,8 @@ fn bootstrap_grammars() {
     if (gnix != 0) { registry_add(gnix); }
     var gtf = grammar_load("grammars/terraform.cyml");
     if (gtf != 0) { registry_add(gtf); }
+    var gqasm = grammar_load("grammars/openqasm.cyml");
+    if (gqasm != 0) { registry_add(gqasm); }
     return 0;
 }
 

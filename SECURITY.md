@@ -23,7 +23,8 @@ silently dropped) when no other rule matches.
 
 Trust boundary:
 
-- **Source bytes** (the `src` argument to `tokenize_source`) are
+- **Source bytes** (the bytes handed to `tokenize_stream_feed`, or
+  the `src` argument to `tokenize_with_grammar`) are
   **untrusted**. Bounds checks on every `load8 / store8 / alloc(N)`
   derived from input length are the contract — see
   `tests/vyakarana.tcyr` and the `docs/audit/` reports.
@@ -55,8 +56,11 @@ Trust boundary:
 - Adversarial `.cyml` grammar files crashing or hanging the
   loader.
 - Public-API misuse that produces undefined behaviour rather
-  than an error return — e.g. `tokenize_source` with a NULL or
-  negative length.
+  than an error return — e.g. `tokenize_stream_feed` with a NULL
+  chunk or a negative length. (2.3.4 hardened several of these:
+  `alloc` failures, an `n` large enough to wrap the length
+  arithmetic, and the pull-adapter accessors called before the
+  first `_next` or after `_free`.)
 
 ## What's out of scope (file as feature requests instead)
 

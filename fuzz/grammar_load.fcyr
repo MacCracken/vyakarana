@@ -50,8 +50,8 @@ fn fuzz_main(data, n) {
         eprint("FAIL: shell didn't bootstrap\n", 30);
         return 1;
     }
-    if (_grammar_blob_count() != 45) {
-        eprint("FAIL: blob count drifted from 45\n", 34);
+    if (_grammar_blob_count() != 46) {
+        eprint("FAIL: blob count drifted from 46\n", 34);
         return 1;
     }
 

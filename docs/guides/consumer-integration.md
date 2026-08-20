@@ -230,7 +230,7 @@ wants to pre-load the registry at startup (e.g., to validate
 that `--language=foo` will work later), call:
 
 ```cyrius
-bootstrap_grammars();        # loads all 45 bundled grammars
+bootstrap_grammars();        # loads all 46 bundled grammars
 ```
 
 Then `has_grammar("foo")` and `list_languages_into(vec)` give

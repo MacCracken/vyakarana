@@ -70,16 +70,16 @@ ten.
 ## Install
 
 ```sh
-# AGNOS / Cyrius native package manager (future)
-pkg install vyakarana
-
-# From source
+# From source — the supported path today
 git clone https://github.com/MacCracken/vyakarana
 cd vyakarana
 cyriusly use 6.5.32                 # match the pin in cyrius.cyml first
 cyrius deps                         # vendors lib/ from the pinned toolchain
 sh scripts/embed-grammars.sh        # inlines grammars/*.cyml; gitignored
 cyrius build src/main.cyr build/vyk
+
+# AGNOS / Cyrius native package manager — NOT yet available
+# pkg install vyakarana
 ```
 
 Both pre-build steps are mandatory: `lib/` and `src/grammar_blobs.cyr`
@@ -93,7 +93,7 @@ checkout, picking up a pin bump takes `cyriusly use <pin>` and then
 ```sh
 vyk --version              # prints `vyk 2.3.0`
 vyk --list-kinds           # print the ten token kinds
-vyk --list-languages       # list loaded grammars (45 bundled)
+vyk --list-languages       # list loaded grammars (46 bundled)
 vyk file.rs                # NDJSON tokens for any bundled grammar
 vyk --language=shell setup # explicit grammar override (extensionless)
 ```
@@ -133,18 +133,30 @@ was removed in 2.0.0 (ADR 0017).
 
 ## Status
 
-**2.3.3** (2026-08-20) — 45 bundled grammars, push + pull
-streaming primitive, 4/4 fuzz harnesses green, 898/898 tests
-passing. Toolchain pinned at `cyrius 6.5.32`. Toolchain catch-up
-cut: the pin moved 6.5.4 → 6.5.32, four minor lines in one step,
-and this time **nothing in `src/` needed a dialect fix** — patch
-rather than minor. The bump is measurably inert: the same tree
-built with 6.5.4's and 6.5.32's `cycc` is byte-identical, and
-`cyrius bench` agrees within noise on all eight rows. It also
-turned the `lint + fmt` release gate green for the first time —
-three files had failed `fmt --check` since well before 2.3.2,
-under the outgoing formatter too. No public-API, token-layout, or
-grammar changes.
+**2.3.5** (2026-08-20) — **46** bundled grammars, push + pull
+streaming primitive, 4/4 fuzz harnesses green, 909/909 tests
+passing. Toolchain pinned at `cyrius 6.5.32`. Adds the
+**`openqasm`** grammar (OpenQASM 2.0 + 3.x), closing the last gap
+in vidya's sample set — `openqasm.qasm` was the one vidya file
+`vyk` could not tokenize — plus the documentation repairs the
+2.3.4 audit turned up.
+
+**2.3.4** was the hardening + security sweep, the first full audit
+since 2.1.x. 14 defects fixed: `vyk` silently truncated any file
+over 1 MiB (exit 0, 30% of a 1.5 MB file dropped); streaming a
+document with an embedded `<style>`/fence block was near-cubic and
+effectively hung (32 KB: 19.6 s → 89 ms); chunked streaming closed
+strings on *escaped* quotes; and any shebang with an interpreter
+argument (`#!/bin/bash -e`) failed detection outright. Also a
+one-byte OOB read, the u32 offset wrap past 4 GiB, and
+FINDING-002/003 closed after four months open. Full write-up in
+[docs/audit/2026-08-20-2.3.x-hardening-audit.md](docs/audit/2026-08-20-2.3.x-hardening-audit.md).
+
+**2.3.3** was the toolchain catch-up: the pin moved 6.5.4 →
+6.5.32, four minor lines in one step, with nothing in `src/`
+needing a dialect fix. Measurably inert — the same tree built with
+both compilers is byte-identical. It also turned the `lint + fmt`
+release gate green for the first time.
 
 `docs/development/state.md` is the authoritative live tracker;
 `CHANGELOG.md` is the per-cut log;

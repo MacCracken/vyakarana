@@ -1,7 +1,7 @@
 # 004 — Theme-palette contract
 
 > **Affects:** every consumer that renders vyakarana tokens
-> with colour. owl, cyim, agnoshi, vidya, and the bundled
+> with colour. owl, cyim, vidya, and the bundled
 > `vyk --theme=<name>` mode all hit the same surface.
 
 ## What the contract is

@@ -14,7 +14,9 @@ the steps below in order. The first step that returns a non-zero
 
 | #  | Step                                         | Source                                              |
 |----|----------------------------------------------|-----------------------------------------------------|
-| 0  | Compose rules (recursive — push start marker, inner-grammar body, end marker) | `[[rules]] match = "compose"` (HTML → CSS / JS) |
+| 0a | Compose rules (recursive — push start marker, inner-grammar body, end marker) | `[[rules]] match = "compose"` (HTML → CSS / JS) |
+| 0b | Compose-fenced rules (info-string picks the inner grammar) | `[[rules]] match = "compose_fenced"` ([ADR 0016](../adr/0016-compose-fenced-rule.md), markdown ``` fences) |
+| 0c | Compose-region rules (open-ended region to EOF) | `[[rules]] match = "compose_region"` ([ADR 0019](../adr/0019-compose-region-rule.md), CYML markdown bodies) |
 | 1  | Shebang (`#!…\n` at file start)              | `[defaults] shebang = true`                         |
 | 2  | Line rules                                   | `[[rules]] match = "line"` (e.g. `#`, `//`)         |
 | 3  | Pair rules                                   | `[[rules]] match = "pair"` (strings, block comments)|

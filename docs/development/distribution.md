@@ -38,7 +38,7 @@ The artifact downstream Cyrius projects pull via `cyrius deps`.
   `distlib` fails loud (exit 1) on a missing `[lib] modules`
   entry instead of quietly concatenating what it can find. That
   is the workflow change worth internalizing: skipping the embed
-  step used to hand you a bundle with all 45 grammars silently
+  step used to hand you a bundle with all 46 grammars silently
   missing, and now it stops you. The same toolchain window also
   raised distlib's per-module read cap from 256 KB to 1 MB;
   `src/grammar_blobs.cyr` is 204,240 bytes — 78% of the old cap
@@ -60,7 +60,7 @@ The artifact downstream Cyrius projects pull via `cyrius deps`.
   consumer's `lib/`. The consumer's own `[deps] stdlib` list
   resolves the standard-library symbols the bundle references
   (`alloc`, `streq`, `vec_*`, `print`, etc.).
-- **Self-contained?** For grammar definitions yes (45 grammars
+- **Self-contained?** For grammar definitions yes (46 grammars
   inlined as Cyrius string literals; ADR 0014). For stdlib no —
   the consumer supplies it.
 - **Pin compatibility:** the public API names + arg orders in
@@ -86,7 +86,7 @@ The artifact end-users and packagers download to get a runnable
   `vyakarana-2.3.0-x86_64-linux.tar.gz`). Contains:
   - `vyk` — DCE'd binary built with `cyrius build` and
     `CYRIUS_DCE=1`.
-  - `grammars/` — all 45 `.cyml` source files (also embedded
+  - `grammars/` — all 46 `.cyml` source files (also embedded
     in the binary; included on disk for grammar authors who
     want to edit and re-run with `vyk path/to/foo.cyml`).
   - `dist/vyakarana.cyr` — the source bundle (so a downloader
