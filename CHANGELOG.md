@@ -6,6 +6,83 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [2.3.3] — 2026-08-20
+
+**Toolchain catch-up: pin `6.5.4` → `6.5.32`, and the first cut
+whose `lint + fmt` gate is actually green.** No source-behaviour
+change — no token kind, no `Token` layout change, no public-API
+change, no grammar edit. 898/898 tests, smoke OK, all 45 grammars
+unchanged.
+
+The bump is measurably inert. Building the *same* tree with
+`6.5.4`'s and `6.5.32`'s `cycc` produces **byte-identical**
+binaries (396,888 both), and `cyrius bench` under the two
+compilers agrees within run-to-run noise on all eight rows. The
+only size movement is the stdlib snapshot itself: 392,472 →
+396,888 bytes (+4,416, +1.1%), 343 → 367 unreachable fns, because
+`6.5.32`'s stdlib is slightly larger than `6.5.4`'s. Nothing in
+`src/` needed a dialect fix to cross four minor lines.
+
+### Changed
+
+- **Toolchain pin `6.5.4` → `6.5.32`** in `cyrius.cyml`. CI reads
+  the pin as its single source of truth, so no workflow edit is
+  needed.
+
+- **Vendored `lib/` re-cut at the new pin.** `rm -rf lib &&
+  cyrius deps`, per CLAUDE.md §Gates — a plain `cyrius deps`
+  treats a present `lib/<mod>.cyr` as satisfied and would have
+  left the tree at its `6.5.4` vintage. All 27 vendored modules
+  are byte-identical to
+  `~/.cyrius/versions/6.5.32/lib`; 17 of them changed content:
+  `alloc`, `args`, `assert`, `atomic`, `fmt`, `fnptr`, `fs`,
+  `io`, `result`, `string`, and all seven `syscalls*` variants.
+
+- **New downstream artifact: `dist/vyakarana.deps`.** `cyrius
+  distlib` at 6.5.32 emits a sidecar next to the bundle listing
+  the 11 stdlib leaves the fold needs in scope; 6.5.4's `distlib`
+  did not produce one. Its own header says it is *consumed by
+  `cyrius deps`*, so it must ship alongside `dist/vyakarana.cyr`
+  — a consumer pulling `[deps.vyakarana] modules =
+  ["dist/vyakarana.cyr"]` gets the bundle without its stdlib
+  manifest otherwise. Tracked in git for the same reason the
+  bundle is, and deliberately **not** added to `.gitignore`.
+
+### Fixed
+
+- **`sh scripts/lint-fmt.sh` exits 0.** It exited **1** at
+  `2.3.2` and at each of the six commits before it — back through
+  `09111d0` — with `src/grammar.cyr`, `src/tokenize.cyr` and
+  `src/grammars/default_scanner.cyr` all failing `fmt --check`.
+  The drift reproduces under the *outgoing* `6.5.4` formatter, so
+  it was not a `6.5.32` regression; it was a red release gate
+  that CLAUDE.md §Closeout calls mandatory and that CI gates.
+  Purely whitespace — `fmt` re-indents wrapped call arguments to
+  a 2-space hanging indent (26 lines across the three files). No
+  token stream changes.
+
+- **`cyrlint` is fully quiet.** `src/theme.cyr:24` carried an
+  untracked `for now` deferral. It was never a deferral: the
+  `i64` theme handle is a permanent choice, and the very next
+  sentence already gives the reason (Cyrius enums consume
+  `gvar_toks` slots). Reworded rather than `#skip-lint`-ed, so
+  the comment stops advertising work that was never pending.
+  Pre-existing under both pins; `cyrius lint` reports it without
+  failing, so `lint-fmt.sh` never caught it.
+
+### Notes
+
+- **The project `lib/` is inert at build time on `6.5.32`.**
+  `cycc` resolves stdlib from `~/.cyrius/versions/<pin>/lib`, so
+  the pin — not the vendored tree — decides what gets compiled.
+  Verified directly: appending garbage to `lib/str.cyr` and
+  rebuilding still exits `OK`, while changing only the pin moves
+  the binary by 4,416 bytes. Keeping `lib/` synced still matters
+  (it silences the `shadow lib` warning, and CI populates it on a
+  fresh checkout), but it is no longer the thing under test.
+  CLAUDE.md's §Gates note claimed the inverse — that a stale
+  `lib/` makes the pin ignored — and has been corrected.
+
 ## [2.3.2] — 2026-07-31
 
 **37 grammars stop erroring on valid syntax.** A sweep of every

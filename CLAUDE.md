@@ -35,13 +35,34 @@ never raw `cc3`/`cc5`.
 
 **`cyrius deps` does not refresh a `lib/` that already exists.**
 It treats a present `lib/<mod>.cyr` as satisfied, so the vendored
-stdlib silently stays at whatever snapshot first populated it —
-the pin is then ignored at build time and the gates prove nothing
-about the version you think you're on. This is exactly what
-happened between 2.2.2 and 2.3.0: `lib/` sat at a 6.0.x vintage
-across two pin bumps. **After any pin change, `rm -rf lib &&
-cyrius deps`,** then confirm with `diff lib/str.cyr
-~/.cyrius/versions/<pin>/lib/str.cyr`.
+stdlib silently stays at whatever snapshot first populated it.
+This is exactly what happened between 2.2.2 and 2.3.0: `lib/` sat
+at a 6.0.x vintage across two pin bumps. **After any pin change,
+`rm -rf lib && cyrius deps`.**
+
+Confirm with a *whole-tree* diff, not one file — `str.cyr` is
+unchanged across many pins and will pass while everything else
+is stale:
+
+```sh
+for f in lib/*.cyr; do
+    diff -q "$f" ~/.cyrius/versions/<pin>/lib/"$(basename "$f")" \
+        || echo "STALE: $f"
+done
+```
+
+**What a stale `lib/` does and does not break.** As of 6.5.32,
+`cycc` resolves stdlib from `~/.cyrius/versions/<pin>/lib` — the
+**pin** decides what is compiled, and the project `lib/` is inert
+at build time. Verified in 2.3.3 by appending garbage to
+`lib/str.cyr` and rebuilding: still `OK`. So a stale `lib/` does
+**not** silently build you against the wrong stdlib; it makes the
+tree *describe* a version it isn't on, emits a `shadow lib`
+warning, and misleads anyone reading it. (This paragraph used to
+claim the opposite — that a stale `lib/` made the pin ignored.
+That was wrong; the reverse is true.) Keep them in sync anyway:
+CI populates `lib/` fresh on every checkout, so a mismatch means
+local and CI are compiling different snapshots.
 
 **Lint + fmt are mandatory pre-release.** CI runs them; failing
 either blocks the tag. The wrapper at `scripts/lint-fmt.sh`

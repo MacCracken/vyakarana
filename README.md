@@ -76,7 +76,7 @@ pkg install vyakarana
 # From source
 git clone https://github.com/MacCracken/vyakarana
 cd vyakarana
-cyriusly use 6.5.4                  # match the pin in cyrius.cyml first
+cyriusly use 6.5.32                 # match the pin in cyrius.cyml first
 cyrius deps                         # vendors lib/ from the pinned toolchain
 sh scripts/embed-grammars.sh        # inlines grammars/*.cyml; gitignored
 cyrius build src/main.cyr build/vyk
@@ -133,17 +133,18 @@ was removed in 2.0.0 (ADR 0017).
 
 ## Status
 
-**2.3.0** (2026-07-31) — 45 bundled grammars, push + pull
-streaming primitive, 4/4 fuzz harnesses green, 840/840 tests
-passing. Toolchain pinned at `cyrius 6.5.4`. Toolchain catch-up
-cut: the pin moved 6.1.24 → 6.5.4, four minor lines in one step —
-minor rather than patch because it took source changes to get
-there. `cyrius.cyml` shed a vestigial `cyml` stdlib entry that
-made `cyrius deps` exit 1 on a fresh checkout, and eleven
-duplicate variable names in `tests/vyakarana.tcyr` were renamed
-so the suite compiles again. Both defects predate the bump and
-reproduce at 6.1.24 — 2.2.3 shipped with a red test gate. No
-public-API, token-layout, or grammar changes.
+**2.3.3** (2026-08-20) — 45 bundled grammars, push + pull
+streaming primitive, 4/4 fuzz harnesses green, 898/898 tests
+passing. Toolchain pinned at `cyrius 6.5.32`. Toolchain catch-up
+cut: the pin moved 6.5.4 → 6.5.32, four minor lines in one step,
+and this time **nothing in `src/` needed a dialect fix** — patch
+rather than minor. The bump is measurably inert: the same tree
+built with 6.5.4's and 6.5.32's `cycc` is byte-identical, and
+`cyrius bench` agrees within noise on all eight rows. It also
+turned the `lint + fmt` release gate green for the first time —
+three files had failed `fmt --check` since well before 2.3.2,
+under the outgoing formatter too. No public-API, token-layout, or
+grammar changes.
 
 `docs/development/state.md` is the authoritative live tracker;
 `CHANGELOG.md` is the per-cut log;

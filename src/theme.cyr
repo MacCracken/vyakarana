@@ -21,7 +21,7 @@
 # yet — when one materializes (likely in 1.11.0 for owl
 # coordination), it uses the same kind-name keys.
 #
-# Theme handle: just an i64 tag for now. 0 = none, 1 = default,
+# Theme handle: a plain i64 tag. 0 = none, 1 = default,
 # 2 = dark. Direct integer because Cyrius enums consume
 # `gvar_toks` slots (see CLAUDE.md gotcha) and we don't need
 # more than three.

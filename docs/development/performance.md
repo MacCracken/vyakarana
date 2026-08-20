@@ -19,17 +19,35 @@ host — variance ~±10% between runs.
 
 | Artifact                    | Size (bytes) | Size (KB) | Notes                                         |
 |-----------------------------|-------------:|----------:|-----------------------------------------------|
-| `build/vyk` (CLI binary)    |      371,472 |     362.8 | Includes 45 inlined grammars (~199 KB of text) |
-| `dist/vyakarana.cyr`        |      348,582 |     340.4 | Single-file bundle for `cyrius deps` (4,030 lines) |
+| `build/vyk` (CLI binary)    |      396,888 |     387.6 | Includes 45 inlined grammars (~213 KB of text) |
+| `dist/vyakarana.cyr`        |      368,147 |     359.5 | Single-file bundle for `cyrius deps` (4,163 lines) |
 
-(Sizes captured 2026-07-31 at `2.3.0`, on the 6.5.4 toolchain.
-The previous capture is 2.2.1 under §History — the 1.13.0 entry
-never recorded artifact sizes — and this table tracks current
-state. `cyrius distlib` reports the bundle as 4002 lines and
-`wc -l` says 4,030 — trust `wc -l`.)
+**Re-captured 2026-08-20 at `2.3.3`, on the 6.5.32 toolchain.**
+`build/vyk` moved 371,472 → 396,888 (+25,416) since the `2.3.0`
+row below. Attribution, measured rather than assumed:
 
-`build/vyk` **shrank 19,312 bytes** across this cut — 390,784 at
-the 2.2.1 capture, 371,472 now — but the credit does not go to
+- **+21,000 from 2.3.1 + 2.3.2 grammar content** — the embedded
+  blob set grew 206,394 → 217,790 bytes across the 37 edited
+  grammars, plus the `compose_region` rule type. Those two patch
+  releases landed after the `2.3.0` capture and were never
+  measured, because the refresh cadence is minor boundaries.
+- **+4,416 from the 6.5.32 stdlib snapshot** — building the
+  identical tree at pin `6.5.4` gives 392,472 (343 unreachable
+  fns) vs 396,888 at `6.5.32` (367 fns).
+- **+0 from codegen.** Compiling the same tree with `6.5.4`'s and
+  `6.5.32`'s `cycc` produces **byte-identical** output. The four
+  minor lines between the pins changed the stdlib, not the emitted
+  code for this project.
+
+(Prior captures: `2.3.0` on 2026-07-31 at the 6.5.4 toolchain
+— `build/vyk` 371,472, `dist/vyakarana.cyr` 348,582 / 4,030
+lines — and 2.2.1 under §History; the 1.13.0 entry never
+recorded artifact sizes. `cyrius distlib` under-reports the
+bundle — it says 4,135 lines where `wc -l` says 4,163. Trust
+`wc -l`; the same ~28-line gap was present at `2.3.0`.)
+
+`build/vyk` **shrank 19,312 bytes across the 2.2.1 → 2.3.0
+window** — 390,784 to 371,472 — but the credit does not go to
 codegen. Dropping the vestigial `cyml` entry from `[deps]
 stdlib` stopped a whole stdlib module from being prepended into
 the compilation unit, and since DCE is off by default those
@@ -60,6 +78,33 @@ binary is 371,472 either way; the two builds differ in content,
 not in size. (Re-checked 2026-07-31 on 6.5.4: the shipped
 `build/vyk` is byte-identical to the default build, not to the
 `CYRIUS_DCE=1` one.)
+
+## Bench note (2.3.3, 2026-08-20) — toolchain bump is perf-neutral
+
+The `6.5.4` → `6.5.32` bump was A/B'd on the *same* tree by
+running `cyrius bench` under each toolchain back to back. All
+eight rows agree within this host's run-to-run variance, so the
+table below is **not** superseded by the pin move:
+
+| Benchmark                  | 6.5.4     | 6.5.32    | Δ        |
+|----------------------------|----------:|----------:|---------:|
+| tokenize/shell-small       | 18.641 µs | 18.457 µs |  −1.0 %  |
+| tokenize/rust-small        | 27.110 µs | 27.151 µs |  +0.2 %  |
+| tokenize/json-small        |  4.095 µs |  4.023 µs |  −1.8 %  |
+| tokenize/html-compose      |  9.129 µs |  9.003 µs |  −1.4 %  |
+| detect/path-shell          |     33 ns |     32 ns |  −3.0 %  |
+| detect/content-python      |    196 ns |    196 ns |   0.0 %  |
+| detect/combined-asm-arm    |  5.267 µs |  5.277 µs |  +0.2 %  |
+| blob/grammar-load-shell    | 34.849 µs | 34.742 µs |  −0.3 %  |
+
+Both runs print `[timer floor ~1.34us per clock read, measured;
+subtracted from every sample]`. **Do not compare these absolute
+figures against the `2.3.0` table below without checking that
+line** — a change in whether the floor is subtracted shifts every
+microsecond-scale row by ~1.3 µs and can masquerade as a real
+win. The `2.3.0` table was captured on 6.5.4, which does subtract
+it. Table not refreshed: the documented cadence is minor-release
+boundaries, and this is a patch.
 
 ## Tokenize / detect / load latencies (2.3.0 baseline, 2026-07-31)
 

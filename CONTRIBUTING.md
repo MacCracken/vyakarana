@@ -5,9 +5,9 @@ Thanks for wanting to help vyakarana see more grammar.
 ## Prerequisites
 
 - Cyrius toolchain at the version pinned in `cyrius.cyml`'s
-  `[package].cyrius` field (currently `6.5.4`; check the file —
+  `[package].cyrius` field (currently `6.5.32`; check the file —
   the pin moves faster than this sentence). Run
-  `cyriusly use 6.5.4` if the active toolchain doesn't match.
+  `cyriusly use 6.5.32` if the active toolchain doesn't match.
   The pin is authoritative: match your toolchain to it, never
   edit it to match your toolchain. `cyrius` must be on `$PATH` —
   <https://github.com/MacCracken/cyrius>

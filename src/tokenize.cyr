@@ -774,9 +774,9 @@ fn tokenize_stream_drain(s, out_tb) {
     var j = 0;
     while (j < commit_count) {
         tokenbuf_push(out_tb,
-        tokenbuf_kind(temp_tb, j),
-        abs_offset + tokenbuf_start(temp_tb, j),
-        tokenbuf_len(temp_tb, j));
+          tokenbuf_kind(temp_tb, j),
+          abs_offset + tokenbuf_start(temp_tb, j),
+          tokenbuf_len(temp_tb, j));
         emitted = emitted + 1;
         j = j + 1;
     }

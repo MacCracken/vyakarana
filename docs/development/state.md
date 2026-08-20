@@ -1,11 +1,25 @@
 # vyakarana — current state
 
-> **Last refresh:** 2026-07-31 | **Refresh cadence:** every release
+> **Last refresh:** 2026-08-20 | **Refresh cadence:** every release
 > (1.x and 2.x cuts), plus any session that shifts the gates'
 > colour or the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.3.2 are
-> shipped. **2.3.2 closed the `TK_ERROR` holes** — a sweep of
+> **Read this file before doing anything.** 1.0.0–2.3.3 are
+> shipped. **2.3.3 is the toolchain catch-up** — pin 6.5.4 →
+> 6.5.32, `lib/` re-cut at the new pin, and no source-behaviour
+> change: no token kind, no `Token` layout change, no public-API
+> change, no grammar edit. The bump is measurably inert — the
+> same tree built with 6.5.4's and 6.5.32's `cycc` is
+> **byte-identical** (396,888 both) and benches within noise on
+> all eight rows; the only movement is the stdlib snapshot
+> (+4,416 bytes). 898/898 tests. **It also turned the `lint+fmt`
+> gate green for the first time** — that gate exited **1** at
+> 2.3.2 and at each of the six commits before it, so the
+> "lint+fmt exit 0" line this file carried at 2.3.2 was wrong
+> the day it was written. (Second time that has happened here;
+> see the 2.3.0 note below about the 840/840 claim. Re-run the
+> gates; do not carry a "green" claim forward.)
+> **2.3.2 closed the `TK_ERROR` holes** — a sweep of
 > every printable ASCII byte through all 45 grammars found 44
 > emitting `TK_ERROR` for at least one character, and 37 of them
 > had a genuine gap ([ADR 0020](../adr/0020-tk-error-adjudication.md)
@@ -56,16 +70,26 @@
 
 ---
 
-## Current status (2026-07-31)
+## Current status (2026-08-20)
 
-- **Version:** `2.3.2` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `2.3.3` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`.
-- **Toolchain pin:** `cyrius = "6.5.4"` (bumped from 6.1.24
-  in 2.3.0). Local devs run `cyriusly use 6.5.4`.
-- **Gates:** build OK · **898/898** tests · smoke OK · lint+fmt
-  exit 0 · fuzz 4/4 · bench 7 rows flat-or-faster, one up 10.5%.
-  Verified from a clean `rm -rf build src/grammar_blobs.cyr`
-  rebuild.
+- **Toolchain pin:** `cyrius = "6.5.32"` (bumped from 6.5.4 in
+  2.3.3; 6.5.4 came from 6.1.24 in 2.3.0). Local devs run
+  `cyriusly use 6.5.32`.
+- **Gates:** build OK · **898/898** tests · smoke OK · **lint+fmt
+  exit 0 (genuinely, as of 2.3.3)** · fuzz 4/4 · bench 8 rows
+  within noise of 6.5.4 on the same tree. Verified from a clean
+  `rm -rf build src/grammar_blobs.cyr` rebuild on 6.5.32.
+- **`lib/` is inert at build time.** On 6.5.32 `cycc` resolves
+  stdlib from `~/.cyrius/versions/<pin>/lib`, so the **pin** —
+  not the vendored `lib/` — decides what is compiled. Verified
+  by appending garbage to `lib/str.cyr` and rebuilding: still
+  `OK`. Changing only the pin moves the binary 392,472 →
+  396,888. Keep `lib/` synced anyway (it silences the `shadow
+  lib` warning and CI populates it fresh), but do not treat it
+  as the thing under test. CLAUDE.md's §Gates note used to claim
+  the inverse; corrected in 2.3.3.
 - **Bench note (2.3.2):** `blob/grammar-load-shell` moved
   33.2 → 36.7 µs (+10.5%) against the 2.3.0 table in
   `./performance.md`. Expected and accounted for: `shell.cyml`
@@ -77,6 +101,31 @@
   rows — the hot path consumers actually run — are all
   fractionally *faster*. Table not refreshed: the documented
   cadence is minor-release boundaries, and this is a patch.
+- **What 2.3.3 changed (toolchain catch-up):**
+  - **Pin 6.5.4 → 6.5.32**, four minor lines in one step, with
+    **zero dialect fixes needed in `src/`**. Contrast 2.3.0,
+    where the equivalent jump cleared two pre-existing gate
+    failures on the way.
+  - **`lib/` re-cut** with `rm -rf lib && cyrius deps` — a plain
+    `cyrius deps` treats a present `lib/<mod>.cyr` as satisfied.
+    All 27 vendored modules match the 6.5.32 snapshot; 17 changed
+    content (`alloc`, `args`, `assert`, `atomic`, `fmt`, `fnptr`,
+    `fs`, `io`, `result`, `string`, all seven `syscalls*`).
+  - **The bump is inert, and that was measured, not assumed.**
+    Same tree under both compilers → byte-identical binaries and
+    bench agreement within noise. Attribution for the +4,416-byte
+    binary growth is the 6.5.32 stdlib snapshot, not codegen.
+  - **`dist/vyakarana.deps` is new** — 6.5.32's `cyrius distlib`
+    emits a stdlib-leaf sidecar next to the bundle (6.5.4's did
+    not). It is consumed by downstream `cyrius deps`, so it ships
+    with `dist/vyakarana.cyr`; **needs `git add`** on this cut.
+  - **`lint+fmt` went red → green.** Three files had failed
+    `fmt --check` since at least `09111d0`; the drift reproduces
+    under the outgoing 6.5.4 formatter, so it was never a 6.5.32
+    regression. Whitespace only — 26 lines of continuation
+    indent. `src/theme.cyr:24`'s untracked `for now` deferral was
+    reworded, so `cyrlint` is quiet too.
+
 - **What 2.3.2 added (`TK_ERROR` hole audit):**
   - **37 grammars stopped erroring on valid syntax**
     ([ADR 0020](../adr/0020-tk-error-adjudication.md)). A

@@ -378,7 +378,7 @@ fn _ds_try_compose_fenced_rules(g, src, src_len, i, tb) {
                 var endp = compose_fenced_rule_end(r);
                 var elen = strlen(endp);
                 var close_pos = _ds_find_fenced_close(src, src_len,
-                body_start, endp, elen);
+                  body_start, endp, elen);
                 if (close_pos >= 0) {
                     # Resolve inner grammar from captured tag.
                     var tag_len = tag_end - tag_start;
@@ -388,7 +388,7 @@ fn _ds_try_compose_fenced_rules(g, src, src_len, i, tb) {
                         var tk = 0;
                         while (tk < tag_len) {
                             store8(tag_buf + tk,
-                            load8(src + tag_start + tk));
+                              load8(src + tag_start + tk));
                             tk = tk + 1;
                         }
                         store8(tag_buf + tag_len, 0);
@@ -405,22 +405,22 @@ fn _ds_try_compose_fenced_rules(g, src, src_len, i, tb) {
                         if (inner_g != 0) {
                             var inner_tb = tokenbuf_new();
                             tokenize_with_grammar(inner_g,
-                            src + body_start,
-                            body_len, inner_tb);
+                              src + body_start,
+                              body_len, inner_tb);
                             var k = 0;
                             var nk = tokenbuf_count(inner_tb);
                             while (k < nk) {
                                 tokenbuf_push(tb,
-                                tokenbuf_kind(inner_tb, k),
-                                tokenbuf_start(inner_tb, k) + body_start,
-                                tokenbuf_len(inner_tb, k));
+                                  tokenbuf_kind(inner_tb, k),
+                                  tokenbuf_start(inner_tb, k) + body_start,
+                                  tokenbuf_len(inner_tb, k));
                                 k = k + 1;
                             }
                         }
                         if (inner_g == 0) {
                             # No tag, or tag didn't resolve.
                             tokenbuf_push(tb, TK_STRING,
-                            body_start, body_len);
+                              body_start, body_len);
                         }
                     }
 

@@ -610,7 +610,7 @@ fn _gp_close_rule(g, rule_acc) {
         # the input bytes between `start` and the next newline.
         # See ADR 0016.
         vec_push(grammar_compose_fenced_rules(g),
-        compose_fenced_rule_new(start, endp));
+          compose_fenced_rule_new(start, endp));
         return 0;
     }
     if (mt == 6) {
@@ -620,7 +620,7 @@ fn _gp_close_rule(g, rule_acc) {
         # See ADR 0019.
         var region_inner = words;
         vec_push(grammar_compose_region_rules(g),
-        compose_region_rule_new(start, endp, region_inner));
+          compose_region_rule_new(start, endp, region_inner));
         return 0;
     }
     return 0;
