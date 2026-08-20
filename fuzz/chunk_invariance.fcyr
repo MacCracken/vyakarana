@@ -1,0 +1,195 @@
+# vyakarana — chunk-invariance harness (2.4.0+)
+#
+# Asserts the contract `fuzz/streaming.fcyr` states in prose:
+#
+#   any chunking strategy produces the same (kind, start, len)
+#   tokens as a single-shot feed of the same source.
+#
+# The difference from `streaming.fcyr` is the INPUT. That harness
+# uses short synthetic strings and passes; the 2.3.4 audit found the
+# contract violated on 13 of 20 real corpus files, so the inputs
+# were the weak half, not the assertions. This harness runs the same
+# check over `tests/corpus/` at eight chunk sizes — 1, 2, 3, 5, 7,
+# 64, 512, 4096 — which is what surfaced every root cause fixed in
+# 2.4.0:
+#
+#   - the LF fallback committing block comments early (css, sql)
+#   - the longest-match window on operator tables (rust, go)
+#   - rule START markers needing the same window (xml)
+#   - a short pair rule vouching for a long rule's token (python)
+#   - pending set on an already-closed token (ruby)
+#
+# COMPOSE GRAMMARS ARE DEDUCTED ON PURPOSE. markdown, html, vue,
+# svelte and cyml still diverge: the marker window that fixes the
+# rest cannot be applied to them without breaking the compose
+# prefix-hold interaction (see `_stream_max_marker`'s call site in
+# src/tokenize.cyr for the three attempts and why it is scoped
+# instead of forced). They are listed in `_ci_known_divergent`
+# below so this file records the debt explicitly rather than by
+# omission — delete an entry as it is fixed.
+#
+# Add a grammar here when adding a corpus entry: the cost is one
+# line and it is the only gate that would catch a boundary
+# regression.
+
+include "src/token.cyr"
+include "src/grammar.cyr"
+include "src/tokenize.cyr"
+
+var _CI_CAP = 1048576;
+
+# Feed `src`/`n` in `chunk`-sized pieces, draining after each.
+fn _ci_tok(lang, src, n, chunk) {
+    var s = tokenize_stream_new(lang);
+    if (s == 0) { return 0; }
+    var tb = tokenbuf_new();
+    var off = 0;
+    while (off < n) {
+        var take = chunk;
+        if (take <= 0) { take = 1; }
+        if (off + take > n) { take = n - off; }
+        tokenize_stream_feed(s, src + off, take);
+        tokenize_stream_drain(s, tb);
+        off = off + take;
+    }
+    tokenize_stream_finish(s, tb);
+    tokenize_stream_free(s);
+    return tb;
+}
+
+# Compare two tokenbufs for exact (kind, start, len) equality.
+# Returns 1 on match, 0 on mismatch (and reports).
+fn _ci_same(a, b, lang, chunk) {
+    var na = tokenbuf_count(a);
+    var nb = tokenbuf_count(b);
+    if (na != nb) {
+        eprint("FAIL: ", 6);
+        eprint(lang, strlen(lang));
+        eprint(" — token count differs vs single-feed at chunk ", 48);
+        efmt_int(chunk);
+        eprint(" (", 2); efmt_int(na);
+        eprint(" vs ", 4); efmt_int(nb);
+        eprint(")\n", 2);
+        return 0;
+    }
+    var i = 0;
+    var bad = (0 - 1);
+    while (i < na) {
+        if (bad < 0) {
+            if ((tokenbuf_kind(a, i)  != tokenbuf_kind(b, i)) ||
+                (tokenbuf_start(a, i) != tokenbuf_start(b, i)) ||
+                (tokenbuf_len(a, i)   != tokenbuf_len(b, i))) { bad = i; }
+        }
+        i = i + 1;
+    }
+    if (bad >= 0) {
+        eprint("FAIL: ", 6);
+        eprint(lang, strlen(lang));
+        eprint(" — token #", 10); efmt_int(bad);
+        eprint(" differs at chunk ", 18); efmt_int(chunk);
+        eprint("\n", 1);
+        return 0;
+    }
+    return 1;
+}
+
+# Run every chunk size for one corpus file. Returns 0 on success.
+fn _ci_one(path, lang) {
+    var buf = alloc(_CI_CAP);
+    if (buf == 0) { return 1; }
+    var n = file_read_all(path, buf, _CI_CAP - 1);
+    if (n <= 0) {
+        eprint("FAIL: cannot read ", 18);
+        eprint(path, strlen(path));
+        eprint("\n", 1);
+        return 1;
+    }
+    store8(buf + n, 0);
+
+    var whole = _ci_tok(lang, buf, n, n);
+    if (whole == 0) {
+        eprint("FAIL: no grammar for ", 21);
+        eprint(lang, strlen(lang));
+        eprint("\n", 1);
+        return 1;
+    }
+
+    # Coverage must also hold for the single-feed baseline, else the
+    # comparison below is against a broken reference.
+    var cov = 0;
+    var ci = 0;
+    while (ci < tokenbuf_count(whole)) {
+        cov = cov + tokenbuf_len(whole, ci);
+        ci = ci + 1;
+    }
+    if (cov != n) {
+        eprint("FAIL: ", 6);
+        eprint(lang, strlen(lang));
+        eprint(" — single-feed coverage broken\n", 31);
+        return 1;
+    }
+
+    var sizes = alloc(64);
+    if (sizes == 0) { return 1; }
+    store64(sizes,      1);
+    store64(sizes +  8, 2);
+    store64(sizes + 16, 3);
+    store64(sizes + 24, 5);
+    store64(sizes + 32, 7);
+    store64(sizes + 40, 64);
+    store64(sizes + 48, 512);
+    store64(sizes + 56, 4096);
+
+    var k = 0;
+    var rc = 0;
+    while (k < 8) {
+        var cs = load64(sizes + k * 8);
+        var tb = _ci_tok(lang, buf, n, cs);
+        if (tb == 0) { rc = 1; }
+        if (tb != 0) {
+            if (_ci_same(whole, tb, lang, cs) == 0) { rc = 1; }
+        }
+        k = k + 1;
+    }
+    return rc;
+}
+
+# Grammars whose corpus is chunk-invariant today. Every one of these
+# was verified green when 2.4.0 landed.
+fn _ci_main() {
+    bootstrap_grammars();
+    var rc = 0;
+
+    if (_ci_one("tests/corpus/python.py",      "python")     != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/rust.rs",        "rust")       != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/go.go",          "go")         != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/shell.sh",       "shell")      != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/typescript.ts",  "typescript") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/cyrius.cyr",     "cyrius")     != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.json",   "json")       != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.yaml",   "yaml")       != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.css",    "css")        != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.toml",   "toml")       != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.js",     "javascript") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.sql",    "sql")        != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.xml",    "xml")        != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.rb",     "ruby")       != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/openqasm.qasm",  "openqasm")   != 0) { rc = 1; }
+
+    return rc;
+}
+
+# Known-divergent, deliberately NOT asserted — see the header.
+# markdown, html, vue, svelte, cyml.
+
+fn _harness_main() {
+    if (_ci_main() != 0) {
+        eprint("chunk-invariance fuzz: FAIL\n", 28);
+        return 1;
+    }
+    print("chunk-invariance fuzz: OK (15 grammars x 8 chunk sizes)\n", 55);
+    return 0;
+}
+
+var _ec = _harness_main();
+syscall(60, _ec);

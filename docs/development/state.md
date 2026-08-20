@@ -4,8 +4,20 @@
 > (1.x and 2.x cuts), plus any session that shifts the gates'
 > colour or the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.3.5 are
-> shipped. **2.3.5 adds the `openqasm` grammar** (46 bundled, was
+> **Read this file before doing anything.** 1.0.0–2.4.0 are
+> shipped. **2.4.0 is the streaming-correctness cut** — minor
+> because token boundaries change. Chunked feeding now produces the
+> same tokens as a whole-buffer feed for **15 of 20 corpora**, up
+> from 7; `fuzz/streaming.fcyr` has asserted that contract since
+> 2.1.4 and passed the whole time, because its inputs were short
+> synthetic strings while 13 of 20 real corpus files violated it.
+> Five independent root causes, each bisected to an exact token.
+> `VYK_STREAM_CAP` is a live-window bound again (an unresolved
+> compose opener used to turn it into a permanent total-input
+> ceiling), and [ADR 0021](../adr/0021-token-span-width-ceiling.md)
+> settles the token-width question. **Still divergent by design:**
+> markdown, html, vue, svelte, cyml — see §Next up.
+> **2.3.5 adds the `openqasm` grammar** (46 bundled, was
 > 45) — the one sample in `vidya/content/lexing_and_parsing/` that
 > `vyk` could not tokenize, exiting 4 while the other 11 round-
 > tripped clean. vidya renders those samples *through* vyakarana,
@@ -102,25 +114,24 @@
 
 ## Current status (2026-08-20)
 
-- **Version:** `2.3.5` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `2.4.0` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`.
 - **Toolchain pin:** `cyrius = "6.5.32"` (bumped from 6.5.4 in
   2.3.3; 6.5.4 came from 6.1.24 in 2.3.0). Local devs run
   `cyriusly use 6.5.32`.
 - **Gates:** build OK · **909/909** tests · smoke OK · **lint+fmt
-  exit 0** · fuzz 4/4 · 0 untracked deferrals. **46 grammars.** `scripts/smoke.sh`
+  exit 0** · fuzz **5/5** · 0 untracked deferrals. **46 grammars.** `scripts/smoke.sh`
   gained two regression groups in 2.3.4 (oversize input must fail
   loudly; shebangs with interpreter arguments must route) — both
   verified to fail against the pre-fix binary.
-- **Known contract violation (open):** streaming is **not
-  chunk-invariant**, which `fuzz/streaming.fcyr` documents as a
-  correctness contract. 9 of 14 real corpora produce different
-  `(kind, start, len)` tokens depending on chunk size — cyml 7/7
-  chunk sizes differing, markdown/html/python 5/7, rust/go 4/7,
-  vue 3/7, css/toml 1/7; json/shell/yaml/typescript/javascript/
-  cyrius clean. Coverage never breaks; boundaries move. Long-
-  standing, not a 2.3.4 regression. **This is the top follow-up** —
-  see §Next up.
+- **Chunk-invariance: 15 of 20 corpora clean** as of 2.4.0, gated
+  by `fuzz/chunk_invariance.fcyr` at 8 chunk sizes. Still
+  divergent, deliberately: **markdown, html, vue, svelte, cyml** —
+  the compose grammars. The marker window that fixed the rest
+  cannot be applied to them without breaking the compose
+  prefix-hold interaction (three attempts, each regressed the
+  markdown/fence-rust fuzz case). Coverage never breaks in any
+  case; only boundaries move. **Top follow-up** — see §Next up.
 - **`lib/` is inert at build time.** On 6.5.32 `cycc` resolves
   stdlib from `~/.cyrius/versions/<pin>/lib`, so the **pin** —
   not the vendored `lib/` — decides what is compiled. Verified
@@ -141,6 +152,36 @@
   rows — the hot path consumers actually run — are all
   fractionally *faster*. Table not refreshed: the documented
   cadence is minor-release boundaries, and this is a patch.
+- **What 2.4.0 changed (streaming correctness):**
+  - **Chunk-invariance restored for 15 of 20 corpora** (was 7).
+    Newly clean: python, rust, go, css, toml, sql, xml, ruby. Five
+    independent root causes, each bisected to an exact token in a
+    real corpus file — the LF fallback committing block comments
+    early; longest-match operator tables merging across the
+    boundary; rule START markers needing the same window; a short
+    pair rule vouching for a long rule's token; and pending being
+    set on an already-closed token. Details in CHANGELOG 2.4.0.
+  - **`VYK_STREAM_CAP` is a live-window bound again.** An
+    unresolved compose opener used to stop the buffer compacting,
+    so the cap became a *total-input* ceiling and feed returned
+    `VYK_ERR_OVERFLOW` permanently. `VYK_COMPOSE_HOLD_MAX` (8 MiB)
+    bounds the hold; past it, compose routing for that opener is
+    abandoned and the bytes tokenize with the outer grammar.
+    Verified: 26 MB accepted either way, buffer compacts to 1.
+  - **`fuzz/chunk_invariance.fcyr`** gates the contract over
+    `tests/corpus/` at 8 chunk sizes. Verified to fail against the
+    2.3.5 tokenizer, so it has teeth.
+  - **[ADR 0021](../adr/0021-token-span-width-ceiling.md)** decides
+    the token-width question: stay u32, 4 GiB per stream is a
+    documented enforced contract. Both widening options were
+    considered and rejected with reasons.
+  - **Known limit, deliberate:** the marker window is applied only
+    to grammars with no compose rules, so markdown / html / vue /
+    svelte / cyml remain divergent. Three attempts to reconcile it
+    with the compose prefix-hold machinery each broke the
+    markdown/fence-rust fuzz case, so per CLAUDE.md §Refactoring
+    policy it is scoped rather than forced. Top item in §Next up.
+
 - **What 2.3.5 changed:**
   - **`openqasm` grammar** (2.0 + 3.x keyword span). Registered in
     `bootstrap_grammars`, `_detect_5plus` (`.qasm`), the smoke
@@ -955,41 +996,36 @@ over an unchanged public API.
 
 ## Next up — open queue
 
-**Priority order after the 2.3.4 audit** (detail and reproductions
-in [`../audit/2026-08-20-2.3.x-hardening-audit.md`](../audit/2026-08-20-2.3.x-hardening-audit.md)):
+**Priority order after 2.4.0** (2.3.4's audit is
+[here](../audit/2026-08-20-2.3.x-hardening-audit.md)):
 
-1. **Restore chunk-invariance.** The single biggest open item. Two
-   known causes remain after 2.3.4 closed the escape one:
-   `_stream_is_trailing_complete` matches *any* same-kind pair
-   rule's end marker, and compose-region routing is not
-   reconstructed across chunk boundaries (which is why `cyml` — the
-   grammar 2.3.1 was written for — is the worst row at 7/7). Then
-   point `fuzz/streaming.fcyr`'s existing assertions at
-   `tests/corpus/` so the contract is actually gated; that turns
-   the gate red until the fix lands, so it ships **with** the fix,
-   not before. Changing token boundaries is observable behaviour →
-   ADR + minor bump.
-2. **Bound the compose hold.** While an opener is held the buffer
-   never compacts, so `VYK_STREAM_CAP` becomes a *total-input*
-   ceiling — contradicting the documented "total input can exceed
-   this freely". Measured: no opener → 32.8 MB accepted, buffer
-   compacts to 1; unterminated `<style>` → grows until feed returns
-   `VYK_ERR_OVERFLOW` forever. Holding is semantically required, so
-   the fix is to bound it and fall back to emitting the body as
-   `TK_STRING` (what the scanner already does when the inner
-   grammar is missing). ADR.
-3. **Decide `Token.start`/`len` width.** 2.3.4 made the >4 GiB case
-   an explicit `VYK_ERR_OVERFLOW` instead of silent wraparound.
-   Either widen the layout (ADR 0002 revision, minor bump) or
-   formally document the 4 GiB stream ceiling in
-   `../architecture/`.
-4. **`openqasm` grammar.** `vidya` ships
-   `content/lexing_and_parsing/openqasm.qasm` and renders its
-   samples through vyakarana; 11 of 12 tokenize, that one exits 4.
-   Needs a corpus entry and the `45` in `fuzz/grammar_load.fcyr`.
-5. **Bump consumers off `2.2.3`** — they are 241 lines / +19,565
-   bytes behind and still emit error tokens for Go struct tags,
-   shell backtick substitution and AT&T `$` immediates.
+1. **Chunk-invariance for the compose grammars** — markdown, html,
+   vue, svelte, cyml. Everything else is clean and gated by
+   `fuzz/chunk_invariance.fcyr`; these five are excluded because the
+   marker window in `tokenize_stream_drain` is applied only when the
+   grammar has no compose rules. The blocker is that the compose
+   machinery reads the commit list as state: `skip_prefix_hold`
+   asks "was the last *committed* token a compose close marker?",
+   so holding a token back makes that guard miss and prefix-hold
+   drops the close token. Three attempts (exempting compose markers
+   from the window; keying the guard to a pre-window commit
+   boundary) each regressed the markdown/fence-rust fuzz case. The
+   real fix is probably to give prefix-hold its own view of the
+   tokenization instead of inferring it from `commit_count` — that
+   is a refactor, not a patch. Move the five grammars into
+   `chunk_invariance.fcyr` as they land.
+2. **Residual O(N²) in compose drains.** `VYK_COMPOSE_HOLD_MAX`
+   stopped the permanent overflow, and 2.3.4's two fixes took a
+   4 KB document from 11.4 s to 69 ms, but growth is still ~O(N^1.6)
+   because the buffer cannot compact while a compose opener is held.
+   Bounded and no longer fatal; worth revisiting with item 1, since
+   both want prefix-hold restructured.
+3. **`openqasm` float literals / a `number_float` default.**
+   `OPENQASM 2.0;` is three tokens. The scanner has no float support
+   at all (`number_decimal` / `_0x` / `_0b` / `_0o`), so css, scss,
+   protobuf, java, graphql and openqasm all carry it. Cross-grammar
+   scanner change → wants an ADR.
+4. **Consumers** — the user is handling this.
 
 Closed waves:
 

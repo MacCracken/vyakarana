@@ -6,6 +6,148 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 _No unreleased changes._
 
+## [2.4.0] — 2026-08-20
+
+**Streaming correctness.** Minor rather than patch because token
+boundaries change: a consumer feeding in chunks now gets the same
+tokens a whole-buffer consumer gets. That was supposed to be true
+already — `fuzz/streaming.fcyr` has asserted it since 2.1.4 — but
+the 2.3.4 audit found it violated on **13 of 20 real corpus files**.
+The harness passed because its inputs were short synthetic strings.
+
+**15 of 20 corpora are now chunk-invariant at every chunk size
+tested** (1, 2, 3, 5, 7, 64, 512, 4096), up from 7. Newly clean:
+**python, rust, go, css, toml, sql, xml, ruby**. The five that
+remain — markdown, html, vue, svelte, cyml — are the compose
+grammars, deliberately scoped out below.
+
+909/909 tests, smoke OK, lint+fmt exit 0, fuzz **5/5**.
+
+### Fixed — five independent root causes
+
+Each was found by bisecting a real corpus file down to the exact
+token, not by reading code:
+
+- **The LF fallback committed block comments early.** A trailing
+  `TK_COMMENT` / `TK_STRING` / `TK_PREPROCESSOR` ending in a newline
+  was treated as complete — meant for *line* comments, where LF is
+  the terminator, but it fired for any pair token containing a
+  newline at the boundary. `tests/corpus/concept.css` at chunk=3
+  opens with `/*\n`: the pair test correctly declined (3 bytes <
+  `slen+elen`), then this committed a 3-byte "comment" and the
+  remaining 341 bytes of the header comment were re-tokenized as
+  CSS — 838 tokens instead of 724. Now only taken when the token
+  starts with a line rule's marker. Fixes **css, sql**.
+
+- **Longest-match operator tables merged across the boundary.** The
+  commit rule was "token ends strictly before `buf_len`, so it is
+  settled" — false for tables matched longest-first. With the buffer
+  holding `|--`, markdown scans `|`, `-`, `-` (because `--` is not
+  an operator but `---` is); both `-` tokens end before the tail and
+  were committed, so a third `-` became a fourth token. One 3-byte
+  `---` came back as three 1-byte operators. Tokens within
+  `_stream_max_marker` of the tail are now held. Fixes **rust, go**.
+
+- **Rule START markers needed the same window.** A pair opener one
+  byte short scans as ordinary operators: `tests/corpus/concept.xml`
+  at chunk=3 held `<!-` while `<!--` is 4 bytes, so the 287-byte
+  `<!-- … -->` comment became `<`, `!`, `-`, … and was
+  unrecoverable — 451 tokens became 689. `_stream_max_marker` now
+  spans operator and punctuation tables *plus* pair start/end, line
+  start, and all three compose start markers.
+
+- **A short pair rule vouched for a long rule's token.**
+  `_stream_is_trailing_complete` checked every same-kind rule and
+  returned complete on the first match. Python declares its
+  triple-quote rule ahead of its single-quote rule; a docstring
+  arriving as its bare 3-byte opener failed the triple-quote test
+  (`3 >= 6` false) and then *passed* the single-quote test —
+  `3 >= 1+1`, and the opener's last byte is that rule's close
+  marker. Now the rule that actually **opened** the token decides,
+  and `_stream_pair_provisional` additionally suppresses a verdict
+  while a longer same-kind opener could still claim the bytes.
+
+- **Pending was set on an already-closed token.** The real cause of
+  the python docstring split, found by tracing rather than reading:
+  `_stream_find_pair_rule` only considers rules whose start marker
+  *fits inside* the partial token, so a lone trailing quote matched
+  python's 1-byte rule even when the true opener was the
+  triple-quote. The next drain took the pending fast path and closed
+  it one byte later. The same path bit ruby: `=begin` makes its
+  longest marker 6 bytes, so a **complete** `'+'` sitting within 6
+  bytes of the tail was held from the commit list, the pending logic
+  read it as a partial *open*, and `scan_resume` jumped past its own
+  closing quote — the string ran on 45 bytes to the next `'`,
+  swallowing `then @pos += 1; return Token.new(PLUS,   `. Fixes
+  **python, ruby**, and **xml** via the marker window.
+
+### Fixed — the stream cap is a live-window bound again
+
+`VYK_STREAM_CAP` (16 MiB) documents a bound on the *live unconsumed
+window*, with total input free to exceed it. An unresolved compose
+opener broke that: with nothing committable the rolling buffer never
+compacted, so the window grew to the whole stream and feed
+eventually returned `VYK_ERR_OVERFLOW` **permanently**.
+
+Holding the body is semantically required — the scanner refuses to
+half-consume a compose rule whose end marker has not arrived — so
+the hold is now *bounded* by `VYK_COMPOSE_HOLD_MAX` (8 MiB) instead
+of removed. Past that, compose routing for that opener is abandoned
+and the bytes tokenize with the outer grammar; coverage and the
+zero-error bar still hold. Measured, same bytes, the only difference
+being an unterminated `<style>` fed first:
+
+| case | before | after |
+|------|--------|-------|
+| no opener | 26 MB accepted, buffer compacts to 1 | unchanged |
+| unterminated `<style>` | grows to 16 MiB, then `VYK_ERR_OVERFLOW` forever | **26 MB accepted, buffer compacts to 1** |
+
+### Added
+
+- **`fuzz/chunk_invariance.fcyr`** — runs `tests/corpus/` through
+  eight chunk sizes and asserts per-token `(kind, start, len)`
+  equality against a single-shot feed, for the 15 grammars that hold
+  it. Verified to have teeth: against the 2.3.5 tokenizer it fails
+  loudly on python, rust and the rest. `cyrius fuzz` auto-discovers
+  it, so CI needed no new step.
+
+  The five known-divergent compose grammars are listed **explicitly**
+  in that file rather than silently omitted, so the debt is recorded
+  where someone will see it.
+
+- **[ADR 0021](docs/adr/0021-token-span-width-ceiling.md)** — the
+  decision the 2.3.4 audit asked for: `Token.start` / `Token.len`
+  stay u32, and 4 GiB-per-stream becomes a documented, enforced
+  contract rather than an accident. Widening to a 24-byte record was
+  rejected (doubles per-token memory for every consumer to lift a
+  limit almost none reach); so was stealing the record's 3 padding
+  bytes for 40-bit fields (free in memory, but it makes ADR 0002's
+  *published* layout disagree with the accessors past 4 GiB —
+  trading a loud failure for a quiet one, which is exactly how this
+  finding stayed invisible for four minor lines).
+
+### Notes
+
+- **The marker window is scoped to grammars with no compose rules,
+  and that is why markdown / html / vue / svelte / cyml still
+  diverge.** Holding a token back is safe on its own, but the
+  compose machinery reads the commit list as state: the 2.2.1
+  `skip_prefix_hold` guard asks "was the last **committed** token a
+  compose close marker?" to stop prefix-hold mistaking a
+  just-emitted fence close for the prefix of a fresh opener. Hold it
+  back and the guard misses, prefix-hold drops the close token, and
+  `fuzz/streaming.fcyr`'s markdown/fence-rust case loses a token.
+  Three attempts to reconcile the two — exempting compose markers
+  from the window, keying the guard to a pre-window commit
+  boundary — each broke something else, so per CLAUDE.md
+  §Refactoring policy it is scoped rather than forced. Reconciling
+  them properly is the top item in `docs/development/state.md`
+  §Next up.
+
+- **No public-API signature changed.** `_stream_is_trailing_complete`
+  gained a `buf_len` parameter but is internal (underscore-prefixed,
+  not in `src/tokenize.cyr`'s public list).
+
 ## [2.3.5] — 2026-08-20
 
 **The `openqasm` grammar, plus the documentation repairs 2.3.4's

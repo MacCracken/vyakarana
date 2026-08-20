@@ -255,3 +255,4 @@ behaviour:
 - [ADR 0018 — Vendored stdlib snapshot is gitignored](../adr/0018-vendored-stdlib-gitignored.md)
 - [ADR 0019 — `match = "compose_region"` for open-ended regions](../adr/0019-compose-region-rule.md)
 - [ADR 0020 — When `TK_ERROR` is correct and when it is a hole](../adr/0020-tk-error-adjudication.md)
+- [ADR 0021 — Token spans stay u32; the 4 GiB stream ceiling is deliberate](../adr/0021-token-span-width-ceiling.md)

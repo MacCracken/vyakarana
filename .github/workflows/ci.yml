@@ -69,11 +69,18 @@ jobs:
       - name: Smoke test
         run: sh scripts/smoke.sh build/vyk
 
-      # Fuzz harnesses — one per public API entry. Random /
-      # adversarial inputs through the streaming API, the three
-      # detect_language* entries, and the CYML grammar parser.
-      # All hold the documented invariants (coverage, no crash,
-      # registered-name return). Audit doc 2026-05-09 §3.
+      # Fuzz harnesses. Random / adversarial inputs through the
+      # streaming API, the three detect_language* entries, and the
+      # CYML grammar parser, all holding the documented invariants
+      # (coverage, no crash, registered-name return).
+      #
+      # `chunk_invariance.fcyr` (2.4.0) is the load-bearing one for
+      # streaming: it runs tests/corpus/ through 8 chunk sizes and
+      # asserts per-token (kind, start, len) equality against a
+      # single-shot feed. `streaming.fcyr` asserted the same contract
+      # on synthetic strings and passed while 13 of 20 real corpora
+      # violated it — the inputs were the weak half. `cyrius fuzz`
+      # auto-discovers harnesses, so this needs no new step.
       - name: Fuzz harnesses
         run: cyrius fuzz
 
