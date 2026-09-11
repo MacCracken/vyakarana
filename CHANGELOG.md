@@ -4,6 +4,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-09-11
+
+### Changed
+
+- **Toolchain `6.5.32` → `6.6.2`.** No source change. Zero compiler rejections and
+  zero fail-open sites; the five `callptr` sites reach no pair-returning target.
+  **909 assertions** pass unchanged.
+
+  ⚠ `tests/vyakarana.tcyr` and `fuzz/detect.fcyr` are not canonically formatted
+  under the 6.6.2 formatter — cyrfmt began tracking paren depth at 6.5.28 and this
+  repo was pinned 6.5.32. No CI step runs `cyrius fmt`, so nothing is red; left
+  unformatted rather than adding a whitespace-only diff to a release.
+
+
 _No unreleased changes._
 
 ## [2.4.0] — 2026-08-20
