@@ -4,6 +4,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.4.2] - 2026-09-11
+
+### Fixed
+
+- **`_stream_grow` renamed to `_vyk_stream_grow` — it collided with sankoch's.**
+  Both are private helpers; vyakarana's takes 2 args (`s, needed`), sankoch's takes 1
+  (`ctx`). Same-name/different-arity has been a HARD ERROR since cyrius 6.5.37, so any
+  consumer vendoring both bundles fails to compile — measured in **owl**, which pulls
+  vyakarana and sankoch together and could not fix either side locally:
+
+      error:lib/vyakarana.cyr:3013:1: duplicate fn '_stream_grow' disagrees about
+      arity: this one takes 2, the one in lib/sankoch.cyr takes 1 (last definition
+      wins, so calls to the other arity would silently mis-bind)
+
+  Renamed on vyakarana's side because sankoch is a folded stdlib. Private helper, two
+  call sites, no external surface. Same class as the agnostik/argonaut
+  `health_check_new` collision — two libraries that never meet until a consumer
+  vendors both.
+
 ## [2.4.1] - 2026-09-11
 
 ### Changed

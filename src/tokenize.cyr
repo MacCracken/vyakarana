@@ -294,7 +294,7 @@ fn tokenize_stream_new(lang) {
 # Grow `s.buf` to at least `needed` bytes. Doubles capacity until
 # either >= needed or VYK_STREAM_CAP. Returns 1 on success, 0 if
 # the cap would be exceeded.
-fn _stream_grow(s, needed) {
+fn _vyk_stream_grow(s, needed) {
     var cap = load64(s + 16);
     if (cap >= needed) { return 1; }
     # Defensive: a zero cap would loop forever in the doubling
@@ -333,7 +333,7 @@ fn tokenize_stream_feed(s, chunk, n) {
     if (n <= 0) { return VYK_OK; }
     var len = load64(s + 8);
     # Reject an `n` so large that `len + n + 1` wraps i64 negative.
-    # A negative `needed` makes _stream_grow's `cap >= needed` test
+    # A negative `needed` makes _vyk_stream_grow's `cap >= needed` test
     # trivially true, so it would return success WITHOUT growing and
     # the copy loop below would run off the end of `buf`. Only a
     # garbage length from the caller gets here, but the failure mode
@@ -348,7 +348,7 @@ fn tokenize_stream_feed(s, chunk, n) {
         return VYK_ERR_OVERFLOW;
     }
     var needed = len + n + 1;   # +1 for trailing NUL
-    if (_stream_grow(s, needed) == 0) { return VYK_ERR_OVERFLOW; }
+    if (_vyk_stream_grow(s, needed) == 0) { return VYK_ERR_OVERFLOW; }
     var buf = load64(s);
     var i = 0;
     while (i < n) {
@@ -1422,10 +1422,10 @@ fn tokenize_stream_free(s) {
     # pending_idx's "none" sentinel is -1, NOT 0 — 0 is a valid
     # pair-rule index. Every other field here poisons safely to 0,
     # and two call sites lean on that ("_free zeroes every field"
-    # in _stream_grow; the staging guard in _discard_consumed), so
+    # in _vyk_stream_grow; the staging guard in _discard_consumed), so
     # this one must poison to its own inert value or the poison
     # contract is a half-truth. Currently unreachable — drain's
-    # `buf_len == 0` early return and _stream_grow's `cap <= 0`
+    # `buf_len == 0` early return and _vyk_stream_grow's `cap <= 0`
     # guard both fire first on a freed record — but relaxing
     # either would expose vec_get(pair_rules, 0) on a NULL grammar.
     store64(s + 72, (0 - 1));   # pending_idx (2.0.3)

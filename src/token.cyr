@@ -74,7 +74,7 @@ var _TB_INIT_CAP = 64;   # initial record capacity (768 bytes)
 # already treats a 0 tokenbuf as "no grammar / give up" (see
 # `tokenize_buf` in src/main.cyr), so propagating 0 is the
 # existing contract rather than a new one. Last of the
-# FINDING-002 family — `_tokenbuf_grow` and `_stream_grow` are
+# FINDING-002 family — `_tokenbuf_grow` and `_vyk_stream_grow` are
 # guarded above.
 fn tokenbuf_new() {
     var tb = alloc(24);
@@ -106,7 +106,7 @@ fn _tokenbuf_grow(tb) {
     var new_bytes = old_bytes * 2;
     # A zero byte_cap makes the doubling above make no progress.
     # Only reachable on a zeroed/reused handle; same guard shape as
-    # `_stream_grow`'s cap check (FINDING-008).
+    # `_vyk_stream_grow`'s cap check (FINDING-008).
     if (old_bytes <= 0) { return 0; }
     var new_data = alloc(new_bytes);
     if (new_data == 0) { return 0; }
