@@ -73,7 +73,7 @@ ten.
 # From source — the supported path today
 git clone https://github.com/MacCracken/vyakarana
 cd vyakarana
-cyriusly use 6.5.32                 # match the pin in cyrius.cyml first
+cyriusly use 6.6.20                 # match the pin in cyrius.cyml first
 cyrius deps                         # vendors lib/ from the pinned toolchain
 sh scripts/embed-grammars.sh        # inlines grammars/*.cyml; gitignored
 cyrius build src/main.cyr build/vyk
@@ -132,6 +132,17 @@ was removed in 2.0.0 (ADR 0017).
 ---
 
 ## Status
+
+**2.4.3** (2026-10-20) — toolchain pinned at `cyrius 6.6.20`
+(from 6.6.2). No source change; token output is byte-identical to
+the 6.6.2 build on every corpus. 909/909 tests, 5/5 fuzz harnesses.
+`dist/vyakarana.deps` now lists only the four stdlib leaves the
+bundle actually needs (alloc, string, vec, io).
+
+**2.4.0–2.4.2** made chunked streaming produce the same tokens as a
+whole-buffer feed for 15 of 20 corpora (2.4.0), moved the pin to
+6.6.2 (2.4.1), and renamed a private helper that collided with
+sankoch's in consumers vendoring both (2.4.2). See the CHANGELOG.
 
 **2.3.5** (2026-08-20) — **46** bundled grammars, push + pull
 streaming primitive, 4/4 fuzz harnesses green, 909/909 tests

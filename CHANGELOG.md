@@ -4,6 +4,55 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.4.3] — 2026-10-20
+
+### Changed
+
+- **Toolchain `6.6.2` → `6.6.20`.** No source change; `lib/` re-cut at the new pin
+  (`rm -rf lib && cyrius deps`, whole-tree diff against
+  `~/.cyrius/versions/6.6.20/lib` clean). 909/909 tests, smoke OK, lint+fmt exit 0,
+  fuzz 5/5 — all also green at 6.6.2 on the same tree before the bump.
+
+  **Measurably inert on output.** The 6.6.2 and 6.6.20 `vyk` binaries produce
+  byte-identical output on all 48 `tests/corpus/` files in NDJSON, `--theme=default`
+  and `--handcoded` modes, and on `--list-kinds`, `--list-languages` and
+  `--export-theme=vscode`.
+
+  **Binary 405,928 → 452,528 bytes (+46,600)**, of which +42,598 is code the compiler
+  reports as unreachable (375 → 514 fns) — the larger 6.6.20 stdlib snapshot, carried
+  because a default build does not DCE. `CYRIUS_DCE=1` builds 333,744 bytes.
+
+  **Bench A/B'd on the same tree**, three alternating rounds per pin. Every row is
+  within ±7%; the four tokenize rows move +0.6% to +1.5% min-to-min. The one
+  consistent mover is `detect/content-python`, **+6%** (avg 235 → 251 ns), same
+  direction in all three rounds — inside CLAUDE.md's 20% watch line, and a once-per-file
+  cost. ⚠ Against the 6.5.32 table in `docs/development/performance.md` (196 ns) that
+  row is now +28% cumulatively; +20% of it was already there at 6.6.2, i.e. it landed
+  across 2.4.0–2.4.2, not here. Table not refreshed: patch release.
+
+- **`dist/vyakarana.cyr` gains a `# Requires` block; `dist/vyakarana.deps` names 4
+  leaves instead of 11.** Both are `cyrius distlib` output changes at 6.6.20, not
+  source changes. The bundle now `include`s `lib/alloc.cyr`, `lib/string.cyr`,
+  `lib/vec.cyr` and `lib/io.cyr` up front, so it compiles on its own; the sidecar lists
+  only those compile-verified leaves, where it used to copy every `[deps] stdlib` name
+  — including `args`, `assert`, `fs` and `hashmap`, which only the `vyk` CLI and the
+  tests reach. A consumer that was getting one of those modules *only* through
+  vyakarana's sidecar should name it in its own `[deps] stdlib`. Verified downstream:
+  **owl** (pinned 6.6.2, tag 2.4.2) built against this bundle as a path dep compiles
+  to the same 2,650,688 bytes and highlights `tests/corpus/rust.rs` correctly.
+
+- **`cyrius.lock` appears.** 6.6.20's `cyrius deps` writes one for a stdlib-only
+  project (31 `lib/` hashes plus a `cyrius 6.6.20` trailer). Upstream's guide says to
+  commit it; it is left untracked here for that decision. `lib/` itself stays
+  gitignored (ADR 0018). At this pin `cyrius build` re-syncs an edited `lib/` file
+  from the pin snapshot, and a plain `cyrius deps` refreshes a `lib/` left over from
+  the previous pin — the "deps will not refresh an existing `lib/`" trap CLAUDE.md
+  describes no longer reproduces.
+
+  `tests/vyakarana.tcyr` and `fuzz/detect.fcyr` remain non-canonical under the 6.6.20
+  formatter, exactly as noted at 2.4.1; `scripts/lint-fmt.sh` covers `src/` only, so
+  nothing is red.
+
 ## [2.4.2] - 2026-09-11
 
 ### Fixed

@@ -1,11 +1,19 @@
 # vyakarana — current state
 
-> **Last refresh:** 2026-08-20 | **Refresh cadence:** every release
+> **Last refresh:** 2026-10-20 | **Refresh cadence:** every release
 > (1.x and 2.x cuts), plus any session that shifts the gates'
 > colour or the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.4.0 are
-> shipped. **2.4.0 is the streaming-correctness cut** — minor
+> **Read this file before doing anything.** 1.0.0–2.4.3 are
+> shipped. **2.4.3 is a toolchain catch-up** — pin 6.6.2 → 6.6.20,
+> `lib/` re-cut, no source change; token output is byte-identical
+> to the 6.6.2 build on every corpus. It is the first release cut
+> by a `distlib` that compile-verifies the bundle, so
+> `dist/vyakarana.cyr` now opens with a `# Requires` include block
+> and `dist/vyakarana.deps` names 4 stdlib leaves, not 11 — see
+> §Current status. (2.4.1 was pin 6.5.32 → 6.6.2; 2.4.2 renamed
+> `_stream_grow`, which collided with sankoch's in owl.)
+> **2.4.0 is the streaming-correctness cut** — minor
 > because token boundaries change. Chunked feeding now produces the
 > same tokens as a whole-buffer feed for **15 of 20 corpora**, up
 > from 7; `fuzz/streaming.fcyr` has asserted that contract since
@@ -112,14 +120,17 @@
 
 ---
 
-## Current status (2026-08-20)
+## Current status (2026-10-20)
 
-- **Version:** `2.4.0` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `2.4.3` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`.
-- **Toolchain pin:** `cyrius = "6.5.32"` (bumped from 6.5.4 in
-  2.3.3; 6.5.4 came from 6.1.24 in 2.3.0). Local devs run
-  `cyriusly use 6.5.32`.
-- **Gates:** build OK · **909/909** tests · smoke OK · **lint+fmt
+- **Toolchain pin:** `cyrius = "6.6.20"` (bumped from 6.6.2 in
+  2.4.3; 6.6.2 came from 6.5.32 in 2.4.1, 6.5.32 from 6.5.4 in
+  2.3.3). Local devs run `cyriusly use 6.6.20` — though the
+  `cyrius` driver now dispatches on the manifest pin by itself
+  (`cyrius --version` prints `manifest-pin: 6.6.20` with a newer
+  global toolchain active).
+- **Gates (re-run 2026-10-20 on 6.6.20):** build OK · **909/909** tests · smoke OK · **lint+fmt
   exit 0** · fuzz **5/5** · 0 untracked deferrals. **46 grammars.** `scripts/smoke.sh`
   gained two regression groups in 2.3.4 (oversize input must fail
   loudly; shebangs with interpreter arguments must route) — both
@@ -140,7 +151,17 @@
   396,888. Keep `lib/` synced anyway (it silences the `shadow
   lib` warning and CI populates it fresh), but do not treat it
   as the thing under test. CLAUDE.md's §Gates note used to claim
-  the inverse; corrected in 2.3.3.
+  the inverse; corrected in 2.3.3. **Re-checked at 6.6.20:** still
+  inert, and now self-healing — appending garbage to `lib/str.cyr`
+  and running `cyrius build` gives `OK` *and* the file comes back
+  matching the pin snapshot; `cyrius deps --verify` reports 31/31.
+  A plain `cyrius deps` after a pin move also refreshes a stale
+  `lib/` (tested 6.6.2 → 6.6.20 on a scratch copy: 0 stale files),
+  so CLAUDE.md's "`cyrius deps` does not refresh a `lib/` that
+  already exists" no longer reproduces. `rm -rf lib && cyrius deps`
+  remains a safe habit. `cyrius deps` now also writes
+  `cyrius.lock` (31 hashes + pin trailer) — untracked as of 2.4.3,
+  pending a decision on committing it.
 - **Bench note (2.3.2):** `blob/grammar-load-shell` moved
   33.2 → 36.7 µs (+10.5%) against the 2.3.0 table in
   `./performance.md`. Expected and accounted for: `shell.cyml`
@@ -152,6 +173,37 @@
   rows — the hot path consumers actually run — are all
   fractionally *faster*. Table not refreshed: the documented
   cadence is minor-release boundaries, and this is a patch.
+- **What 2.4.3 changed (toolchain 6.6.2 → 6.6.20):**
+  - **No source change; output byte-identical.** The 6.6.2 and
+    6.6.20 `vyk` binaries agree byte-for-byte on all 48
+    `tests/corpus/` files in NDJSON, themed and `--handcoded`
+    modes. Binary 405,928 → 452,528 (+46,600, of which +42,598 is
+    reported-unreachable stdlib; `CYRIUS_DCE=1` gives 333,744).
+  - **`distlib` output shape changed** (upstream 6.6.18):
+    `dist/vyakarana.cyr` opens with a `# Requires` block
+    including alloc / string / vec / io, and
+    `dist/vyakarana.deps` lists those 4 compile-verified leaves
+    instead of copying all 11 `[deps] stdlib` names. owl (pin
+    6.6.2) builds against the new bundle as a path dep at the same
+    2,650,688 bytes and renders correctly.
+  - **Bench:** same-tree A/B, three alternating rounds, all rows
+    within ±7%. `detect/content-python` +6% (235 → 251 ns), the
+    only consistent mover. ⚠ That row is +28% against the 6.5.32
+    table in `./performance.md` (196 ns) — +20% of it predates
+    this bump (already present at 6.6.2, so it landed across
+    2.4.0–2.4.2). Over the 20% watch line cumulatively; worth a
+    look at the next hardening pass. Absolute cost is one ~250 ns
+    call per file.
+  - **Upstream items checked and found inert here:**
+    `file_read_all` returning a negative errno on a partial read
+    (6.6.6) — both call sites already treat `n < 0` as failure;
+    the 6.6.20 hashmap rebuild-in-place change — none of
+    `lib/hashmap.cyr`'s 52 fns is called from `src/`, `tests/` or
+    `fuzz/`, so `hashmap` in `[deps] stdlib` is vestigial (left in
+    place; removing it is a separate change);
+    the 6.6.3 / 6.6.20 nested-loop `continue`-target codegen fix —
+    covered by the byte-identical corpus diff.
+
 - **What 2.4.0 changed (streaming correctness):**
   - **Chunk-invariance restored for 15 of 20 corpora** (was 7).
     Newly clean: python, rust, go, css, toml, sql, xml, ruby. Five
