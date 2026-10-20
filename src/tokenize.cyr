@@ -1225,7 +1225,8 @@ fn tokenize_stream_drain(s, out_tb) {
         if (_stream_is_trailing_complete(g, buf, buf_len, temp_tb, partial) == 1) {
             pending_ambiguous = 1;
         }
-        if ((hold_overlaps == 0) && (pending_ambiguous == 0) && ((p_kind == TK_STRING) || (p_kind == TK_COMMENT) || (p_kind == TK_PREPROCESSOR))) {
+        if ((hold_overlaps == 0) && (pending_ambiguous == 0) &&
+          ((p_kind == TK_STRING) || (p_kind == TK_COMMENT) || (p_kind == TK_PREPROCESSOR))) {
             var rule_idx = _stream_find_pair_rule(g, buf, p_start, p_len, p_kind);
             if (rule_idx >= 0) {
                 new_pending = rule_idx;

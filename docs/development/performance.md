@@ -19,13 +19,23 @@ host — variance ~±10% between runs.
 
 | Artifact                    | Size (bytes) | Size (KB) | Notes                                         |
 |-----------------------------|-------------:|----------:|-----------------------------------------------|
-| `build/vyk` (CLI binary)    |      452,544 |     441.9 | Includes 46 inlined grammars (~223 KB of text) |
-| `build/vyk`, `CYRIUS_DCE=1` |      333,760 |     325.9 | Same tree, dead fns compacted out              |
-| `dist/vyakarana.cyr`        |      401,171 |     391.8 | Single-file bundle for `cyrius deps` (4,715 lines) |
+| `build/vyk` (CLI binary)    |      423,480 |     413.6 | Includes 46 inlined grammars (~223 KB of text) |
+| `build/vyk`, `CYRIUS_DCE=1` |      337,464 |     329.6 | Same tree, dead fns compacted out — **what releases ship** |
+| `dist/vyakarana.cyr`        |      402,572 |     393.1 | Single-file bundle for `cyrius deps` (4,749 lines) |
 
-**Re-captured 2026-10-20 at `2.5.0`, on the 6.7.9 toolchain**
-(host kernel 7.2.10-arch1-1). `build/vyk` moved 396,888 →
-452,544 (+55,656) since the `2.3.3` capture:
+**Re-captured 2026-10-20 at `2.5.1`, on the 6.7.15 toolchain.**
+452,544 (2.5.0) → 456,640 (+4,096) from the 6.7.15 snapshot alone,
+then → **423,480 (−33,160)** from the stdlib-footprint trim:
+dropping the never-called `hashmap` (and the `hashseed` / `chrono`
+it pulled in) is −32,984, moving `assert` to `[test] stdlib` −176.
+The `_detect_shebang` rewrite left the default build's size
+unchanged (section alignment) and moved the DCE build 333,368 →
+337,464.
+
+**`2.5.0` capture (same day, 6.7.9 toolchain, host kernel
+7.2.10-arch1-1)** — `build/vyk` 452,544, `CYRIUS_DCE=1` 333,760,
+`dist/vyakarana.cyr` 401,171 / 4,715 lines. `build/vyk` moved
+396,888 → 452,544 (+55,656) since the `2.3.3` capture:
 
 - **+9,040 across 2.3.4 – 2.4.2** (396,888 → 405,928 at pin
   6.6.2): the 2.3.4 hardening fixes, 2.3.5's `openqasm` grammar,
@@ -42,11 +52,15 @@ host — variance ~±10% between runs.
 **`CYRIUS_DCE=1` now shrinks the binary.** The paragraph below
 recording that DCE "NOPs those bytes rather than dropping them"
 held at 6.5.4; by 6.6.20 DCE compacts — 452,528 → 333,744 at
-6.6.20, 452,544 → 333,760 at 6.7.9. The shipped `build/vyk`
-is still the default (non-DCE) build. Against the soft 300 KB
-target: the default build is ~153 KB over, the DCE build ~34 KB.
-`cyrius distlib` still under-reports the bundle (4,681 lines
-vs `wc -l` 4,715).
+6.6.20, 452,544 → 333,760 at 6.7.9. **Release artifacts are the
+DCE build**: `.github/workflows/release.yml` has set
+`CYRIUS_DCE: '1'` since 1.0.0, so the binary users download is the
+DCE row; a local `cyrius build` (and CI's `build/vyk`) is the
+default build. (Through 2.5.0 this paragraph said the shipped
+binary was the default build — wrong for release artifacts.)
+Against the soft 300 KB target at 2.5.1: the default build is
+~123 KB over, the DCE build ~37 KB. `cyrius distlib` still
+under-reports the bundle (4,715 lines vs `wc -l` 4,749).
 
 **`2.3.3` capture (2026-08-20, 6.5.32 toolchain)** — `build/vyk`
 396,888, `dist/vyakarana.cyr` 368,147 / 4,163 lines.
@@ -105,7 +119,10 @@ reports 342 unreachable fns (58,238 bytes) and emits them anyway.
 binary is 371,472 either way; the two builds differ in content,
 not in size. (Re-checked 2026-07-31 on 6.5.4: the shipped
 `build/vyk` is byte-identical to the default build, not to the
-`CYRIUS_DCE=1` one.)
+`CYRIUS_DCE=1` one. *2.5.1 note:* "shipped" there means the local
+/ CI build — release artifacts have been `CYRIUS_DCE=1` builds
+since 1.0.0; see the 2.5.1 capture above. And DCE no longer
+leaves the size unchanged.)
 
 ## Bench note (2.5.0, 2026-10-20) — toolchain bumps are perf-neutral
 
@@ -140,14 +157,32 @@ The one consistent mover across the 6.6.2 → 6.6.20 step is
 `detect/content-python` (+6 % on average, same direction in all
 three rounds); it did not move again at 6.7.9.
 
-⚠ **`detect/content-python` has drifted ~+28 % against the
-`2.3.0` table below** (194 ns → ~250 ns quiet-host). +20 % of it
-predates both bumps — it was already ~235 ns at 6.6.2, so it
-landed somewhere in 2.3.4 – 2.4.2. Over CLAUDE.md's 20 % watch
-line cumulatively, and not yet bisected. Absolute cost is one
-~250 ns call per file.
+**`detect/content-python` had drifted ~+28 % against the `2.3.0`
+table below** (194 ns → ~250 ns quiet-host), over CLAUDE.md's 20 %
+watch line. **Bisected and largely recovered in 2.5.1.** A
+same-tree matrix — 2.3.3's `src/detect.cyr` vs 2.5.0's, each built
+on 6.6.2 and on 6.7.15, with `detect/path-shell` as an unchanged
+control — put all of it on 2.3.4's `_detect_shebang` correctness
+fix (+31 % at 6.6.2, +30 % at 6.7.15; the toolchain moved it ≤ 2 %).
+The 2.5.0 note above guessed 2.3.4 – 2.4.2; it was 2.3.4. After the
+2.5.1 single-pass rewrite (same answers, 400k-case differential),
+interleaved at 6.7.15, 9 rounds, avg — host loaded (≈ 3.4), so read
+the ratios:
 
-**Latency table not re-captured at 2.5.0.** The minor-boundary
+| `detect.cyr` from          | content-python | path-shell (control) |
+|----------------------------|---------------:|---------------------:|
+| 2.3.3 (pre-fix, buggy)     |       196.8 ns |              32.0 ns |
+| 2.5.0 (2.3.4 fix)          |       253.2 ns |              33.0 ns |
+| **2.5.1**                  |   **218.7 ns** |              32.8 ns |
+
+−13.6 % against 2.5.0; ~+13 % against the 2.3.0 table, back under
+the watch line. The remaining gap is mostly the `env` branch the
+correct code must take and the pre-fix code skipped for this
+input. A further sentinel-loop variant was measured within noise
+and not kept.
+
+**Latency table not re-captured at 2.5.0 (nor at 2.5.1, same
+host load).** The minor-boundary
 refresh needs an idle host, which this cut did not get; the
 `2.3.0` table below remains the absolute baseline until someone
 re-runs `cyrius bench tests/bcyr/vyakarana.bcyr` on a quiet

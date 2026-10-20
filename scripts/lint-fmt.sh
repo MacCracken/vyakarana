@@ -9,6 +9,13 @@
 #     scripts/embed-grammars.sh; long string-literal lines are
 #     intentional. CI's lint step already excludes it for the
 #     same reason.
+#
+# `--exit-with-count`: plain `cyrius lint` exits 0 when it only
+# WARNS, so through 2.5.0 this script passed with a warning on
+# screen — a 147-column line in src/tokenize.cyr shipped in every
+# release from 2.4.0 to 2.5.0 under a "lint+fmt exit 0" claim.
+# With the flag, the exit code is the warning count, so any
+# warning fails the gate.
 
 set -e
 
@@ -20,7 +27,7 @@ for f in src/*.cyr src/grammars/*.cyr; do
     case "$f" in
         src/grammar_blobs.cyr) continue ;;
     esac
-    if ! cyrius lint "$f"; then rc=1; fi
+    if ! cyrius lint --exit-with-count "$f"; then rc=1; fi
 done
 
 if [ "$rc" -ne 0 ]; then

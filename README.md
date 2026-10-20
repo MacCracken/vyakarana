@@ -73,7 +73,7 @@ ten.
 # From source — the supported path today
 git clone https://github.com/MacCracken/vyakarana
 cd vyakarana
-cyriusly use 6.7.9                  # match the pin in cyrius.cyml first
+cyriusly use 6.7.15                 # match the pin in cyrius.cyml first
 cyrius deps                         # vendors lib/ from the pinned toolchain
 sh scripts/embed-grammars.sh        # inlines grammars/*.cyml; gitignored
 cyrius build src/main.cyr build/vyk
@@ -132,6 +132,13 @@ was removed in 2.0.0 (ADR 0017).
 ---
 
 ## Status
+
+**2.5.1** (2026-10-20) — toolchain pinned at `cyrius 6.7.15`.
+**46** bundled grammars, 923/923 tests, 5/5 fuzz harnesses. `vyk`
+is 33 KB smaller (an unused stdlib module dropped), shebang
+content detection is ~14% faster with identical answers, and
+`#! /bin/sh` — whitespace after `#!` — is detected again (it had
+not been since 2.3.4).
 
 **2.5.0** (2026-10-20) — toolchain pinned at `cyrius 6.7.9`,
 cyrius's 6.7 language line (from 6.6.20). No source change; token

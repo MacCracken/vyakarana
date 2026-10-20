@@ -538,6 +538,11 @@ sb_shell  '#!/bin/bash'
 sb_python '#!/usr/bin/python3 -u'
 sb_python '#!/usr/bin/env -S python3 -u'
 sb_python '#!/usr/bin/env python3'
+# 2.5.1: whitespace between `#!` and the interpreter, which the
+# kernel skips. 2.3.4's fix read the empty word before the space,
+# so 2.3.4 through 2.5.0 exited 4 ("no grammar matched") on both.
+sb_shell  '#! /bin/sh'
+sb_python "#!$(printf '\t')/usr/bin/env python3"
 
 # ── Oversize input must FAIL LOUDLY, never truncate silently ──
 # Regression for the 2.3.4 audit finding. Through 2.3.3, `vyk` on a

@@ -1,5 +1,9 @@
 # vyakarana test suite
-# Stdlib auto-included via cyrius.cyml.
+# Stdlib auto-included via cyrius.cyml. `assert` is test-scope only
+# (`[test] stdlib`, 2.5.1): `cyrius test` prepends it, but editors and
+# `cyrius-lsp` resolve this file with the build-scope list, so it is
+# also included here — include-once makes the two a single copy.
+# tests/bcyr/vyakarana.bcyr does the same for lib/bench.cyr.
 #
 # M0 (palette + record): token kinds exist and are sequential;
 # kind_name round-trips; kind_is_valid bounds hold.
@@ -8,6 +12,7 @@
 # produces known tokens at known offsets for small inputs and
 # holds the coverage invariant.
 
+include "lib/assert.cyr"
 include "src/token.cyr"
 include "src/grammar.cyr"
 include "src/tokenize.cyr"
@@ -60,6 +65,15 @@ fn _t_tokenize(src, lang) {
     tokenize_stream_finish(s, tb);
     tokenize_stream_free(s);
     return tb;
+}
+
+# Content-detect a C string, mapping "no match" (0) to "(none)" so
+# `assert_streq` reports a regression as a named failure instead of
+# dereferencing 0 and killing the whole suite with SIGSEGV.
+fn _t_detect(src) {
+    var r = detect_language_from_content(src, strlen(src));
+    if (r == 0) { return "(none)"; }
+    return r;
 }
 
 fn main() {
@@ -2134,6 +2148,55 @@ fn main() {
     var sb_unknown = "#!/usr/bin/perl\nprint 'hi'\n";
     assert_eq(detect_language_from_content(sb_unknown, strlen(sb_unknown)),
               0, "content: unknown interp (perl) -> 0");
+
+    # 2.5.1 — `_detect_shebang` rewritten to one pass per word (the
+    # 2.3.4 version cost ~30% on detect/content-python). Answers were
+    # checked equal to 2.5.0's on 400,000 generated first lines; these
+    # lock the edge shapes that differential covered.
+    var sb5_arg = "#!/bin/bash -e\necho\n";
+    assert_streq(_t_detect(sb5_arg),
+                 "shell", "content: interp argument ignored (#!/bin/bash -e)");
+    var sb5_envs = "#!/usr/bin/env -S python3 -u\nx\n";
+    assert_streq(_t_detect(sb5_envs),
+                 "python", "content: env option skipped (env -S python3)");
+    var sb5_envi = "#!/usr/bin/env -i sh\nx\n";
+    assert_streq(_t_detect(sb5_envi),
+                 "shell", "content: env option skipped (env -i sh)");
+    var sb5_envtab = "#!/usr/bin/env\tpython3\nx\n";
+    assert_streq(_t_detect(sb5_envtab),
+                 "python", "content: tab separates env from interp");
+    var sb5_envlf = "#!/usr/bin/env\npython3\n";
+    assert_eq(detect_language_from_content(sb5_envlf, strlen(sb5_envlf)),
+              0, "content: bare env never reads the next line");
+    var sb5_envend = "#!/usr/bin/env -S";
+    assert_eq(detect_language_from_content(sb5_envend, strlen(sb5_envend)),
+              0, "content: env options running to end of input -> 0");
+    var sb5_bare = "#!";
+    assert_eq(detect_language_from_content(sb5_bare, strlen(sb5_bare)),
+              0, "content: bare #! -> 0");
+    var sb5_crlf = "#!/usr/bin/python3\r\nprint(1)\r\n";
+    assert_streq(_t_detect(sb5_crlf),
+                 "python", "content: CRLF first line (CR kept in word, prefix match)");
+    var sb5_lua = "#!/usr/local/bin/lua5.4\nprint(1)\n";
+    assert_streq(_t_detect(sb5_lua),
+                 "lua", "content: versioned lua5.4");
+    var sb5_php = "#!/usr/bin/php\n<?php\n";
+    assert_streq(_t_detect(sb5_php),
+                 "php", "content: php (shares first byte with python)");
+    var sb5_chk = "#!/usr/bin/shellcheck\nx\n";
+    assert_eq(detect_language_from_content(sb5_chk, strlen(sb5_chk)),
+              0, "content: shellcheck is not a shell interpreter");
+    # 2.5.1 fix: whitespace after `#!` (the kernel skips it). 2.3.4
+    # through 2.5.0 returned 0 for both of these.
+    var sb5_sp = "#! /bin/sh\nls\n";
+    assert_streq(_t_detect(sb5_sp),
+                 "shell", "content: space after #! (#! /bin/sh)");
+    var sb5_tab = "#!\t/usr/bin/env python3\nx\n";
+    assert_streq(_t_detect(sb5_tab),
+                 "python", "content: tab after #! before env");
+    var sb5_ws = "#!   \n";
+    assert_eq(detect_language_from_content(sb5_ws, strlen(sb5_ws)),
+              0, "content: #! followed only by whitespace -> 0");
 
     # Content sniff: `<?xml` and `<!DOCTYPE html` signatures after BOM strip.
     var sig_xml = "<?xml version=\"1.0\"?>\n<root/>\n";

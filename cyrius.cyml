@@ -5,7 +5,7 @@ description = "Source-code grammar and tokenizer library for AGNOS / Cyrius"
 license = "GPL-3.0-only"
 repository = "https://github.com/MacCracken/vyakarana"
 language = "cyrius"
-cyrius = "6.7.9"
+cyrius = "6.7.15"
 
 [build]
 entry = "src/main.cyr"
@@ -51,8 +51,12 @@ modules = [
 #   str/string/vec        — source buffers, token lists, grammar tables
 #   args                  — `vyk` demo CLI
 #   fs                    — reading files to tokenize
-#   hashmap               — keyword tables, extension→grammar map
-#   assert                — tests/vyakarana.tcyr
+#   assert                — test scope only; see [test] below
+# `hashmap` was listed until 2.5.1 ("keyword tables, extension→
+# grammar map") but no fn of `lib/hashmap.cyr` was ever called from
+# src/, tests/ or fuzz/ — keyword tables and extension lookup are
+# hand-rolled scans. Removed: a default build emits every prepended
+# module whether reached or not, so the vestigial entry cost bytes.
 # `cyml` is NOT gone — it was folded into the `bayan` bundle at
 # 6.1.24, which is where its 17 `cyml_*` symbols live now. There
 # is just no standalone `lib/cyml.cyr` to resolve any more, so
@@ -75,6 +79,14 @@ stdlib = [
     "string",
     "vec",
     "args",
-    "hashmap",
-    "assert",
 ]
+
+# Test-scope stdlib (cyrius 6.7.6+): vendored into lib/ and locked
+# like `[deps] stdlib`, but prepended only to `cyrius test` / `bench`
+# / `fuzz` compiles — never to `cyrius build` (so `vyk` stops
+# carrying the assert module) and never to dist/vyakarana.deps.
+# Only tests/vyakarana.tcyr calls assert_* / test_group (fuzz/*.fcyr
+# report through their own exit codes); tests/bcyr/vyakarana.bcyr
+# includes lib/bench.cyr itself.
+[test]
+stdlib = ["assert"]

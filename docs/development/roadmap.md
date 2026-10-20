@@ -256,7 +256,11 @@ drifted, then stayed drifted). Brief shape:
 - **2.5.x** — Onto cyrius's 6.7 language line: `6.6.20` →
   `6.7.9` (2.5.0). A minor to mark the language-minor crossing,
   not because source changed — none did, and output is
-  byte-identical to the 6.6.20 build.
+  byte-identical to the 6.6.20 build. 2.5.1: pin → `6.7.15`,
+  stdlib footprint trimmed (`hashmap` dropped, `assert` to
+  `[test]`; `vyk` −33 KB), the `detect/content-python` drift
+  bisected to 2.3.4's shebang fix and mostly recovered, `#! /bin/sh`
+  detecting again, and the lint gate made to fail on warnings.
 
 ### Forward plan
 

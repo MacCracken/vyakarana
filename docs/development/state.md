@@ -4,8 +4,16 @@
 > (1.x and 2.x cuts), plus any session that shifts the gates'
 > colour or the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.5.0 are
-> shipped. **2.5.0 moves onto cyrius's 6.7 language line** — pin
+> **Read this file before doing anything.** 1.0.0–2.5.1 are
+> shipped. **2.5.1** — pin 6.7.9 → 6.7.15; `hashmap` dropped and
+> `assert` moved to `[test] stdlib` (`vyk` −33,160 bytes, output
+> byte-identical); the `detect/content-python` drift bisected to
+> 2.3.4's shebang fix and mostly recovered (−13.6 %, every answer
+> unchanged per a 400k-case differential); `#! /bin/sh` (whitespace
+> after `#!`) detects again; and **the lint gate now fails on
+> warnings** — it had passed a 147-column line in every release
+> from 2.4.0 to 2.5.0 because cyrlint exits 0 when it only warns.
+> **2.5.0 moves onto cyrius's 6.7 language line** — pin
 > 6.6.20 → 6.7.9, no source change, output byte-identical to the
 > 6.6.20 build on every corpus and mode. Minor to mark the
 > language-minor crossing (new reserved words, `!` now a real
@@ -128,17 +136,22 @@
 
 ## Current status (2026-10-20)
 
-- **Version:** `2.5.0` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `2.5.1` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`.
-- **Toolchain pin:** `cyrius = "6.7.9"` (bumped from 6.6.20 in
-  2.5.0; 6.6.20 came from 6.6.2 in 2.4.3, 6.6.2 from 6.5.32 in
-  2.4.1, 6.5.32 from 6.5.4 in 2.3.3). Local devs run
-  `cyriusly use 6.7.9` — though the `cyrius` driver dispatches on
-  the manifest pin by itself (`cyrius --version` prints
-  `manifest-pin: 6.7.9` with a newer global toolchain active).
+- **Toolchain pin:** `cyrius = "6.7.15"` (bumped from 6.7.9 in
+  2.5.1; 6.7.9 came from 6.6.20 in 2.5.0, 6.6.20 from 6.6.2 in
+  2.4.3, 6.6.2 from 6.5.32 in 2.4.1, 6.5.32 from 6.5.4 in 2.3.3).
+  Local devs run `cyriusly use 6.7.15` — though the `cyrius`
+  driver dispatches on the manifest pin by itself
+  (`cyrius --version` prints `manifest-pin: 6.7.15`).
   `cyrius.lock` is tracked as of 2.4.3's commit.
-- **Gates (re-run 2026-10-20 on 6.7.9):** build OK · **909/909** tests · smoke OK · **lint+fmt
-  exit 0** · fuzz **5/5** · 0 untracked deferrals. **46 grammars.** `scripts/smoke.sh`
+- **Stdlib footprint (2.5.1):** `[deps] stdlib` = syscalls, alloc,
+  fmt, io, fs, str, string, vec, args; `[test] stdlib` = assert.
+  `lib/` is 28 files. `tests/vyakarana.tcyr` also includes
+  `lib/assert.cyr` directly so editors (build-scope resolve) see it.
+- **Gates (re-run 2026-10-20 on 6.7.15):** build OK · **923/923** tests · smoke OK · **lint+fmt
+  exit 0, 0 warnings** (enforced via `--exit-with-count` since 2.5.1
+  — before that a warning still exited 0) · fuzz **5/5** · 0 untracked deferrals. **46 grammars.** `scripts/smoke.sh`
   gained two regression groups in 2.3.4 (oversize input must fail
   loudly; shebangs with interpreter arguments must route) — both
   verified to fail against the pre-fix binary.
@@ -181,6 +194,34 @@
   rows — the hot path consumers actually run — are all
   fractionally *faster*. Table not refreshed: the documented
   cadence is minor-release boundaries, and this is a patch.
+- **What 2.5.1 changed (toolchain 6.7.9 → 6.7.15 + cleanup):**
+  - **Toolchain:** no source change needed; on the bump alone the
+    output was byte-identical to 6.7.9 and the binary +4,096.
+  - **Footprint:** `hashmap` dropped (never called; it and the
+    `hashseed` / `chrono` it pulled in cost 32,984 bytes in `vyk`),
+    `assert` moved to `[test] stdlib` (−176). `vyk` 423,480 bytes.
+  - **Detect drift bisected and fixed.** Matrix of 2.3.3 vs 2.5.0
+    `detect.cyr` × pins 6.6.2 / 6.7.15 with `path-shell` as the
+    control: the whole +30 % was 2.3.4's shebang fix. Rewritten to
+    one pass per word + first-byte dispatch; 400k-case
+    differential vs 2.5.0 → 0 mismatches (oracle shown to catch
+    injected bugs). 253 → 219 ns (−13.6 %) interleaved at 6.7.15;
+    2.3.3's buggy scan was 197 ns. The rest of the gap is the
+    `env` branch the correct code has to take.
+  - **Fixed `#! /bin/sh`** (whitespace after `#!`): undetected
+    since 2.3.4. 4,531 of 22,573 generated cases newly detected,
+    none lost.
+  - **Lint gate hole closed.** `scripts/lint-fmt.sh` now passes
+    `--exit-with-count`; without it cyrlint exits 0 on warnings,
+    which is how `src/tokenize.cyr`'s 147-column line rode through
+    2.4.0 – 2.5.0. Same pattern as the 2.3.0 / 2.3.3 notes below: a
+    gate reported green while not checking what it claimed to.
+  - **Still pending:** the `./performance.md` latency table — the
+    host had cyrius 6.7.16 gate suites running through this cut
+    too (load 3–12), so the full-suite capture still waits for an
+    idle machine. Downstream cyim / vidya / owl build and pass
+    against the 2.5.1 bundle at their own pins.
+
 - **What 2.5.0 changed (toolchain 6.6.20 → 6.7.9):**
   - **No source change; output byte-identical.** 48 corpus files ×
     4 modes (NDJSON, two themes, `--handcoded`) plus `--list-*` and
@@ -226,7 +267,10 @@
     this bump (already present at 6.6.2, so it landed across
     2.4.0–2.4.2). Over the 20% watch line cumulatively; worth a
     look at the next hardening pass. Absolute cost is one ~250 ns
-    call per file.
+    call per file. **→ Resolved in 2.5.1**, and the attribution
+    above was wrong: a same-tree bisect puts all of it on 2.3.4's
+    `_detect_shebang` rewrite (+30 % at both 6.6.2 and 6.7.15),
+    not on 2.4.x or the toolchain.
   - **Upstream items checked and found inert here:**
     `file_read_all` returning a negative errno on a partial read
     (6.6.6) — both call sites already treat `n < 0` as failure;

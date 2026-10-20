@@ -4,6 +4,90 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.5.1] — 2026-10-20
+
+Toolchain `6.7.9` → `6.7.15`, a leaner stdlib footprint, and the `detect/content-python`
+drift bisected and mostly recovered. 923/923 tests (909 + 14 new), smoke OK, lint+fmt
+exit 0 with **zero warnings — now actually enforced** (see Fixed), fuzz 5/5. No token
+kind, `Token` layout, public-API or grammar change.
+
+### Changed
+
+- **Toolchain `6.7.9` → `6.7.15`.** `lib/` re-cut at the new pin and `cyrius.lock`
+  regenerated. No source change needed — the 6.7.10 – 6.7.15 migration notes were
+  checked against the source and nothing reaches it. Measured on the bump alone, before
+  any other change: output byte-identical to the 6.7.9 binary on all 48 corpus files × 4
+  modes and the `--list-*` / `--export-theme` outputs; binary 452,544 → 456,640 (+4,096,
+  of which +3,840 is reported-unreachable stdlib).
+
+- **Stdlib footprint trimmed: `hashmap` dropped, `assert` moved to `[test] stdlib`.**
+  No fn of `lib/hashmap.cyr` was ever called from `src/`, `tests/` or `fuzz/` (keyword
+  tables and extension lookup are hand-rolled scans), but a default build emits every
+  prepended module, so the entry — and the `hashseed` / `chrono` modules it pulled in —
+  was paid for in bytes. `assert` now sits in the `[test]` section (cyrius 6.7.6+):
+  still vendored into `lib/` and locked, prepended only to `cyrius test` / `bench` /
+  `fuzz` compiles, never to `vyk`, never to `dist/vyakarana.deps`.
+  **`build/vyk` 456,640 → 423,480 bytes (−33,160)**: −32,984 from `hashmap`, −176 from
+  `assert`. Output byte-identical. `lib/` 31 → 28 files; `cyrius deps --locked` and
+  `--verify` clean.
+  `tests/vyakarana.tcyr` now also `include`s `lib/assert.cyr` itself, as the bench
+  harness already did for `lib/bench.cyr`: `cyrius test` prepends the test scope, but a
+  build-scope resolve — which is what `cyrius-lsp` / editors do — does not, and without
+  the include the suite showed six false "undefined function" errors in the editor.
+  Include-once makes the two one copy (no duplicate-definition warning).
+
+- **`_detect_shebang` rewritten to one pass per word.** Bisected the
+  `detect/content-python` drift flagged at 2.4.3 with a same-tree matrix — 2.3.3's
+  `src/detect.cyr` vs 2.5.0's, each on 6.6.2 and 6.7.15, `path-shell` as the unchanged
+  control. The whole drift is the 2.3.4 shebang fix, at both pins (+31 % / +30 %); the
+  toolchain moved it by ≤ 2 %. That fix walked each word three times (a first-line scan,
+  then word end, then basename, through two helper calls apiece) and tried every
+  interpreter pattern in turn. Now one loop per word stops at space / tab / LF and
+  records the last `/` on the way, and the interpreter is matched by dispatching on its
+  first byte. **Every answer is unchanged**: a differential oracle (scratch, not
+  committed) fed 400,000 generated first lines through both implementations — 0
+  mismatches — and was shown to have teeth by two injected bugs (8,700 and 1,434
+  mismatches). Interleaved micro-bench at 6.7.15, 9 rounds, avg (host under load ≈ 3.4,
+  so read the ratios, not the absolutes): **2.5.0 253.2 ns → 2.5.1 218.7 ns (−13.6 %)**;
+  2.3.3's buggy-but-fast scan reads 196.8 ns. The remaining gap is mostly inherent — the
+  fixed code must enter the `env` branch, which 2.3.3 skipped for this input. A
+  further sentinel-loop variant measured within noise and was not kept.
+
+### Fixed
+
+- **Shebangs with whitespace after `#!` were not detected** (`#! /bin/sh`,
+  `#!<tab>/usr/bin/env python3`). The kernel skips spaces and tabs there; 2.3.4's fix
+  read the empty word before the space and returned no language, so `vyk` exited 4
+  ("no grammar matched") on such files from 2.3.4 through 2.5.0. The pre-2.3.4 scan had
+  handled it by accident. Oracle check against 2.5.0 on the whitespace-stripped input:
+  0 mismatches; of 22,573 generated cases with leading whitespace, 4,531 are newly
+  detected and **none stops being detected**. Locked by two test assertions (shown to
+  fail against 2.5.0's `detect.cyr`) and two smoke cases (2.5.0 `vyk` exits 4 on both).
+
+- **The lint gate passed with a warning on screen.** `scripts/lint-fmt.sh` judged
+  `cyrius lint` by its exit status, and cyrlint exits 0 when it only warns — so a
+  147-column line in `src/tokenize.cyr` (added in 2.4.0) shipped in every release from
+  2.4.0 to 2.5.0 under a "lint+fmt exit 0" line, against CLAUDE.md's zero-warnings rule.
+  The wrapper now passes `--exit-with-count` (exit code = warning count), verified to
+  fail on the old line; the line is wrapped. CI runs the same script.
+
+### Tests
+
+- 14 new assertions in `tests/vyakarana.tcyr` pinning the shebang edge shapes the oracle
+  covered (interpreter arguments, `env -S` / `-i`, tab separators, bare `env` never
+  reading the next line, `#!` alone, CRLF, `lua5.4`, `php` vs `python`, `shellcheck`)
+  plus the two whitespace-after-`#!` fixes. They go through a new null-safe `_t_detect`
+  helper: against 2.5.0's detector the plain `assert_streq` form killed the suite with
+  SIGSEGV on the first 0 result instead of naming the failing case.
+
+### Downstream
+
+- `dist/vyakarana.cyr` changes only in `src/detect.cyr`; `dist/vyakarana.deps` is
+  unchanged (alloc / string / vec / io). Built against this tree as a path dep in scratch
+  copies: **cyim** (cyrius 6.7.9) 1,298,984 bytes, 24/24 test files; **vidya** (6.6.2)
+  2,453,280 bytes, 139/139 assertions; **owl** (6.6.2) 2,650,688 bytes, test file
+  passes. Same sizes as against 2.5.0.
+
 ## [2.5.0] — 2026-10-20
 
 **Toolchain onto the 6.7 language line.** Minor rather than patch to mark the move across
