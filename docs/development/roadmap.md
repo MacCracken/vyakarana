@@ -244,15 +244,32 @@ drifted, then stayed drifted). Brief shape:
   silently ignored at build time since 2.2.2. 45 grammars,
   840/840 tests, no benchmark regression, `build/vyk` down
   390,784 → 371,472 bytes.
+- **2.4.x** — Streaming correctness, then toolchain. 2.4.0 made
+  chunked feeding produce whole-buffer tokens for 15 of 20
+  corpora (was 7) and added `fuzz/chunk_invariance.fcyr`; the
+  five compose grammars stay divergent by design. 2.4.1 / 2.4.3
+  moved the pin `6.5.32` → `6.6.2` → `6.6.20` with no source
+  change; 2.4.2 renamed `_stream_grow`, which collided with
+  sankoch's in consumers vendoring both. From 2.4.3 the bundle
+  carries a compile-verified `# Requires` block and a 4-leaf
+  `.deps` sidecar, and `cyrius.lock` is tracked.
+- **2.5.x** — Onto cyrius's 6.7 language line: `6.6.20` →
+  `6.7.9` (2.5.0). A minor to mark the language-minor crossing,
+  not because source changed — none did, and output is
+  byte-identical to the 6.6.20 build.
 
 ### Forward plan
 
-**Nothing scheduled, as of 2.3.0.** The 2.1.5 audit queue
-drained at 2.2.1 and has stayed drained. Every cut since
-(2.2.2, 2.2.3, 2.3.0) was the upstream-toolchain forcing
-function firing, not planned work — the model below is
-holding; that one trigger just fires more often than the
-old "empty / TBD" framing implied.
+**Nothing scheduled, as of 2.5.0.** The 2.1.5 audit queue
+drained at 2.2.1 and has stayed drained. Most cuts since
+(2.2.2, 2.2.3, 2.3.0, 2.3.3, 2.4.1, 2.4.3, 2.5.0) were the
+upstream-toolchain forcing function firing, not planned work —
+the model below is holding; that one trigger just fires more
+often than the old "empty / TBD" framing implied. The rest were
+audit- or consumer-driven: 2.3.1 / 2.3.2 (CYML compose,
+`TK_ERROR` sweep), 2.3.4 (hardening audit), 2.3.5 (vidya's
+`openqasm` gap), 2.4.0 (streaming fixes), 2.4.2 (owl's symbol
+collision).
 
 The next cut waits on a forcing function — a real consumer
 asking for a grammar, a profiler complaining about a hot
@@ -261,16 +278,17 @@ No speculative batches; the previous cycle of pre-scheduling
 1.3.x – 1.13.x ahead of consumer demand drifted out of
 sync with reality and was cut.
 
-**One known follow-up, not owned here.** `owl`, `cyim`, and
-`vidya` all still pin `tag = "2.2.3"`. `dist/vyakarana.cyr`
-is byte-identical across the 2.3.0 cut apart from its
-version header, so re-pinning buys nothing but the tag and
-costs nothing but the one-liner — no downstream churn to
-chase, and no toolchain move forced on them either: the
-bundle still compiles at the pins they run today (owl
-`6.2.37`, cyim `6.2.36`, vidya `6.4.2`), none of which is
-`6.5.4`. Whether to take the tag is their call, not
-vyakarana's.
+**One known follow-up, not owned here.** As of 2.5.0 the
+consumers pin `owl` → `2.4.2` (cyrius `6.6.2`), `cyim` →
+`2.4.0` (cyrius `6.7.9`), `vidya` → `2.4.0` (cyrius `6.6.2`).
+`dist/vyakarana.cyr` at 2.5.0 differs from 2.4.3 only in its
+version header, and from 2.4.2 only by that plus the
+`# Requires` block, so re-pinning costs a one-liner and forces
+no toolchain move: the bundle builds at the pins they run
+today. owl and vidya taking 2.4.3+ get the 4-leaf sidecar, so
+anything they reached only through vyakarana's old 11-name
+sidecar belongs in their own `[deps] stdlib`. Whether to take
+the tag is their call, not vyakarana's.
 
 `docs/development/state.md` has a §Next up section listing
 candidate directions if work resumes (state-machine drain

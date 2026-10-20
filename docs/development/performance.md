@@ -19,10 +19,37 @@ host — variance ~±10% between runs.
 
 | Artifact                    | Size (bytes) | Size (KB) | Notes                                         |
 |-----------------------------|-------------:|----------:|-----------------------------------------------|
-| `build/vyk` (CLI binary)    |      396,888 |     387.6 | Includes 45 inlined grammars (~213 KB of text) |
-| `dist/vyakarana.cyr`        |      368,147 |     359.5 | Single-file bundle for `cyrius deps` (4,163 lines) |
+| `build/vyk` (CLI binary)    |      452,544 |     441.9 | Includes 46 inlined grammars (~223 KB of text) |
+| `build/vyk`, `CYRIUS_DCE=1` |      333,760 |     325.9 | Same tree, dead fns compacted out              |
+| `dist/vyakarana.cyr`        |      401,171 |     391.8 | Single-file bundle for `cyrius deps` (4,715 lines) |
 
-**Re-captured 2026-08-20 at `2.3.3`, on the 6.5.32 toolchain.**
+**Re-captured 2026-10-20 at `2.5.0`, on the 6.7.9 toolchain**
+(host kernel 7.2.10-arch1-1). `build/vyk` moved 396,888 →
+452,544 (+55,656) since the `2.3.3` capture:
+
+- **+9,040 across 2.3.4 – 2.4.2** (396,888 → 405,928 at pin
+  6.6.2): the 2.3.4 hardening fixes, 2.3.5's `openqasm` grammar,
+  2.4.0's streaming changes and 2.4.1's 6.5.32 → 6.6.2 snapshot.
+  Not attributed further — no capture was taken in between.
+- **+46,600 from the 6.6.20 stdlib snapshot (2.4.3)**, measured on
+  the identical tree at both pins. +42,598 of it is code the
+  compiler reports unreachable (375 → 514 fns): the larger
+  snapshot pulls more into the unit, and a default build emits
+  dead fns.
+- **+16 from 6.6.20 → 6.7.9 (2.5.0)**, measured the same way (514
+  → 515 unreachable fns).
+
+**`CYRIUS_DCE=1` now shrinks the binary.** The paragraph below
+recording that DCE "NOPs those bytes rather than dropping them"
+held at 6.5.4; by 6.6.20 DCE compacts — 452,528 → 333,744 at
+6.6.20, 452,544 → 333,760 at 6.7.9. The shipped `build/vyk`
+is still the default (non-DCE) build. Against the soft 300 KB
+target: the default build is ~153 KB over, the DCE build ~34 KB.
+`cyrius distlib` still under-reports the bundle (4,681 lines
+vs `wc -l` 4,715).
+
+**`2.3.3` capture (2026-08-20, 6.5.32 toolchain)** — `build/vyk`
+396,888, `dist/vyakarana.cyr` 368,147 / 4,163 lines.
 `build/vyk` moved 371,472 → 396,888 (+25,416) since the `2.3.0`
 row below. Attribution, measured rather than assumed:
 
@@ -62,8 +89,9 @@ the window is three pin bumps wide, not just `6.1.24` → `6.5.4`.
 No grammar was dropped either way (45, same as 2.2.1).
 
 The 1.13.0 cut formalised a **soft 300 KB target** for
-`build/vyk`. Today's binary is ~63 KB over that target, down
-from ~82 KB at 2.2.1 — this cut closed roughly a quarter of the
+`build/vyk`. At 2.3.3 the binary was ~63 KB over that target
+(~153 KB at 2.5.0 — see above), down
+from ~82 KB at 2.2.1 — that cut closed roughly a quarter of the
 overage without touching the dominant contributor, the embedded
 grammar blobs (46 grammars × ADR 0014 inlining). 2.1.x audit
 (2026-05-09) flagged the cap revisit as a 2.x roadmap item; not
@@ -78,6 +106,52 @@ binary is 371,472 either way; the two builds differ in content,
 not in size. (Re-checked 2026-07-31 on 6.5.4: the shipped
 `build/vyk` is byte-identical to the default build, not to the
 `CYRIUS_DCE=1` one.)
+
+## Bench note (2.5.0, 2026-10-20) — toolchain bumps are perf-neutral
+
+Both 2.4.3 (`6.6.2` → `6.6.20`) and 2.5.0 (`6.6.20` → `6.7.9`)
+were A/B'd on the *same* tree, three rounds alternating between
+the pins (old, new, old, new, …) so each pair shares host
+conditions. Averages over the three rounds, in µs:
+
+| Benchmark                  | 6.6.2 ¹ | 6.6.20 ¹ | Δ      | 6.6.20 ² | 6.7.9 ² | Δ      |
+|----------------------------|--------:|---------:|-------:|---------:|--------:|-------:|
+| tokenize/shell-small       |  19.150 |   19.538 | +2.0 % |   22.265 |  20.956 | −5.9 % |
+| tokenize/rust-small        |  27.646 |   27.845 | +0.7 % |   30.871 |  30.113 | −2.5 % |
+| tokenize/json-small        |   4.491 |    4.249 | −5.4 % |    4.649 |   4.624 | −0.5 % |
+| tokenize/html-compose      |  10.162 |    9.593 | −5.6 % |   10.352 |  10.459 | +1.0 % |
+| detect/path-shell          |   0.034 |    0.031 | −6.9 % |    0.034 |   0.034 | −1.0 % |
+| detect/content-python      |   0.235 |    0.251 | +6.5 % |    0.278 |   0.283 | +2.0 % |
+| detect/combined-asm-arm    |   5.720 |    5.449 | −4.7 % |    6.059 |   6.110 | +0.8 % |
+| blob/grammar-load-shell    |  37.260 |   36.360 | −2.4 % |   37.779 |  38.553 | +2.0 % |
+
+¹ Captured with the host mostly idle (one round shared the CPU
+with a concurrent build). ² Captured while cyrius 6.7.16 gate
+suites were running on the same host (load average 3.5–7.4) —
+the *deltas* hold because the rounds alternate, but the
+**absolute values read 0–15 % high**, so they are not a baseline.
+
+**No row moved by more than ±7 % on average at either step**
+(min-to-min: within ±6.3 % at 6.6.20, up to +8.4 % at 6.7.9 —
+the three detect rows and grammar-load read +6–8 % on their best
+window under the loaded host, while their averages move ≤ 2 %);
+the tokenize rows — the consumer hot path — are flat.
+The one consistent mover across the 6.6.2 → 6.6.20 step is
+`detect/content-python` (+6 % on average, same direction in all
+three rounds); it did not move again at 6.7.9.
+
+⚠ **`detect/content-python` has drifted ~+28 % against the
+`2.3.0` table below** (194 ns → ~250 ns quiet-host). +20 % of it
+predates both bumps — it was already ~235 ns at 6.6.2, so it
+landed somewhere in 2.3.4 – 2.4.2. Over CLAUDE.md's 20 % watch
+line cumulatively, and not yet bisected. Absolute cost is one
+~250 ns call per file.
+
+**Latency table not re-captured at 2.5.0.** The minor-boundary
+refresh needs an idle host, which this cut did not get; the
+`2.3.0` table below remains the absolute baseline until someone
+re-runs `cyrius bench tests/bcyr/vyakarana.bcyr` on a quiet
+machine and replaces it.
 
 ## Bench note (2.3.3, 2026-08-20) — toolchain bump is perf-neutral
 
@@ -106,7 +180,7 @@ win. The `2.3.0` table was captured on 6.5.4, which does subtract
 it. Table not refreshed: the documented cadence is minor-release
 boundaries, and this is a patch.
 
-## Tokenize / detect / load latencies (2.3.0 baseline, 2026-07-31)
+## Tokenize / detect / load latencies (2.3.0 baseline, 2026-07-31 — still current at 2.5.0, see the 2.5.0 bench note)
 
 Per-call wall-clock averages from
 `cyrius bench tests/bcyr/vyakarana.bcyr` (8 benchmarks, each

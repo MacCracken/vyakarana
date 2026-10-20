@@ -4,8 +4,14 @@
 > (1.x and 2.x cuts), plus any session that shifts the gates'
 > colour or the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.4.3 are
-> shipped. **2.4.3 is a toolchain catch-up** — pin 6.6.2 → 6.6.20,
+> **Read this file before doing anything.** 1.0.0–2.5.0 are
+> shipped. **2.5.0 moves onto cyrius's 6.7 language line** — pin
+> 6.6.20 → 6.7.9, no source change, output byte-identical to the
+> 6.6.20 build on every corpus and mode. Minor to mark the
+> language-minor crossing (new reserved words, `!` now a real
+> operator), not because code changed; the 6.7.0–6.7.9 migration
+> notes were checked shape by shape against the source.
+> **2.4.3 is a toolchain catch-up** — pin 6.6.2 → 6.6.20,
 > `lib/` re-cut, no source change; token output is byte-identical
 > to the 6.6.2 build on every corpus. It is the first release cut
 > by a `distlib` that compile-verifies the bundle, so
@@ -122,15 +128,16 @@
 
 ## Current status (2026-10-20)
 
-- **Version:** `2.4.3` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `2.5.0` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`.
-- **Toolchain pin:** `cyrius = "6.6.20"` (bumped from 6.6.2 in
-  2.4.3; 6.6.2 came from 6.5.32 in 2.4.1, 6.5.32 from 6.5.4 in
-  2.3.3). Local devs run `cyriusly use 6.6.20` — though the
-  `cyrius` driver now dispatches on the manifest pin by itself
-  (`cyrius --version` prints `manifest-pin: 6.6.20` with a newer
-  global toolchain active).
-- **Gates (re-run 2026-10-20 on 6.6.20):** build OK · **909/909** tests · smoke OK · **lint+fmt
+- **Toolchain pin:** `cyrius = "6.7.9"` (bumped from 6.6.20 in
+  2.5.0; 6.6.20 came from 6.6.2 in 2.4.3, 6.6.2 from 6.5.32 in
+  2.4.1, 6.5.32 from 6.5.4 in 2.3.3). Local devs run
+  `cyriusly use 6.7.9` — though the `cyrius` driver dispatches on
+  the manifest pin by itself (`cyrius --version` prints
+  `manifest-pin: 6.7.9` with a newer global toolchain active).
+  `cyrius.lock` is tracked as of 2.4.3's commit.
+- **Gates (re-run 2026-10-20 on 6.7.9):** build OK · **909/909** tests · smoke OK · **lint+fmt
   exit 0** · fuzz **5/5** · 0 untracked deferrals. **46 grammars.** `scripts/smoke.sh`
   gained two regression groups in 2.3.4 (oversize input must fail
   loudly; shebangs with interpreter arguments must route) — both
@@ -160,8 +167,9 @@
   so CLAUDE.md's "`cyrius deps` does not refresh a `lib/` that
   already exists" no longer reproduces. `rm -rf lib && cyrius deps`
   remains a safe habit. `cyrius deps` now also writes
-  `cyrius.lock` (31 hashes + pin trailer) — untracked as of 2.4.3,
-  pending a decision on committing it.
+  `cyrius.lock` (31 hashes + pin trailer), committed with 2.4.3;
+  it goes stale on every pin move, so a bump must regenerate it
+  (`cyrius deps` does) and commit the diff.
 - **Bench note (2.3.2):** `blob/grammar-load-shell` moved
   33.2 → 36.7 µs (+10.5%) against the 2.3.0 table in
   `./performance.md`. Expected and accounted for: `shell.cyml`
@@ -173,6 +181,31 @@
   rows — the hot path consumers actually run — are all
   fractionally *faster*. Table not refreshed: the documented
   cadence is minor-release boundaries, and this is a patch.
+- **What 2.5.0 changed (toolchain 6.6.20 → 6.7.9):**
+  - **No source change; output byte-identical.** 48 corpus files ×
+    4 modes (NDJSON, two themes, `--handcoded`) plus `--list-*` and
+    all three theme exports match the 6.6.20 binary byte for byte.
+    Binary +16 bytes (452,544). Zero compiler warnings.
+  - **6.7.x language changes checked by shape**, not just by gate:
+    no lone `!` (6.7.3 made it real — it used to be dropped), no
+    unary `-` / `~` on a constant before an operator (6.7.9
+    re-binds it), no reserved word (`trait` `const` `true` `false`
+    `do` `dyn`) used as a name; the one `println(name)` already
+    binds a `: cstring`, as 6.7.6 asks.
+  - **Closeout pass:** clean-checkout CI replay green, lock stable
+    under `cyrius deps` and `--locked`, dead-code audit clean (9 of
+    242 own fns unreachable from `vyk`, all live via the pull
+    adapter, tests or fuzz), no `TODO(M?)` markers, no broken
+    relative doc links. Downstream: cyim (6.7.9), vidya (6.6.2)
+    and owl (6.6.2) build and pass their tests against the 2.5.0
+    bundle as a path dep.
+  - **Bench:** same-tree A/B within ±6 % on average, tokenize
+    rows flat — but captured on a host busy with cyrius 6.7.16
+    gate suites, so `./performance.md`'s latency table was **not**
+    re-captured for this minor; it is flagged as due on a quiet
+    host. Binary-size table refreshed. The `detect/content-python`
+    drift (2.4.3 note below) is unchanged at 6.7.9.
+
 - **What 2.4.3 changed (toolchain 6.6.2 → 6.6.20):**
   - **No source change; output byte-identical.** The 6.6.2 and
     6.6.20 `vyk` binaries agree byte-for-byte on all 48

@@ -4,6 +4,59 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.5.0] — 2026-10-20
+
+**Toolchain onto the 6.7 language line.** Minor rather than patch to mark the move across
+cyrius's language minor (6.6 → 6.7: `trait`, `const`, `true` / `false`, `do` and `dyn`
+become reserved words; `!` becomes a real operator; forward calls are arity-checked), not
+because anything here needed to change — nothing did. No token kind, `Token` layout,
+public-API or grammar change.
+
+### Changed
+
+- **Toolchain `6.6.20` → `6.7.9`.** No source change; `lib/` re-cut at the new pin
+  (`rm -rf lib && cyrius deps`, whole-tree diff against `~/.cyrius/versions/6.7.9/lib`
+  clean, same 31 files) and `cyrius.lock` regenerated (16 hashes + the `cyrius` trailer).
+  909/909 tests, smoke OK, lint+fmt exit 0, fuzz 5/5, zero compiler warnings in the build
+  and test compiles.
+
+  **Measurably inert on output.** The 6.6.20 and 6.7.9 `vyk` binaries produce
+  byte-identical output on all 48 `tests/corpus/` files in NDJSON, `--theme=default`,
+  `--theme=dark` and `--handcoded` modes, and on `--list-kinds`, `--list-languages` and
+  all three `--export-theme` formats. Binary 452,528 → 452,544 bytes (+16);
+  `CYRIUS_DCE=1` 333,744 → 333,760.
+
+  **Checked against the 6.7.0–6.7.9 migration notes** (cyrius
+  `docs/development/ecosystem-migration.md`). The three changes that silently alter what
+  existing code computes were grepped for directly, outside strings and comments: no lone
+  `!` (6.7.3 — it used to be dropped, so `!x` compiled as `x`); no unary `-` / `~` on a
+  constant ahead of an operator (6.7.9); one `println(name)`, in `--list-languages`, whose
+  `name` is already declared `: cstring` as 6.7.6 asks. None of the reserved words is used
+  as a name. The struct-value, generics, slice, trait, `f32` and `u128` changes reach no
+  vyakarana code.
+
+  **Bench A/B'd on the same tree**, three alternating rounds per pin: every row within
+  ±6 % on average (−5.9 % to +2.0 %), tokenize rows flat. The host was running cyrius
+  6.7.16 gate suites throughout (load 3.5–7.4), so the deltas hold but the absolute
+  figures read high — the `performance.md` latency table was therefore **not**
+  re-captured at this minor boundary; it records the A/B and the binary-size refresh,
+  and flags the table as due on a quiet host. `detect/content-python` did not move
+  at 6.7.9; its ~+28 % drift against the 2.3.0 table (noted at 2.4.3) stands.
+
+- **`dist/vyakarana.cyr` changes only in its `# Version:` line**; `dist/vyakarana.deps`
+  is unchanged (still the 4 leaves alloc / string / vec / io). **Downstream, all three
+  consumers build and pass against it at the pins they run today**, each in a scratch
+  copy with `[deps.vyakarana]` pointed at this tree: **cyim** (cyrius 6.7.9, on tag
+  2.4.0) same 1,298,984 bytes, 24/24 tests, no warning delta; **vidya** (6.6.2, tag
+  2.4.0) 2,457,488 → 2,453,280 bytes, 139/139 tests; **owl** (6.6.2, tag 2.4.2) same
+  2,650,688 bytes, test suite green, renders `tests/corpus/python.py` correctly.
+
+- **Clean-checkout CI replay.** The CI steps run in order on a copy of the tracked files
+  only (no `lib/`, no `src/grammar_blobs.cyr`, no `build/`) all pass; `cyrius deps`
+  leaves the committed `cyrius.lock` unchanged, `cyrius deps --locked` reports `lib/`
+  and the lock "exactly what the tags resolve", and the binary is byte-identical to the
+  local build.
+
 ## [2.4.3] — 2026-10-20
 
 ### Changed

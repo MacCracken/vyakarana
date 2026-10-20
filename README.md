@@ -73,7 +73,7 @@ ten.
 # From source — the supported path today
 git clone https://github.com/MacCracken/vyakarana
 cd vyakarana
-cyriusly use 6.6.20                 # match the pin in cyrius.cyml first
+cyriusly use 6.7.9                  # match the pin in cyrius.cyml first
 cyrius deps                         # vendors lib/ from the pinned toolchain
 sh scripts/embed-grammars.sh        # inlines grammars/*.cyml; gitignored
 cyrius build src/main.cyr build/vyk
@@ -133,9 +133,14 @@ was removed in 2.0.0 (ADR 0017).
 
 ## Status
 
+**2.5.0** (2026-10-20) — toolchain pinned at `cyrius 6.7.9`,
+cyrius's 6.7 language line (from 6.6.20). No source change; token
+output is byte-identical to the 6.6.20 build on every corpus.
+**46** bundled grammars, 909/909 tests, 5/5 fuzz harnesses.
+
 **2.4.3** (2026-10-20) — toolchain pinned at `cyrius 6.6.20`
 (from 6.6.2). No source change; token output is byte-identical to
-the 6.6.2 build on every corpus. 909/909 tests, 5/5 fuzz harnesses.
+the 6.6.2 build on every corpus.
 `dist/vyakarana.deps` now lists only the four stdlib leaves the
 bundle actually needs (alloc, string, vec, io).
 
