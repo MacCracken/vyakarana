@@ -201,12 +201,10 @@ or patch:
    binary — but CI populates `lib/` fresh, so a mismatch means local
    and CI differ. Consumers on an older pin can hit the same trap
    on their own `lib/`.
-1. **Final gate sweep on the release branch.** All six gates
-   green: `cyrius build`, `cyrius test`, `sh scripts/smoke.sh`,
-   `sh scripts/lint-fmt.sh`, `sh scripts/check-size.sh`,
-   `cyrius fuzz`. Plus
-   `cyrius bench tests/bcyr/vyakarana.bcyr` if a perf-touching
-   change shipped.
+1. **Final gate sweep on the release branch.** Every command in
+   CLAUDE.md §Gates green — CI's steps, from the build to
+   `cyrius distlib --check`. Plus `sh scripts/bench-paired.sh <last
+   tag>` if a perf-touching change shipped.
 2. **Doc sync.** CHANGELOG `[Unreleased]` collapsed into the
    version header; `state.md` Current-status block matches
    reality; ADRs filed if the cut introduced new public

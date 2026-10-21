@@ -89,9 +89,8 @@ pattern this script follows.
 
 ## Gates
 
-CLAUDE.md's gates — unrolled, since one of them chains
-`cyrius deps && cyrius build` — plus `cyrius fuzz`, in the order
-CI runs them. All eight must be green before a PR merges:
+CLAUDE.md's gates, unrolled — CI's steps, in the order CI runs
+them. All must be green before a PR merges:
 
 ```sh
 cyrius deps                             # vendors stdlib into lib/
@@ -101,7 +100,10 @@ sh scripts/lint-fmt.sh                  # lint + fmt --check, src/ + scripts/aud
 cyrius test tests/vyakarana.tcyr
 sh scripts/smoke.sh build/vyk
 sh scripts/check-size.sh                # the shipped (DCE) binary <= 300 KiB
-cyrius fuzz                             # the 5 harnesses in fuzz/*.fcyr
+cyrius build scripts/audit/harness.cyr build/vyk-audit \
+    && for f in scripts/audit/*.sh scripts/bench-paired.sh; do sh -n "$f"; done
+cyrius fuzz                             # the harnesses in fuzz/*.fcyr
+cyrius distlib --check                  # dist/vyakarana.cyr current; exit 1 if stale
 ```
 
 Lint and fmt are not optional — CI gates both, and either one
@@ -115,15 +117,14 @@ ship and fails above 307,200 bytes (ADR 0029). A grammar or a
 feature that needs more is a decision for an ADR, not a quiet
 bump of the number.
 
-CI adds two steps this list doesn't. It builds the audit harness
-and syntax-checks the audit scripts (`scripts/audit/`, run by hand
-at audits — see its README). And after `cyrius fuzz` it
-re-runs `cyrius distlib` and diffs the result against the
-committed `dist/vyakarana.cyr`. If your change touches a module
-named in `cyrius.cyml`'s `[lib]` block, run
+The audit-tools line builds the harness and syntax-checks the
+scripts that audits run by hand (`scripts/audit/` — see its README),
+so they cannot rot between audits. `cyrius distlib --check` fails
+when the committed `dist/vyakarana.cyr` is not what `cyrius distlib`
+would write (CI re-runs distlib and diffs, to the same end). If your
+change touches a module named in `cyrius.cyml`'s `[lib]` block, run
 `sh scripts/embed-grammars.sh && cyrius distlib` and commit the
-regenerated bundle — otherwise every gate above passes locally
-and the PR still fails.
+regenerated bundle.
 
 At 2.9.1 green means 1123/1123 test assertions and 5/5 fuzz
 harnesses. Run the gates yourself rather than trusting a doc that

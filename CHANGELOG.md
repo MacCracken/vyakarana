@@ -25,6 +25,14 @@ shapes); 1123/1123 tests, fuzz 5/5, lint+fmt exit 0, size budget OK.
   `fuzz/` and `scripts/`. `cyrius deps` has refreshed an existing `lib/`
   since 6.6.20; CLAUDE.md, CONTRIBUTING, README and ADR 0018 no longer
   say otherwise.
+- **CLAUDE.md's gate list is CI's**, step for step and in CI's order: it
+  gains the audit-tools build, `cyrius fuzz` and `cyrius distlib --check`
+  (exit 1 on a stale bundle, without rewriting it), and drops the count
+  that went stale ("all six"). The hardening step's cleanliness check and
+  post-review run, and the release checklist in `distribution.md`, point
+  at that list instead of keeping their own; the work loop's version
+  check names every file that carries the version. CONTRIBUTING's
+  unrolled list matches.
 
 ### Fixed
 

@@ -21,15 +21,22 @@ caller's buffer, fast and without surprises.
 ## Gates — run before trusting status
 
 ```sh
+cyrius deps
 sh scripts/embed-grammars.sh
-cyrius deps && cyrius build src/main.cyr build/vyk
+cyrius build src/main.cyr build/vyk
+sh scripts/lint-fmt.sh                 # lint + fmt --check, src/ + scripts/audit/
 cyrius test tests/vyakarana.tcyr
 sh scripts/smoke.sh build/vyk
-sh scripts/lint-fmt.sh                 # lint + fmt --check, src/ + scripts/audit/
 sh scripts/check-size.sh               # shipped (DCE) binary <= 300 KiB
+cyrius build scripts/audit/harness.cyr build/vyk-audit \
+    && for f in scripts/audit/*.sh scripts/bench-paired.sh; do sh -n "$f"; done
+cyrius fuzz                            # the fuzz/*.fcyr harnesses
+cyrius distlib --check                 # dist/vyakarana.cyr current; exit 1 if stale
 ```
 
-Run all six on session entry. Don't take
+These are CI's steps (`.github/workflows/ci.yml`), in CI's order, so
+a green run here is a green CI run — through 2.9.1 this list left out
+the last three. Run them all on session entry. Don't take
 `docs/development/state.md` / `README.md` claims of "green" at
 face value until you've seen the commands pass. Use `cyrius build`,
 never raw `cc3`/`cc5`.
@@ -99,8 +106,11 @@ For every non-trivial change:
    that touch runtime or grammar surface.
 6. Documentation — update CHANGELOG `[Unreleased]`, `docs/development/state.md` if
    the status shifted, ROADMAP only on milestone boundaries.
-7. Version check — `VERSION`, `cyrius.cyml`, CHANGELOG header
-   stay in sync.
+7. Version check — `VERSION` is the source. `scripts/version-bump.sh`
+   regenerates `src/version_str.cyr` and adds the CHANGELOG header;
+   `cyrius.cyml` reads `VERSION`; the `.TH` line of `docs/man/vyk.1`
+   and `dist/vyakarana.cyr` (`cyrius distlib`) are by hand. All of them
+   agree (state.md's Version line names them).
 8. Return to step 1.
 
 ## Hardening step (before starting a new milestone or feature batch)
@@ -111,8 +121,7 @@ catch drift before it compounds.
 
 1. Read `docs/development/state.md`, ROADMAP, CHANGELOG, and any open `TODO(M?)`
    markers — know what was intended.
-2. Cleanliness check: `cyrius build`, `cyrius lint src/*.cyr`,
-   `cyrius test`, `sh scripts/smoke.sh build/vyk` — all green.
+2. Cleanliness check: every command in §Gates — all green.
 3. Benchmark baseline:
    `sh scripts/bench-paired.sh <last tag>` (the paired protocol —
    ratios hold on a loaded host; absolute numbers only from a
@@ -142,7 +151,7 @@ catch drift before it compounds.
 7. Additional tests / corpus entries from findings — any new shape
    worth locking with an assertion or a stand-in probe.
 8. Post-review gate run — prove the hardening didn't regress
-   anything: all six gates green again.
+   anything: §Gates green again.
 9. Documentation audit — `docs/development/state.md` / ROADMAP / ADRs / grammar
    headers reflect current reality; prune stale `TODO`s.
 10. Repeat if the audit turned up a lot. Don't start the next
