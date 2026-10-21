@@ -18,8 +18,7 @@
 #     mostly fine — `(`, `)`, `{`, `}` all in punctuation; the
 #     option body is just nested key/value pairs that tokenize
 #     as ident + `=` + value.
-#   - Numeric literal suffixes (`1.5e3`). Same number-scanner
-#     limitation as java.cyml; cosmetic.
+#   - Floats (`1.5e3`) are one number since 2.7.0 (ADR 0026).
 #   - (Not a gap.) Reserved field tag ranges `reserved 100 to
 #     199;` / `reserved 5 to max;` — `reserved`, `to` and `max`
 #     are all in the keyword list, so these tokenize as keyword,
@@ -40,6 +39,7 @@ number_decimal = true
 number_0x      = true
 number_0b      = false
 number_0o      = false
+number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
 
 special_vars = false
 unicode_ident = true

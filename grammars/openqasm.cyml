@@ -33,19 +33,9 @@
 # cannot be redefined.
 #
 # Known gaps:
-#   - **Float literals split.** `OPENQASM 2.0;` tokenizes as
-#     `number(2)` + `punctuation(.)` + `number(0)`, and every other
-#     decimal fraction does the same. This is not an openqasm
-#     decision — the scanner has no float support at all
-#     (`src/grammar.cyr` understands only `number_decimal`,
-#     `number_0x`, `number_0b`, `number_0o`), so css, scss,
-#     protobuf, java and graphql all carry the identical gap.
-#     Coverage and the zero-error bar hold; the version header is
-#     three tokens instead of two. Removing `.` from punctuation
-#     would make it *worse* — the `.` would become TK_ERROR. A
-#     `number_float` default is a cross-grammar scanner change
-#     (all 46 grammars) and wants its own ADR; see CHANGELOG 2.3.5
-#     §Notes.
+#   - Floats (`OPENQASM 2.0;`, `0.5*pi`, `1e-3`) are one number
+#     since 2.7.0 (`number_float`, ADR 0026); `.` stays in the
+#     punctuation list for `.5`-style input, which still splits.
 #   - Timing literals (`100ns`, `2us`, `1dt` — OpenQASM 3 durations).
 #     The number scanner stops at the unit, yielding `number` +
 #     `ident`. Same shape as java.cyml's numeric suffixes; coverage
@@ -71,6 +61,7 @@ number_decimal = true
 number_0x      = true
 number_0b      = true
 number_0o      = true
+number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
 
 special_vars = false
 # OpenQASM identifiers are ASCII per spec, but non-ASCII shows up in

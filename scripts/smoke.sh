@@ -738,4 +738,19 @@ grep -q "^vyk: cannot read standard input" "$TMPDIR/cli.err" || fail "closed std
 exp_rc 2 "--language shell (space)" "$BIN" --language shell tests/corpus/shell.sh
 grep -q "^vyk: missing value for --language=" "$TMPDIR/cli.err" || fail "--language without = : wrong message"
 
+# ── 2.7.0 number literals (ADR 0026) ──
+# A float, a separated integer and a datetime are each one number token.
+printf '{"a": 1.5e-3}' > "$TMPDIR/n.json"
+"$BIN" "$TMPDIR/n.json" | grep -q '"kind":"number","start":6,"len":6' \
+    || fail "json 1.5e-3 is not one number token"
+printf 'x = 1_000_000\n' > "$TMPDIR/n.py"
+"$BIN" "$TMPDIR/n.py" | grep -q '"kind":"number","start":4,"len":9' \
+    || fail "python 1_000_000 is not one number token"
+printf 'd = 1979-05-27T07:32:00Z\n' > "$TMPDIR/n.toml"
+"$BIN" "$TMPDIR/n.toml" | grep -q '"kind":"number","start":4,"len":20' \
+    || fail "toml datetime is not one number token"
+printf 'for i in 0..10 {}\n' > "$TMPDIR/n.rs"
+"$BIN" "$TMPDIR/n.rs" | grep -q '"kind":"number","start":9,"len":1' \
+    || fail "rust 0..10 is no longer a range"
+
 echo "smoke: OK ($v_long) — M0 + M1 + M2 + M3 gates passing"

@@ -22,7 +22,8 @@
 #     minus signs.
 #   - Tags `!!str` / `!foo`. Emitted as operator(!) + operator(!) +
 #     ident, or operator(!) + ident.
-#   - Floats (`3.14`) split into number + . + number.
+#   - Floats (`3.14`) and timestamps (`2001-12-14t21:59:43Z`) are
+#     one number since 2.7.0 (ADR 0026); `1.2.3` is `1.2` `.` `3`.
 
 [grammar]
 name = "yaml"
@@ -44,6 +45,8 @@ number_decimal = true
 number_0x      = true
 number_0b      = true
 number_0o      = true
+number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
+number_datetime = true     # `1979-05-27T07:32:00Z` as one number (ADR 0026)
 
 special_vars = false
 

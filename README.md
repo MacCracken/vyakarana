@@ -139,6 +139,15 @@ was removed in 2.0.0 (ADR 0017).
 
 ## Status
 
+**2.7.0** (2026-10-20) — number literals. A float (`2.5e-3`), a
+digit-separated integer (`1_000`, C++ `1'000`) and a TOML / YAML
+date-time (`1979-05-27T07:32:00Z`) are each one `number` token in the
+grammars whose languages have them
+([ADR 0026](docs/adr/0026-number-literal-shapes.md)); ranges like
+`0..10` stay split. Token boundaries change, so consumers render these
+differently. 1013/1013 tests. Next on the
+[roadmap](docs/development/roadmap.md): 2.7.1 grammar polish.
+
 **2.6.2** (2026-10-20) — detection from grammar data, and the 2.6.x
 closeout audit. Each grammar's `extensions`, `filenames` and
 `shebangs` now say exactly which files route to it, and the tests hold
@@ -148,8 +157,7 @@ style names, `Makefile.am` / `.in`, and `pwsh` / `julia` shebangs.
 `.asm` is no longer claimed (NASM's `;` comments). A node or php script's
 `#!` line is one token. The audit fixed `${dir##*/}` (any `#` after an `r`
 opened a comment since 2.6.0) and the heredoc streaming path — chunked feeds
-now match a single feed on 813 real scripts. Next on the
-[roadmap](docs/development/roadmap.md): 2.7.0 number literals. Audit:
+now match a single feed on 813 real scripts. Audit:
 [docs/audit/2026-10-20-2.6.x-closeout-audit.md](docs/audit/2026-10-20-2.6.x-closeout-audit.md).
 
 **2.6.1** (2026-10-20) — CLI hardening: write failures (a full disk, a

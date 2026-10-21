@@ -25,10 +25,9 @@
 #   - User-defined literal suffixes (`42_km`, `"x"sv`). The
 #     suffix tokenizes as ident after the number/string —
 #     cosmetic; coverage holds.
-#   - Numeric digit separators (`1'000'000` in C++14+). The
-#     apostrophe digit-separator looks like char-literal context;
-#     could be confused with `char_literal`. Not in the stand-in;
-#     if it appears in a real corpus, add a `digit_sep` flag.
+#   - Digit separators `1'000'000` (C++14) are one number since
+#     2.7.0 (`number_separator = "'"`, ADR 0026); a `'` joins only
+#     when a digit follows, so `'a'` stays a char literal.
 #   - Preprocessor directives (`#include`, `#define`, `#ifdef`):
 #     same shape as C. Tokenize as `#` op + ident; coverage holds.
 #   - Trigraphs / digraphs (`<:`, `:>`, `??=`): obsolete; no
@@ -49,6 +48,8 @@ number_decimal = true
 number_0x      = true
 number_0b      = true
 number_0o      = false
+number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
+number_separator = "'"    # `1'000` (ADR 0026)
 
 special_vars = false
 unicode_ident = true
@@ -74,8 +75,8 @@ operators = [
     "<", ">",
     "?",
     "#",
-    # `'` is the C++14 digit separator (`1'000'000`) as well as the
-    # char-literal delimiter; `\` continues a line, which every
+    # `'` (a lone one; char literals and `1'000` digit separators are
+    # claimed before this list) and `\` continues a line, which every
     # multi-line macro relies on. Both are already in c.cyml —
     # cpp simply diverged.
     "'", "\\",

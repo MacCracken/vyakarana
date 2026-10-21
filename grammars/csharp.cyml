@@ -31,8 +31,8 @@
 #     `@` and `$` prefixes tokenize as separate operators;
 #     regular `"…"` rule absorbs the body. Cosmetic; coverage
 #     holds.
-#   - Numeric suffixes (`42L`, `1.5f`, `1_000_000`). Same shape
-#     as java.cyml — cosmetic; coverage holds.
+#   - Numeric suffixes (`42L`, `1.5m`) are number + ident. Floats
+#     and `1_000_000` are one number since 2.7.0 (ADR 0026).
 #   - Pattern-matching in switch expressions: `is`, `not`, `and`,
 #     `or` patterns. Only `is` is in the keyword list; `not` /
 #     `and` / `or` are contextual and tokenize as plain idents.
@@ -53,6 +53,8 @@ number_decimal = true
 number_0x      = true
 number_0b      = true
 number_0o      = false
+number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
+number_separator = "_"    # `1_000` (ADR 0026)
 
 special_vars = false
 unicode_ident = true

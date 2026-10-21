@@ -810,42 +810,149 @@ fn _ds_lookup_keyword(g, src, start, len) {
 # Number with optional 0x/0b/0o prefix. Returns length; 0 if not a
 # number. Caller has already checked is_digit on src[i].
 fn _ds_scan_number(g, src, src_len, i) {
+    var sep = grammar_number_sep(g);
     if (load8(src + i) == 48) {                # leading 0
         if (i + 1 < src_len) {
             var p = load8(src + i + 1);
             if ((grammar_number_0x(g) == 1) && ((p == 120) || (p == 88))) {
-                var j = i + 2;
-                while (j < src_len) {
-                    if (_ds_is_hex_digit(load8(src + j)) == 0) { return j - i; }
-                    j = j + 1;
-                }
-                return src_len - i;
+                return _ds_digit_run(src, src_len, i + 2, sep, 16) - i;
             }
             if ((grammar_number_0b(g) == 1) && ((p == 98) || (p == 66))) {
-                var j = i + 2;
-                while (j < src_len) {
-                    if (_ds_is_bin_digit(load8(src + j)) == 0) { return j - i; }
-                    j = j + 1;
-                }
-                return src_len - i;
+                return _ds_digit_run(src, src_len, i + 2, sep, 2) - i;
             }
             if ((grammar_number_0o(g) == 1) && ((p == 111) || (p == 79))) {
-                var j = i + 2;
-                while (j < src_len) {
-                    if (_ds_is_oct_digit(load8(src + j)) == 0) { return j - i; }
-                    j = j + 1;
-                }
-                return src_len - i;
+                return _ds_digit_run(src, src_len, i + 2, sep, 8) - i;
             }
         }
     }
     if (grammar_number_decimal(g) == 0) { return 0; }
-    var j = i + 1;
+    if (grammar_number_datetime(g) == 1) {
+        var dt = _ds_scan_datetime(src, src_len, i);
+        if (dt > 0) { return dt; }
+    }
+    var j = _ds_digit_run(src, src_len, i + 1, sep, 10);
+    if (grammar_number_float(g) == 1) {
+        # Fraction: `.` then a digit. A digit is required — `1..2` (a
+        # range), `1.max()` and `t.0.x` stay split — so a trailing-dot
+        # `1.` and a leading-dot `.5` are not floats (ADR 0026).
+        if (j + 1 < src_len) {
+            if ((load8(src + j) == 46) && (_ds_is_digit(load8(src + j + 1)) == 1)) {
+                j = _ds_digit_run(src, src_len, j + 2, sep, 10);
+            }
+        }
+        # Exponent: `e` / `E`, an optional sign, then a digit.
+        if (j < src_len) {
+            var eb = load8(src + j);
+            if ((eb == 101) || (eb == 69)) {
+                var k = j + 1;
+                if (k < src_len) {
+                    if ((load8(src + k) == 43) || (load8(src + k) == 45)) { k = k + 1; }
+                }
+                if (k < src_len) {
+                    if (_ds_is_digit(load8(src + k)) == 1) {
+                        j = _ds_digit_run(src, src_len, k + 1, sep, 10);
+                    }
+                }
+            }
+        }
+    }
+    return j - i;
+}
+
+# Offset just past the run of base-`base` digits starting at `j`. With a
+# digit separator `sep` (`[defaults] number_separator`, ADR 0026), a
+# `sep` byte joins the run only when a digit follows it: `1_000` is one
+# number, `1_u32` is `1` + `_u32`, `1__0` is `1` + `__0`.
+fn _ds_digit_run(src, src_len, j, sep, base) {
     while (j < src_len) {
-        if (_ds_is_digit(load8(src + j)) == 0) { return j - i; }
+        var b = load8(src + j);
+        var ok = 0;
+        if (base == 10) { ok = _ds_is_digit(b); }
+        if (base == 16) { ok = _ds_is_hex_digit(b); }
+        if (base == 2) { ok = _ds_is_bin_digit(b); }
+        if (base == 8) { ok = _ds_is_oct_digit(b); }
+        if ((ok == 0) && (sep > 0) && (b == sep) && (j + 1 < src_len)) {
+            var nb = load8(src + j + 1);
+            if (base == 10) { ok = _ds_is_digit(nb); }
+            if (base == 16) { ok = _ds_is_hex_digit(nb); }
+            if (base == 2) { ok = _ds_is_bin_digit(nb); }
+            if (base == 8) { ok = _ds_is_oct_digit(nb); }
+        }
+        if (ok == 0) { return j; }
         j = j + 1;
     }
-    return src_len - i;
+    return src_len;
+}
+
+# 1 if src[p..p+n) is n ASCII digits (all inside the buffer).
+fn _ds_digits_at(src, src_len, p, n) {
+    if (p + n > src_len) { return 0; }
+    var k = 0;
+    while (k < n) {
+        if (_ds_is_digit(load8(src + p + k)) == 0) { return 0; }
+        k = k + 1;
+    }
+    return 1;
+}
+
+# Length of the `HH:MM` time at `p`, extended by `:SS`, `.fraction` and
+# an offset (`Z` / `z` / `+HH:MM` / `-HH:MM`) when present; 0 if there
+# is no `HH:MM` there. TOML 1.1 and YAML make the seconds optional.
+fn _ds_scan_time(src, src_len, p) {
+    if (_ds_digits_at(src, src_len, p, 2) == 0) { return 0; }
+    if (p + 5 > src_len) { return 0; }
+    if (load8(src + p + 2) != 58) { return 0; }   # :
+    if (_ds_digits_at(src, src_len, p + 3, 2) == 0) { return 0; }
+    var q = p + 5;
+    if ((q + 3 <= src_len) && (load8(src + q) == 58) && (_ds_digits_at(src, src_len, q + 1, 2) == 1)) {
+        q = q + 3;
+        if ((q + 1 < src_len) && (load8(src + q) == 46) && (_ds_is_digit(load8(src + q + 1)) == 1)) {
+            q = _ds_digit_run(src, src_len, q + 2, 0, 10);
+        }
+    }
+    if (q < src_len) {
+        var z = load8(src + q);
+        if ((z == 90) || (z == 122)) { return q + 1 - p; }   # Z z
+        if ((z == 43) || (z == 45)) {                        # + -
+            if ((_ds_digits_at(src, src_len, q + 1, 2) == 1) && (q + 6 <= src_len)) {
+                if ((load8(src + q + 3) == 58) && (_ds_digits_at(src, src_len, q + 4, 2) == 1)) {
+                    return q + 6 - p;
+                }
+            }
+        }
+    }
+    return q - p;
+}
+
+# RFC 3339 / TOML date-times as one token (`[defaults] number_datetime`,
+# ADR 0026): `1979-05-27`, `1979-05-27T07:32:00Z`, `1979-05-27 07:32:00`
+# (TOML allows the space), `07:32:00.999` (a local time needs its
+# seconds, so `1:20` and `10:30` in prose are not times). 0 if src[i]
+# starts none of them; the caller then scans a plain number.
+fn _ds_scan_datetime(src, src_len, i) {
+    if ((_ds_digits_at(src, src_len, i, 4) == 1) && (i + 10 <= src_len)) {
+        if ((load8(src + i + 4) == 45) && (load8(src + i + 7) == 45)) {
+            if ((_ds_digits_at(src, src_len, i + 5, 2) == 1) && (_ds_digits_at(src, src_len, i + 8, 2) == 1)) {
+                var p = i + 10;
+                if (p < src_len) {
+                    var tb = load8(src + p);
+                    if ((tb == 84) || (tb == 116) || (tb == 32)) {   # T t space
+                        var tl = _ds_scan_time(src, src_len, p + 1);
+                        if (tl > 0) { return p + 1 + tl - i; }
+                    }
+                }
+                return p - i;
+            }
+        }
+    }
+    if ((_ds_digits_at(src, src_len, i, 2) == 1) && (i + 8 <= src_len)) {
+        if ((load8(src + i + 2) == 58) && (load8(src + i + 5) == 58)) {
+            if ((_ds_digits_at(src, src_len, i + 3, 2) == 1) && (_ds_digits_at(src, src_len, i + 6, 2) == 1)) {
+                return _ds_scan_time(src, src_len, i);
+            }
+        }
+    }
+    return 0;
 }
 
 # Whitespace run.

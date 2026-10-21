@@ -36,11 +36,9 @@
 # token-text shape if they want different colours.
 #
 # Known gaps (not triggered by the stand-in):
-#   - Float numbers (`1.5`, `0.25`). The number scanner stops
-#     at `.`; `1.5rem` becomes `number(1) + .(punct) +
-#     number(5) + ident(rem)`. Cosmetic; very common in CSS.
-#     Same gap as java.cyml. A future `number_float` default
-#     would close this across all C-family grammars.
+#   - Floats (`1.5rem`, `0.25`) are number + unit since 2.7.0
+#     (`number_float`, ADR 0026). A leading-dot `.5em` still
+#     splits — `.` also starts class selectors.
 #   - URL functions `url(...)` body parsing. `url` is just an
 #     ident; the `(...)` body tokenizes as nested
 #     punctuation + string.
@@ -62,6 +60,7 @@ number_decimal = true
 number_0x      = false
 number_0b      = false
 number_0o      = false
+number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
 
 special_vars = false
 unicode_ident = true

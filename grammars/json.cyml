@@ -13,12 +13,9 @@
 # on top is free to reject.
 #
 # Out of scope (first pass):
-#   - Fraction / exponent form (`0.1`, `1e5`, `1.5e-3`). The default
-#     scanner handles leading-digit runs + 0x/0b/0o prefixes; no
-#     `.`/`e`. Falls back to multi-token: `1.5e-3` is number `1`,
-#     `.` op, number `5`, ident `e`, `-` op, number `3`. Not an
-#     error since 2.5.2 (see `.` in the operators below); a real
-#     float token is an ADR candidate (`number_float`).
+#   - Fraction / exponent form (`0.1`, `1e5`, `1.5e-3`) is one
+#     number since 2.7.0 (`number_float`, ADR 0026). The sign of a
+#     negative number stays its own `-` operator.
 #   - Unicode escapes inside strings (`\uNNNN`) — passed through as
 #     part of the string token (bytes preserved, no decoding).
 
@@ -41,6 +38,7 @@ number_decimal = true
 number_0x      = false
 number_0b      = false
 number_0o      = false
+number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
 
 special_vars = false
 
@@ -49,13 +47,10 @@ special_vars = false
 # inputs).
 operators = [
     "+", "-",
-    # `.` for the fraction of a number. The scanner has no float
-    # literal yet, so `0.1` is number `0`, `.`, number `1` — the same
-    # split every other grammar gives a float. Through 2.5.1 `.` was
-    # in neither list and emitted TK_ERROR, so ANY JSON document
-    # with a decimal number made `vyk` exit 1 (2.5.2 audit P1-5) —
-    # despite the header saying floats split "not as an error".
-    # A real float token is roadmap work (`number_float`).
+    # `.` for malformed numbers (`1.`, `.5`): a well-formed fraction
+    # is one number token since 2.7.0, but without `.` here those
+    # would be TK_ERROR — through 2.5.1 every decimal made `vyk`
+    # exit 1 that way (2.5.2 audit P1-5).
     ".",
 ]
 

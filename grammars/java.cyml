@@ -27,12 +27,10 @@
 #     ordered before the regular `"…"` rule (same shape as
 #     [ADR 0008](../docs/adr/0008-toml-triple-quoted-strings.md)
 #     for TOML).
-#   - Numeric literal suffixes (`42L`, `3.14f`) and underscores
-#     (`1_000_000`). Tokenize as number + ident or fragment at the
-#     `_` — cosmetic; coverage holds.
-#   - Float literals (`3.14`). The number scanner stops at `.`;
-#     `3.14` becomes `number(3) + .(punct) + number(14)`.
-#     Cosmetic; coverage holds.
+#   - Numeric literal suffixes (`42L`, `3.14f`) are number + ident.
+#     Floats (`3.14`, `1e5`) and `1_000_000` are one number since
+#     2.7.0 (ADR 0026); `.5` and `1.` (no digit after the dot) stay
+#     split.
 
 [grammar]
 name = "java"
@@ -50,6 +48,8 @@ number_decimal = true
 number_0x      = true
 number_0b      = true
 number_0o      = false
+number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
+number_separator = "_"    # `1_000` (ADR 0026)
 
 special_vars = false
 unicode_ident = true

@@ -39,6 +39,7 @@ sub-blocks).
 | 0023 | [`heredoc` rule type for here-documents](0023-heredoc-rule.md)                        | Accepted | 2026-10-20 |
 | 0024 | [Char-literal escape forms beyond `'\C'` / `'\xHH'`](0024-char-literal-escape-forms.md) | Accepted | 2026-10-20 |
 | 0025 | [Grammars declare their detection routes; `detect.cyr` stays compiled](0025-detection-declared-by-grammars.md) | Accepted | 2026-10-20 |
+| 0026 | [Number literal shapes: floats, digit separators, datetimes](0026-number-literal-shapes.md) | Accepted | 2026-10-20 |
 
 ## Conventions
 

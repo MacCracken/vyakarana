@@ -422,6 +422,22 @@ fn tokenize_stream_feed(s, chunk, n) {
 # starts at `p`, so `p + max_marker <= buf_len` is exactly the point
 # where the buffer is known to hold every candidate. Markers are 1-4
 # bytes in practice, so this holds back almost nothing.
+# Bytes past a NUMBER token's end that can still extend it (ADR 0026):
+# a separator + digit (2), `e` + sign + digit (3), and for datetimes the
+# longest step — `-MM-DD` after `YYYY`, `THH:MM` after a date, an
+# `+HH:MM` offset (6). Zero for a grammar with none of the three, which
+# keeps every pre-2.7.0 grammar's drain unchanged. Without it, `1.` at
+# the end of a feed committed `1` and the next feed's `5` became a
+# second number — a plain number token ends before the buffer does, so
+# the "ends before buf_len" rule called it settled.
+fn _stream_num_lookahead(g) {
+    var la = 0;
+    if (grammar_number_sep(g) > 0) { la = 2; }
+    if (grammar_number_float(g) == 1) { la = 3; }
+    if (grammar_number_datetime(g) == 1) { la = 6; }
+    return la;
+}
+
 fn _stream_max_marker(g) {
     var best = 1;
     var ops = grammar_operators(g);
@@ -1221,14 +1237,15 @@ fn tokenize_stream_drain(s, out_tb) {
         # The carve-out costs little: compose grammars are markdown,
         # html, vue, svelte and cyml. Every other grammar — rust, go,
         # python, c, java, … — gets the window and with it
-        # chunk-invariance. The compose five remain divergent and are
-        # tracked in `docs/development/state.md` §Next up.
+        # chunk-invariance. The compose five remain divergent; fixing
+        # them is the roadmap's 2.8.0 entry.
         var has_compose = 0;
         if (vec_len(grammar_compose_rules(g)) > 0) { has_compose = 1; }
         if (vec_len(grammar_compose_fenced_rules(g)) > 0) { has_compose = 1; }
         if (vec_len(grammar_compose_region_rules(g)) > 0) { has_compose = 1; }
         var max_marker = 0;
         if (has_compose == 0) { max_marker = _stream_max_marker(g); }
+        var num_la = _stream_num_lookahead(g);
         var i = 0;
         var stop = 0;
         while ((i < n_temp) && (stop == 0)) {
@@ -1249,6 +1266,8 @@ fn tokenize_stream_drain(s, out_tb) {
             # arrives — that is how xml's `<!--` comment was lost.
             # Holds back at most `max_marker` bytes per drain.
             if ((in_grp == 0) && (t_start + max_marker > buf_len)) { safe = 0; }
+            # A number the next bytes could still extend (`1` + `.5`).
+            if ((t_kind == TK_NUMBER) && (t_start + t_len + num_la > buf_len)) { safe = 0; }
             # A pair token a longer opener could still claim is not
             # settled either, no matter where it ends — this is the
             # path that actually committed python's stray `""`.

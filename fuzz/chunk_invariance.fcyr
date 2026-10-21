@@ -37,6 +37,11 @@ include "src/grammar.cyr"
 include "src/tokenize.cyr"
 
 var _CI_CAP = 1048576;
+# How many corpora / every-offset shapes ran, for the summary line. It
+# was a hand-written count, stale twice ("15 grammars" until 2.6.2, then
+# "12 shapes" while 24 ran).
+var _ci_n_corpora = 0;
+var _ci_n_shapes = 0;
 
 # Feed `src`/`n` in `chunk`-sized pieces, draining after each.
 fn _ci_tok(lang, src, n, chunk) {
@@ -113,6 +118,7 @@ fn _ci_same(a, b, lang, chunk) {
 
 # Run every chunk size for one corpus file. Returns 0 on success.
 fn _ci_one(path, lang) {
+    _ci_n_corpora = _ci_n_corpora + 1;
     var buf = alloc(_CI_CAP);
     if (buf == 0) { return 1; }
     var n = file_read_all(path, buf, _CI_CAP - 1);
@@ -189,6 +195,7 @@ fn _ci_one(path, lang) {
 # Every-offset two-feed split of a short literal input — the exact
 # shapes the 2.5.2 audit found. Returns 0 on success.
 fn _ci_every(lang, src) {
+    _ci_n_shapes = _ci_n_shapes + 1;
     var n = strlen(src);
     var whole = _ci_tok(lang, src, n, n);
     if (whole == 0) { return 1; }
@@ -293,6 +300,14 @@ fn _ci_main() {
     if (_ci_every("shell", "a <<E <<F\nE\nF\nz\n") != 0) { rc = 1; }
     if (_ci_every("shell", "sed 's/((a)/' <<EOF\nit's\nEOF\ncat <<END-OF-DATA\nb # c\nEND-OF-DATA\n") != 0) { rc = 1; }
     if (_ci_every("shell", "cat <<EOF\r\nx # y\r\nEOF\r\nb=${dir##*/}\r#c\n") != 0) { rc = 1; }
+    # 2.7.0 number shapes (ADR 0026): a number the next bytes can extend
+    # — `1` + `.5`, `1_` + `000`, `1979` + `-05-27` — must not commit early.
+    if (_ci_every("python", "x = 1.5e-3 + 1_000 + 0x_FF + 1.max + 2E+10 + 7\n") != 0) { rc = 1; }
+    if (_ci_every("rust", "let r = 0..10; t.0.1; 1_000u32; 2.5e10_f64; 12345.678_9\n") != 0) { rc = 1; }
+    if (_ci_every("cpp", "int x = 1'000'000; char c = 'a'; double d = 1.0e3f;\n") != 0) { rc = 1; }
+    if (_ci_every("toml", "d = 1979-05-27T07:32:00.999-07:00\ne = 1979-05-27 07:32:00\nt = 07:32:00\nf = 6.626e-34\n") != 0) { rc = 1; }
+    if (_ci_every("yaml", "date: 2001-12-14t21:59:43Z\nv: 1.2.3\nn: 12345\n") != 0) { rc = 1; }
+    if (_ci_every("json", "{\"a\": -1.5E+10, \"b\": 0.25, \"c\": 123456789}") != 0) { rc = 1; }
     if (_ci_every("php", "<?php $a === $b && $c !== $d;") != 0) { rc = 1; }
     if (_ci_every("ocaml", "let xs = 1 :: 2 :: [];;") != 0) { rc = 1; }
 
@@ -307,9 +322,11 @@ fn _harness_main() {
         eprint("chunk-invariance fuzz: FAIL\n", 28);
         return 1;
     }
-    # The counts are this file's `_ci_one` / `_ci_every` lines; this
-    # message said "15 grammars" from 2.4.0 until 2.6.2.
-    print("chunk-invariance fuzz: OK (42 corpora x 8 chunk sizes + 37-byte two-feed splits; 12 every-offset shapes)\n", 105);
+    print("chunk-invariance fuzz: OK (", 27);
+    fmt_int(_ci_n_corpora);
+    print(" corpora x 8 chunk sizes + 37-byte two-feed splits; ", 52);
+    fmt_int(_ci_n_shapes);
+    print(" every-offset shapes)\n", 22);
     return 0;
 }
 

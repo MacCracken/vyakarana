@@ -45,15 +45,18 @@ var GRAMMAR_FILE_CAP = 32768;
 #  176  compose_region_rules Vec<ComposeRegionRule> — open-ended region routing (ADR 0019)
 #  184  heredoc_rules       Vec<HeredocRule> — here-documents (ADR 0023, 2.6.0)
 #  192  filenames           Vec<cstr>   basenames that route here (ADR 0025, 2.6.2)
+#  200  number_float        i64  (0/1) — `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026, 2.7.0)
+#  208  number_separator    i64  digit separator byte (`_`, `'`), 0 = none, -1 = invalid (ADR 0026)
+#  216  number_datetime     i64  (0/1) — RFC 3339 dates / times as one number (ADR 0026)
 #  -----
-#  200 bytes total
+#  224 bytes total
 #
 # `extensions`, `filenames` and `shebangs` declare what
 # `src/detect.cyr` routes to this grammar. Detection does not read
 # them — it is compiled — but tests/vyakarana.tcyr and
 # scripts/check-detect.sh hold the two equal in both directions.
 
-var GRAMMAR_SIZE = 200;
+var GRAMMAR_SIZE = 224;
 
 fn grammar_new() {
     var g = alloc(GRAMMAR_SIZE);
@@ -102,6 +105,9 @@ fn grammar_compose_fenced_rules(g) { return load64(g + 168); }
 fn grammar_compose_region_rules(g) { return load64(g + 176); }
 fn grammar_heredoc_rules(g)        { return load64(g + 184); }
 fn grammar_filenames(g)            { return load64(g + 192); }
+fn grammar_number_float(g)         { return load64(g + 200); }
+fn grammar_number_sep(g)           { return load64(g + 208); }
+fn grammar_number_datetime(g)      { return load64(g + 216); }
 
 # Here-document rule (ADR 0023): `start` opens it (`<<`); an optional
 # one-byte `indent` marker right after the start (`-` for `<<-`) lets
@@ -533,6 +539,30 @@ fn _gp_apply_kv(g, current_rule, section, buf, len, key_pos, key_len, value_pos)
             store64(g + 80, load64(out_bool_slot));
             return 0;
         }
+        if (_gp_slice_eq(buf, key_pos, key_len, "number_float") == 1) {
+            _gp_parse_bool(buf, len, value_pos, out_bool_slot);
+            store64(g + 200, load64(out_bool_slot));
+            return 0;
+        }
+        # One byte that is not a digit; anything else rejects the grammar
+        # (`_gp_validate`), rather than splitting numbers on a guess.
+        if (_gp_slice_eq(buf, key_pos, key_len, "number_separator") == 1) {
+            _gp_parse_string(buf, len, value_pos, out_str_slot);
+            var nsv = load64(out_str_slot);
+            store64(g + 208, (0 - 1));
+            if (nsv != 0) {
+                if (strlen(nsv) == 0) { store64(g + 208, 0); }
+                if (strlen(nsv) == 1) {
+                    if (_ds_is_digit(load8(nsv)) == 0) { store64(g + 208, load8(nsv)); }
+                }
+            }
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "number_datetime") == 1) {
+            _gp_parse_bool(buf, len, value_pos, out_bool_slot);
+            store64(g + 216, load64(out_bool_slot));
+            return 0;
+        }
         if (_gp_slice_eq(buf, key_pos, key_len, "special_vars") == 1) {
             _gp_parse_bool(buf, len, value_pos, out_bool_slot);
             store64(g + 88, load64(out_bool_slot));
@@ -785,6 +815,7 @@ fn _gp_new_rule_acc() {
 # and starved every entry after it. A compose rule whose `inner` is
 # the grammar itself recursed without bound.
 fn _gp_validate(g) {
+    if (grammar_number_sep(g) < 0) { return 1; }
     var st = grammar_ident_start(g);
     var ct = grammar_ident_cont(g);
     if ((st == 0) && (ct != 0)) { return 1; }

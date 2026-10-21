@@ -28,8 +28,8 @@
 #     Add a pair rule ahead of the regular string rule when a
 #     corpus needs them — see [ADR 0008](../docs/adr/0008-toml-triple-quoted-strings.md)
 #     for the same shape in TOML.
-#   - Numeric suffixes (`42L`, `1.5f`, `1_000_000`). Same story
-#     as java.cyml — cosmetic; coverage holds.
+#   - Numeric suffixes (`42L`, `1.5f`) are number + ident; floats
+#     and `1_000_000` are one number since 2.7.0 (ADR 0026).
 
 [grammar]
 name = "kotlin"
@@ -46,6 +46,8 @@ number_decimal = true
 number_0x      = true
 number_0b      = true
 number_0o      = false
+number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
+number_separator = "_"    # `1_000` (ADR 0026)
 
 special_vars = false
 unicode_ident = true

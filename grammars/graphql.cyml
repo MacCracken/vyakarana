@@ -28,14 +28,8 @@
 # ident. Same call as Java / Kotlin / Zig.
 #
 # Known gaps (not triggered by the stand-in):
-#   - Float / scientific notation (`3.14`, `1.5e3`) is not ONE
-#     token — it comes back as `number` + `.` + `number` (plus an
-#     `e`/sign ident for the exponent). Every byte is still
-#     covered and nothing errors; the operators block below
-#     explains which pieces claim `.`, `-` and the exponent. This
-#     is the scanner-wide float gap (`number_decimal` / `_0x` /
-#     `_0b` / `_0o` only), shared with css, scss, protobuf, java
-#     and openqasm — not a graphql-specific decision.
+#   - FloatValue (`3.14`, `1.5e3`) is one number since 2.7.0
+#     (`number_float`, ADR 0026); it was number + `.` + number.
 #   - Custom directive bodies are tokenized as ident + arg
 #     list; renderers can re-pair the directive form by token
 #     text.
@@ -55,6 +49,7 @@ number_decimal = true
 number_0x      = false
 number_0b      = false
 number_0o      = false
+number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
 
 special_vars = false
 unicode_ident = true
@@ -68,11 +63,9 @@ operators = [
     "...",
     "=",
     "!", "|", "&",
-    # Float / scientific notation — `3.14`, `1.5e+3` — and
-    # negative values (`first: -1`). IntValue admits a leading
-    # `-`; FloatValue admits `.` and a signed ExponentPart.
-    # These keep every piece off TK_ERROR; a float is still
-    # multi-token, so the float gap in the header stays open.
+    # `-` for negative values (`first: -1`); `.` and `+` stay so a
+    # malformed number (`1.`, `.5`, `1e+`) splits without TK_ERROR —
+    # a well-formed float is one number token (ADR 0026).
     ".", "+", "-",
 ]
 

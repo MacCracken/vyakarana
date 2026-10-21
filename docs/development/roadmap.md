@@ -33,16 +33,6 @@ from this file.
 
 ## Pinned releases
 
-### 2.7.0 — Number literals *(minor: token boundaries change)*
-
-- **`[defaults] number_float`** — fraction and exponent as one number
-  token (ADR). Today `0.1` is `0` `.` `1` everywhere and `1e5` is `1` +
-  ident `e5`. Opt in json, python, javascript, typescript, rust, go,
-  c, cpp, java, kotlin, csharp, swift, zig, lua, julia, css / scss,
-  protobuf, graphql, openqasm (`OPENQASM 2.0;` is three tokens). TOML
-  floats and datetimes (scoped out by ADR 0008).
-- Per-grammar digit separators (`1_000`) where the language has them.
-
 ### 2.7.1 — Grammar polish *(patch)*
 
 - PHP 8 `#[attr]` (swallowed by the `#` comment rule); ruby / crystal
@@ -89,8 +79,8 @@ from this file.
 
 ### 2.9.0 — Size and tooling *(minor)*
 
-- **Binary size.** The default `vyk` is ~474 KB and the DCE build
-  (what releases ship) ~384 KB, against 1.13.0's 300 KB soft cap. The
+- **Binary size.** The default `vyk` is ~480 KB and the DCE build
+  (what releases ship) ~390 KB, against 1.13.0's 300 KB soft cap. The
   cheapest lever: strip comments when embedding — the blobs carry each
   `.cyml` verbatim and most of their ~232 KB is comment text. Then
   revisit the cap or the blob encoding (ADR 0014).
@@ -120,6 +110,9 @@ does.
   `detect_language_registered(path)` that walks the registry, if a
   consumer wants vyakarana to route its own grammars
   ([ADR 0025](../adr/0025-detection-declared-by-grammars.md)).
+- **Number shapes ADR 0026 left out** — leading- / trailing-dot floats
+  (`.5`, `1.`) and suffixes as part of the literal (`1.5f`, `2j`,
+  `1u32`), if a consumer wants them coloured as one token.
 - **Regex rule type** — only under the constraint above.
 - **3.0.0** — only for a consumer-driven contract break (token kinds,
   `Token` layout, the streaming API). None is planned.

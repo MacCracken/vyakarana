@@ -4,6 +4,60 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.7.0] — 2026-10-20
+
+**Number literals.** [ADR 0026](docs/adr/0026-number-literal-shapes.md): a
+float, a digit-separated integer and an RFC 3339 date-time are each one
+`number` token in the grammars whose languages have them. Through 2.6.2 `0.1`
+was `0` `.` `1` in every grammar, `1e5` was `1` + ident `e5`, and `1_000` was
+`1` + ident `_000` — although the README's token table has listed `1_000` as a
+number since 1.0. **Token boundaries change** (a minor): over 4,500 real files,
+773 tokenize differently, every change to a number token, no exit code changes.
+1013/1013 tests, smoke OK, lint+fmt exit 0, fuzz 5/5; every-offset two-feed
+splits clean on all 42 non-compose corpora.
+
+### Added
+
+- **`[defaults] number_float = true`** — a fraction (`.` and a digit) and an
+  exponent (`e` / `E`, an optional sign, a digit) continue a decimal number:
+  `1.5`, `2.5e-3`, `6.626e-34`, `OPENQASM 2.0`. The required digit keeps `1..2`
+  ranges, `1.max()` and `1e` split; `.5`, `1.`, hex floats and suffixes (`1.5f`,
+  `2j`, `1u32`) are out of scope. Opted in: json, python, javascript,
+  typescript, rust, go, c, cpp, java, kotlin, csharp, swift, zig, lua, julia,
+  css, scss, protobuf, graphql, openqasm, toml, yaml, cyml, ruby, crystal,
+  elixir, haskell, ocaml, php, sql, powershell, terraform, llvm_ir, cyrius.
+- **`[defaults] number_separator = "_"`** (or `"'"`) — joins a digit run in any
+  base when a digit follows: `1_000`, `0xFF_FF`, `1_000.000_1`; `1_u32` is still
+  number + suffix. `_` in rust, python, java, kotlin, csharp, swift,
+  javascript, typescript, go, zig, julia, ruby, crystal, elixir, ocaml, haskell,
+  php, toml, cyrius; C++'s `'` (`1'000'000`, while `'a'` stays a char literal).
+  Any value other than one non-digit byte rejects the grammar.
+- **`[defaults] number_datetime = true`** — TOML / YAML / CYML dates and times
+  as one number: `1979-05-27`, `1979-05-27T07:32:00Z`, `1979-05-27 07:32:00`,
+  `07:32:00.999`. A standalone time needs its seconds (`10:30` is not one).
+- Streaming: a number token commits only once the bytes that could extend it
+  have arrived (2 / 3 / 6 by the shapes a grammar opts into) — without it `1.`
+  at a feed's end committed `1`. `fuzz/chunk_invariance.fcyr` gained six number
+  shapes, which fail at 58 split offsets with that lookahead disabled.
+- Tests: "2.7.0 number literals" group (23 assertions); smoke checks a JSON
+  float, a separated Python integer, a TOML datetime and a Rust range end to
+  end.
+
+### Changed
+
+- **`docs/development/state.md` is present state only** — the "What X changed"
+  block for every release back to 1.13.0 and the dated history in its header
+  are gone (1,439 → 150 lines). The CHANGELOG holds the history; each release
+  now edits `state.md` in place.
+- Grammar header notes that described the float / separator gap (json, java,
+  graphql, openqasm, css, scss, csharp, kotlin, go, ocaml, php, elixir, ruby,
+  sql, protobuf, toml, yaml, rust, cpp) describe what is tokenized now.
+- `fuzz/chunk_invariance.fcyr` counts the corpora and shapes it ran instead of
+  printing a hand-written count — it said "12 every-offset shapes" while 24 ran
+  in 2.6.2 (30 now).
+- The latency baseline in `docs/development/performance.md` is refreshed for
+  the minor (all tokenize rows within 2 % of 2.6.2).
+
 ## [2.6.2] — 2026-10-20
 
 **Detection from grammar data, and the 2.6.x closeout audit.**

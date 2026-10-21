@@ -32,8 +32,8 @@
 #     pair span per [ADR 0003](../docs/adr/0003-string-expansion-not-retokenized.md).
 #   - Atoms `:foo` tokenize as `:` punctuation + `foo` ident.
 #     Cosmetic; theme can post-process.
-#   - Numeric underscores (`1_000_000`) — number scanner stops
-#     at `_`, yielding `number + ident`. Cosmetic.
+#   - `1_000_000` and floats are one number since 2.7.0 (ADR 0026);
+#     `1..10` stays a range.
 
 [grammar]
 name = "elixir"
@@ -51,6 +51,8 @@ number_decimal = true
 number_0x      = true
 number_0b      = true
 number_0o      = true
+number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
+number_separator = "_"    # `1_000` (ADR 0026)
 
 special_vars = false
 unicode_ident = true

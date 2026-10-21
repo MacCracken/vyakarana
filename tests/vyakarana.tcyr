@@ -87,6 +87,16 @@ fn _t_kind_at(tb, off) {
     return (0 - 1);
 }
 
+# Length of the token that starts at byte `off` in `tb`, or -1 (2.7.0).
+fn _t_len_at(tb, off) {
+    var i = 0;
+    while (i < tokenbuf_count(tb)) {
+        if (tokenbuf_start(tb, i) == off) { return tokenbuf_len(tb, i); }
+        i = i + 1;
+    }
+    return (0 - 1);
+}
+
 # 1 if two tokenbufs are identical (kind, start, len for every token).
 fn _t_same_tokens(a, b) {
     if (tokenbuf_count(a) != tokenbuf_count(b)) { return 0; }
@@ -3929,6 +3939,42 @@ fn main() {
     assert(au6_max <= VYK_HEREDOC_HOLD_MAX + 8192, "  ... and the held buffer stays within the 1 MiB bound");
     var au6_end = tokenbuf_start(au6_tb, tokenbuf_count(au6_tb) - 1) + tokenbuf_len(au6_tb, tokenbuf_count(au6_tb) - 1);
     assert_eq(au6_end, au6_fed, "  ... and the tokens still cover every byte");
+
+    test_group("2.7.0 number literals — float, separator, datetime (ADR 0026)");
+    var nl7_py = _t_tokenize("x = 1.5e-3 + 1_000 + 0x_FF + 1.max + 2j\n", "python");
+    assert_eq(_t_kind_at(nl7_py, 4), TK_NUMBER, "python 1.5e-3 is a number");
+    assert_eq(_t_len_at(nl7_py, 4), 6, "  ... one token, exponent and sign included");
+    assert_eq(_t_len_at(nl7_py, 13), 5, "python 1_000 is one number");
+    assert_eq(_t_len_at(nl7_py, 21), 5, "python 0x_FF: the separator works in hex");
+    assert_eq(_t_len_at(nl7_py, 29), 1, "1.max: a dot not followed by a digit stays a dot");
+    assert_eq(_t_len_at(nl7_py, 37), 1, "2j: the suffix stays an identifier");
+    var nl7_rs = _t_tokenize("let r = 0..10; t.0.1; 1_000u32; 2.5e10_f64;\n", "rust");
+    assert_eq(_t_len_at(nl7_rs, 8), 1, "rust 0..10 stays a range");
+    assert_eq(_t_len_at(nl7_rs, 17), 3, "rust t.0.1 lexes 0.1 as one float, as rustc does");
+    assert_eq(_t_len_at(nl7_rs, 22), 5, "rust 1_000u32: number then suffix");
+    assert_eq(_t_len_at(nl7_rs, 32), 6, "rust 2.5e10_f64: the `_f` is no separator");
+    var nl7_cpp = _t_tokenize("int x = 1'000'000; char c = 'a';\n", "cpp");
+    assert_eq(_t_len_at(nl7_cpp, 8), 9, "c++ 1'000'000 is one number");
+    assert_eq(_t_kind_at(nl7_cpp, 28), TK_STRING, "  ... and 'a' is still a char literal");
+    var nl7_c = _t_tokenize("x = 1.; y = 1_000;\n", "c");
+    assert_eq(_t_len_at(nl7_c, 4), 1, "c 1. (trailing dot) is not a float (needs a digit)");
+    assert_eq(_t_len_at(nl7_c, 12), 1, "c has no `_` separator");
+    var nl7_toml = _t_tokenize("d = 1979-05-27T07:32:00Z\ne = 1979-05-27 07:32:00\nt = 07:32:00.5\n", "toml");
+    assert_eq(_t_len_at(nl7_toml, 4), 20, "toml offset datetime is one token");
+    assert_eq(_t_len_at(nl7_toml, 29), 19, "toml space-separated local datetime is one token");
+    assert_eq(_t_len_at(nl7_toml, 53), 10, "toml local time with fraction is one token");
+    var nl7_yaml = _t_tokenize("t: 10:30\n", "yaml");
+    assert_eq(_t_len_at(nl7_yaml, 3), 2, "yaml 10:30 (no seconds) is not a time");
+    var nl7_json = _t_tokenize("[-1.5E+10, 1e]", "json");
+    assert_eq(_t_len_at(nl7_json, 2), 7, "json 1.5E+10 is one number");
+    assert_eq(_t_len_at(nl7_json, 11), 1, "json 1e (no exponent digit) stays 1");
+    var nl7_sh = _t_tokenize("echo 1.5\n", "shell");
+    assert_eq(_t_len_at(nl7_sh, 5), 1, "shell does not opt in: 1.5 stays split");
+    # A separator must be one non-digit byte.
+    var nl7_g1 = "[grammar]\nname = \"x\"\n[defaults]\nnumber_decimal = true\nnumber_separator = \"ab\"\n";
+    assert_eq(_gp_parse(nl7_g1, strlen(nl7_g1)), 0, "a two-byte number_separator rejects the grammar");
+    var nl7_g2 = "[grammar]\nname = \"x\"\n[defaults]\nnumber_decimal = true\nnumber_separator = \"1\"\n";
+    assert_eq(_gp_parse(nl7_g2, strlen(nl7_g2)), 0, "a digit number_separator rejects the grammar");
 
     return assert_summary();
 }

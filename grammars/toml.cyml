@@ -19,9 +19,9 @@
 # [ADR 0008](../docs/adr/0008-toml-triple-quoted-strings.md).
 #
 # Out of scope (still no corpus):
-#   - Float literals (`3.14`)
-#   - Date/datetime literals (`1979-05-27T07:32:00Z`)
-# Both remain ADR candidates if a future corpus needs them.
+# Floats (`3.14`, `6.626e-34`), `1_000`, and RFC 3339 dates / times
+# (`1979-05-27T07:32:00Z`, `1979-05-27 07:32:00`, `07:32:00`) are one
+# number token since 2.7.0 (ADR 0026). `inf` / `nan` are idents.
 
 [grammar]
 name = "toml"
@@ -45,6 +45,9 @@ number_decimal = true
 number_0x      = true
 number_0b      = true
 number_0o      = true
+number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
+number_separator = "_"    # `1_000` (ADR 0026)
+number_datetime = true     # `1979-05-27T07:32:00Z` as one number (ADR 0026)
 
 # No shell-style $X variable syntax.
 special_vars = false

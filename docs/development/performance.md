@@ -19,11 +19,18 @@ host — variance ~±10% between runs.
 
 | Artifact                    | Size (bytes) | Size (KB) | Notes                                         |
 |-----------------------------|-------------:|----------:|-----------------------------------------------|
-| `build/vyk` (CLI binary)    |      473,936 |     462.8 | Includes 46 inlined grammars (~232 KB of text) |
-| `build/vyk`, `CYRIUS_DCE=1` |      383,824 |     374.8 | Same tree, dead fns compacted out — **what releases ship** |
-| `dist/vyakarana.cyr`        |      471,842 |     460.8 | Single-file bundle for `cyrius deps` (5,982 lines) |
+| `build/vyk` (CLI binary)    |      480,144 |     468.9 | Includes 46 inlined grammars (~234 KB of text) |
+| `build/vyk`, `CYRIUS_DCE=1` |      390,032 |     380.9 | Same tree, dead fns compacted out — **what releases ship** |
+| `dist/vyakarana.cyr`        |      481,212 |     469.9 | Single-file bundle for `cyrius deps` (6,139 lines) |
 
-**Re-captured 2026-10-20 at `2.6.2`, 6.7.15 toolchain.** 2.6.0 →
+**Re-captured 2026-10-20 at `2.7.0`, 6.7.15 toolchain.** 2.6.2 →
+2.7.0: 473,936 → 480,144 (+6,208; DCE 383,824 → 390,032) — the number
+scanner (`_ds_digit_run`, `_ds_scan_datetime`, `_ds_scan_time`), the
+three new `[defaults]` keys and the drain's number lookahead; the
+blobs grew 2.1 KB (opt-in lines; the grammars' float-gap notes got
+shorter).
+
+**`2.6.2` capture (same day).** 2.6.0 →
 2.6.1: 459,632 → 464,320 (+4,688; DCE 369,520 → 374,208) — the CLI's
 checked stdout writer (`src/out.cyr`) and argument parsing; CLI-only,
 so the bundle did not grow. 2.6.1 → 2.6.2: → 473,936 (+9,616; DCE →
@@ -243,7 +250,33 @@ win. The `2.3.0` table was captured on 6.5.4, which does subtract
 it. Table not refreshed: the documented cadence is minor-release
 boundaries, and this is a patch.
 
-## Tokenize / detect / load latencies (2.6.0 baseline, 2026-10-20)
+## Tokenize / detect / load latencies (2.7.0 baseline, 2026-10-20)
+
+Paired protocol (iterations ÷ 10, 2.6.2 and 2.7.0 alternated for 10
+rounds, host load ≈ 1.2), best run:
+
+| Benchmark                  |       Avg |       Min |       Max | Iterations |
+|----------------------------|----------:|----------:|----------:|-----------:|
+| tokenize/shell-small       | 10.849 µs | 10.638 µs | 11.281 µs | 100,000 × 10 runs |
+| tokenize/rust-small        | 16.103 µs | 15.866 µs | 18.000 µs | 100,000 × 10 runs |
+| tokenize/json-small        |  3.774 µs |  3.694 µs |  4.021 µs | 100,000 × 10 runs |
+| tokenize/html-compose      |  7.359 µs |  7.195 µs |  7.769 µs | 100,000 × 10 runs |
+| detect/path-shell          |     32 ns |     31 ns |     36 ns | 1,000,000 × 10 runs |
+| detect/content-python      |    188 ns |    186 ns |    197 ns | 1,000,000 × 10 runs |
+| detect/combined-asm-arm    |  5.265 µs |  5.229 µs |  5.569 µs | 100,000 × 10 runs |
+| blob/grammar-load-shell    | 30.292 µs | 29.885 µs | 32.242 µs | 10,000 × 10 runs |
+
+**Median per-round ratio 2.7.0 / 2.6.2:** content-python −13.8 %,
+path-shell −4.2 %, html-compose −2.8 %, combined-asm-arm −0.9 %,
+shell-small −0.7 %, rust-small +0.2 %, json-small +1.5 %,
+grammar-load-shell +1.5 %. Number scanning costs nothing measurable:
+`json-small` and `rust-small` carry floats and are within 2 %.
+`content-python` moved −13.8 % with no change on its path — the same
+row moved +13 % in 2.6.2 from code placement alone (§Bench note 2.6.2);
+it is back where 2.6.1 had it. Over 4,500 real files, 773 tokenize
+differently from 2.6.2 — every change is to a number token (ADR 0026).
+
+## Tokenize / detect / load latencies (2.6.0 baseline, 2026-10-20 — superseded by 2.7.0 above)
 
 Same paired protocol as 2.5.2 below (iterations ÷ 10, 2.5.2 and 2.6.0
 alternated for 10 rounds, host load 1.8–2.6), best run:
@@ -402,7 +435,7 @@ Notes on shape:
   31 → 29.0 µs, content-python 206 → 194 ns. A state-machine
   drain optimization is still the obvious lever — the
   small-input rows show the constant factor most starkly — and
-  remains a candidate direction in `state.md`'s §Next up.
+  is the roadmap's 2.8.0 streaming-engine entry.
 
 ## History
 

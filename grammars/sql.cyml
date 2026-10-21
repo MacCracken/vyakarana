@@ -33,8 +33,8 @@
 #   - Dollar-quoted strings (PostgreSQL `$$ … $$`, `$tag$ … $tag$`).
 #     Variable-length-delimiter form — same scanner-shape gap
 #     as Lua's `[==[…]==]`, Ruby/PHP heredocs, Swift raw strings.
-#   - Numeric literal suffixes / scientific notation
-#     (`1.5e3`): same number-scanner limitation as java.cyml.
+#   - Floats and scientific notation (`1.5e3`) are one number since
+#     2.7.0 (ADR 0026); a leading-dot `.5` still splits.
 
 [grammar]
 name = "sql"
@@ -51,6 +51,7 @@ number_decimal = true
 number_0x      = true
 number_0b      = false
 number_0o      = false
+number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
 
 special_vars = false
 unicode_ident = true

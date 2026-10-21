@@ -13,9 +13,8 @@
 # so the same simple greedy match used in C works.
 #
 # Known gaps for future ADRs (not triggered by the vidya sample):
-#   - Type literals with explicit underscores in numbers
-#     (`1_000_000`). Today's number scanner stops at the `_`,
-#     yielding `number + ident`. Cosmetic; coverage holds.
+#   - `1_000_000` and floats are one number since 2.7.0 (ADR 0026);
+#     imaginary suffixes (`2i`) are number + ident.
 #   - Predeclared identifiers (`true`, `false`, `nil`, `iota`,
 #     `len`, `cap`, `make`, `new`, `append`, `panic`, …) tokenize
 #     as `ident`, not `keyword`. Same call as ADR 0004 for shell
@@ -37,6 +36,8 @@ number_decimal = true
 number_0x      = true
 number_0b      = true
 number_0o      = true
+number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
+number_separator = "_"    # `1_000` (ADR 0026)
 
 special_vars = false
 
