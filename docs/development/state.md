@@ -8,14 +8,14 @@
 > 2.6.2 it carried a "What X changed" block for every release back to
 > 1.13.0 — trimmed in 2.7.0; the CHANGELOG has all of it.)
 >
-> **Last refresh:** 2026-10-20, at 2.7.0. Read this first, then run the
+> **Last refresh:** 2026-10-20, at 2.7.1. Read this first, then run the
 > gates (CLAUDE.md §Gates) — do not take the "green" below on trust.
 
 ---
 
 ## Current status
 
-- **Version:** `2.7.0` — `VERSION`, `src/version_str.cyr`,
+- **Version:** `2.7.1` — `VERSION`, `src/version_str.cyr`,
   `dist/vyakarana.cyr`, the CHANGELOG header and `docs/man/vyk.1`
   agree.
 - **Toolchain pin:** `cyrius = "6.7.15"` in `cyrius.cyml`, the single
@@ -33,12 +33,12 @@
 - **Bundle:** `dist/vyakarana.cyr` from `cyrius distlib`, which needs
   `scripts/embed-grammars.sh` first (ADR 0014), plus a `.deps` sidecar
   of four stdlib leaves (alloc, string, vec, io).
-- **Next release:** 2.7.1 — grammar polish, then the 2.7.x closeout
-  audit ([roadmap](./roadmap.md)).
+- **Next release:** 2.8.0 — the streaming engine. No closeout audit
+  until 2.9.1, which covers 2.7.x – 2.9.x ([roadmap](./roadmap.md)).
 
-## Gates (green at 2.7.0, 2026-10-20)
+## Gates (green at 2.7.1, 2026-10-20)
 
-- `cyrius build` OK, 0 warnings · `cyrius test` **1013/1013** · smoke
+- `cyrius build` OK, 0 warnings · `cyrius test` **1056/1056** · smoke
   OK (it runs `scripts/check-detect.sh`) · `scripts/lint-fmt.sh`
   exit 0 (a lint warning fails it) · `cyrius fuzz` **5/5**, also clean
   under `--poison=ab` and `--bounds`.
@@ -61,9 +61,12 @@
   `src/tokenize.cyr` is the authoritative list.
 - **Grammar format:** CYML. Rule types line (with `start_after`,
   ADR 0022), pair, words, compose, compose_fenced, compose_region,
-  heredoc (ADR 0023). `[defaults]` includes `number_float`,
-  `number_separator`, `number_datetime` (ADR 0026). `extensions` /
-  `filenames` / `shebangs` declare detection (ADR 0025).
+  heredoc (ADR 0023); line rules may also require or forbid a next
+  byte (`followed_by` / `not_followed_by`, ADR 0027). `[defaults]`
+  includes `number_float`, `number_separator`, `number_datetime`
+  (ADR 0026), `string_prefixes` / `raw_string_prefixes` and
+  `ident_lead` (ADR 0027). `extensions` / `filenames` / `shebangs`
+  declare detection (ADR 0025).
 - **`vyk`:** NDJSON or `--theme` ANSI output, `--export-theme`, `-` for
   stdin, exit codes 0–4, input capped at 1 MiB (`VYK_SRC_CAP`); a
   write failure exits 3. `vyk --help` and `docs/man/vyk.1` are current.
@@ -75,7 +78,7 @@
 - **Chunk invariance:** streaming output equals a single feed at every
   split offset for all 41 non-compose corpora plus `shell_modules.sh`,
   gated by `fuzz/chunk_invariance.fcyr` (8 chunk sizes, two-feed
-  splits every 37 bytes, 30 every-offset shapes). **Not** for the
+  splits every 37 bytes, 39 every-offset shapes). **Not** for the
   compose grammars — markdown, html, vue, svelte, cyml — where token
   boundaries can move between chunkings (coverage still holds); 2.8.0.
 - **Streaming bounds:** `VYK_STREAM_CAP` 16 MiB live buffer;
@@ -90,20 +93,20 @@
 
 - **Numbers:** a leading- or trailing-dot float (`.5`, `1.`), hex
   floats and every suffix (`1.5f`, `2j`, `1u32`) split (ADR 0026).
-- **Grammar gaps scheduled for 2.7.1:** PHP 8 `#[attr]`; ruby /
-  crystal `@@x`; makefile `$<` `$^` …; css `-` as an operator; Rust
-  byte chars `b'\n'`; Python `f` / `r` / `b` string prefixes (ident +
-  string today); Cyrius `#ifdef` lines; shell heredoc delimiters
-  `<<"E"OF`, `<<E\OF`, `<<''`, `<<!`.
-- **Variable-length delimiters beyond shell heredocs** — Lua
-  `[==[ … ]==]`, Ruby `<<~EOS`, PHP `<<<EOT`, Swift `#"…"#` — have no
-  rule yet; ADR 0023 says to extend the heredoc rule rather than add a
-  mechanism. Rust's nested `/* /* */ */` is not nested.
+- **String prefixes** are identifier-shaped only (ADR 0027): C#'s
+  `@"…"` / `$"…"`, SQL `N'…'` and Julia string macros stay prefix +
+  string.
+- **Variable-length delimiters beyond shell heredocs** — Rust
+  `r#"…"#`, C++ `R"d(…)d"`, Lua `[==[ … ]==]`, Ruby `<<~EOS`, PHP
+  `<<<EOT`, Swift `#"…"#` — have no rule yet; ADR 0023 says to extend
+  the heredoc rule rather than add a mechanism. Rust's nested
+  `/* /* */ */` is not nested.
 - **Streaming cost:** a long non-pair token is re-scanned on every
-  drain; the heredoc terminator-search budget scales with the buffer,
-  so pathological shell can diverge between chunked and single feeds
-  (both 2.8.0).
-- **Size:** `vyk` ~480 KB, the DCE build ~390 KB, against 1.13.0's
+  drain (a prefixed string such as `f"…"` too — it skips the pending
+  fast path); the heredoc terminator-search budget scales with the
+  buffer, so pathological shell can diverge between chunked and single
+  feeds (both 2.8.0).
+- **Size:** `vyk` ~490 KB, the DCE build ~400 KB, against 1.13.0's
   300 KB soft cap (2.9.0).
 - **Out of scope:** Python INDENT / DEDENT and anything structural —
   vyakarana yields spans.

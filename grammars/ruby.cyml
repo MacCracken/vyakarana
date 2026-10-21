@@ -17,9 +17,8 @@
 # Sigil handling:
 #   - `@` and `$` in `ident_start` so `@source`,
 #     `$PROGRAM_NAME`, etc. tokenize as a single ident. Same call
-#     as PHP for `$` and Java for `@`. Neither is in `ident_cont`,
-#     so a class variable `@@count` splits into ident `@` + ident
-#     `@count` — known gap; coverage holds, theme can re-pair.
+#     as PHP for `$` and Java for `@`. `@` is in `ident_cont` too
+#     (2.7.1), so a class variable `@@count` is one ident.
 #   - `:` for symbols stays as punctuation; `:foo` tokenizes as
 #     `:` + ident (theme reassembles).
 #
@@ -57,7 +56,7 @@ whitespace = true
 
 # `@` for instance / class vars, `$` for globals.
 ident_start = "A-Za-z_@$"
-ident_cont  = "A-Za-z0-9_"
+ident_cont  = "A-Za-z0-9_@"
 
 number_decimal = true
 number_0x      = true

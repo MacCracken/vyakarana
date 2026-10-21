@@ -6,10 +6,6 @@
 #
 # Scope: covers what vidya's `content/lexing_and_parsing/cyrius.cyr`
 # uses. Known future gaps (ADR candidates when they come up):
-#   - `#ifdef` / `#endif` preprocessor directives. The vidya sample
-#     doesn't have them; `lib/args.cyr` in the cyrius toolchain does.
-#     Today `#ifdef CYRIUS_TARGET_MACOS` tokenizes as one `comment`
-#     to EOL, which is lossy but keeps the coverage invariant.
 #   - Char literals are ON since 2.5.2 (`char_literal = true`).
 #     Cyrius has them — `'"'`, `'\n'`, `'\''`, `'A'` all compile —
 #     and real code uses them (`str_builder_putc(sb, '"')`,
@@ -69,6 +65,133 @@ punctuation = [
 
 
 # ── Rules ──────────────────────────────────────────────────────────
+
+# Directives and attributes — `#ifdef X`, `#endif`, `#derive(Eq)`,
+# `#must_use`, `#host_only` … — one line rule per word, each at a line
+# start (or after blanks: most are indented) and ending at a non-ident
+# byte, so `x #c` and `# text` stay comments. The set is every
+# line-start `#word` in the cyrius toolchain and the local Cyrius
+# sources (2.7.1, ADR 0027); through 2.7.0 every directive line was a
+# comment.
+[[rules]]
+kind = "preprocessor"
+match = "line"
+start = "#ifdef"
+start_after = " \t\n\r"
+not_followed_by = "A-Za-z0-9_"
+
+[[rules]]
+kind = "preprocessor"
+match = "line"
+start = "#ifndef"
+start_after = " \t\n\r"
+not_followed_by = "A-Za-z0-9_"
+
+[[rules]]
+kind = "preprocessor"
+match = "line"
+start = "#ifplat"
+start_after = " \t\n\r"
+not_followed_by = "A-Za-z0-9_"
+
+[[rules]]
+kind = "preprocessor"
+match = "line"
+start = "#if"
+start_after = " \t\n\r"
+not_followed_by = "A-Za-z0-9_"
+
+[[rules]]
+kind = "preprocessor"
+match = "line"
+start = "#elif"
+start_after = " \t\n\r"
+not_followed_by = "A-Za-z0-9_"
+
+[[rules]]
+kind = "preprocessor"
+match = "line"
+start = "#elseif"
+start_after = " \t\n\r"
+not_followed_by = "A-Za-z0-9_"
+
+[[rules]]
+kind = "preprocessor"
+match = "line"
+start = "#else"
+start_after = " \t\n\r"
+not_followed_by = "A-Za-z0-9_"
+
+[[rules]]
+kind = "preprocessor"
+match = "line"
+start = "#endif"
+start_after = " \t\n\r"
+not_followed_by = "A-Za-z0-9_"
+
+[[rules]]
+kind = "preprocessor"
+match = "line"
+start = "#define"
+start_after = " \t\n\r"
+not_followed_by = "A-Za-z0-9_"
+
+[[rules]]
+kind = "preprocessor"
+match = "line"
+start = "#derive"
+start_after = " \t\n\r"
+not_followed_by = "A-Za-z0-9_"
+
+[[rules]]
+kind = "preprocessor"
+match = "line"
+start = "#deprecated"
+start_after = " \t\n\r"
+not_followed_by = "A-Za-z0-9_"
+
+[[rules]]
+kind = "preprocessor"
+match = "line"
+start = "#must_use"
+start_after = " \t\n\r"
+not_followed_by = "A-Za-z0-9_"
+
+[[rules]]
+kind = "preprocessor"
+match = "line"
+start = "#inline"
+start_after = " \t\n\r"
+not_followed_by = "A-Za-z0-9_"
+
+[[rules]]
+kind = "preprocessor"
+match = "line"
+start = "#host_only"
+start_after = " \t\n\r"
+not_followed_by = "A-Za-z0-9_"
+
+[[rules]]
+kind = "preprocessor"
+match = "line"
+start = "#pure"
+start_after = " \t\n\r"
+not_followed_by = "A-Za-z0-9_"
+
+[[rules]]
+kind = "preprocessor"
+match = "line"
+start = "#naked"
+start_after = " \t\n\r"
+not_followed_by = "A-Za-z0-9_"
+
+[[rules]]
+kind = "preprocessor"
+match = "line"
+start = "#io"
+start_after = " \t\n\r"
+not_followed_by = "A-Za-z0-9_"
+
 
 [[rules]]
 kind = "comment"

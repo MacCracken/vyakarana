@@ -753,4 +753,18 @@ printf 'for i in 0..10 {}\n' > "$TMPDIR/n.rs"
 "$BIN" "$TMPDIR/n.rs" | grep -q '"kind":"number","start":9,"len":1' \
     || fail "rust 0..10 is no longer a range"
 
+# ── 2.7.1 grammar polish (ADR 0027) ──
+printf 'x = f"{a}"\n' > "$TMPDIR/p.py"
+"$BIN" "$TMPDIR/p.py" | grep -q '"kind":"string","start":4,"len":6' \
+    || fail "python f-string prefix is not part of the string"
+printf '<?php\n#[Route("/x")]\n' > "$TMPDIR/p.php"
+"$BIN" "$TMPDIR/p.php" | grep -q '"kind":"punctuation","start":6,"len":2' \
+    || fail "php #[ attribute is not punctuation"
+printf '#ifdef X\n' > "$TMPDIR/p.cyr"
+"$BIN" "$TMPDIR/p.cyr" | grep -q '"kind":"preprocessor","start":0,"len":8' \
+    || fail "cyrius #ifdef is not a preprocessor line"
+printf 'cat <<"E"OF\nit'"'"'s\nEOF\n' > "$TMPDIR/p.sh"
+"$BIN" "$TMPDIR/p.sh" | grep -q '"kind":"string","start":12,"len":8' \
+    || fail "shell <<\"E\"OF heredoc is not one string"
+
 echo "smoke: OK ($v_long) — M0 + M1 + M2 + M3 gates passing"

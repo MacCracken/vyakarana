@@ -6,10 +6,8 @@
 #     (conditional), `+=` (append), `!=` (shell expansion in
 #     GNU 4.0+).
 #   - Automatic variables: `$@`, `$<`, `$^`, `$?`, `$*`, `$%`,
-#     `$+`, `$|`. The shell-style `special_vars = true` flag
-#     (1.0.0) makes `$@` / `$?` / `$*` 2-byte operators; its byte
-#     set is fixed at `#?@!*$-`, so `$<` / `$^` / `$%` / `$+` /
-#     `$|` split into `$` + a 1-byte operator. Known gap.
+#     `$+`, `$|` (and `$$`) are each one operator — listed below,
+#     ahead of a bare `$` (2.7.1; `special_vars` covered only three).
 #   - Function calls: `$(name args)` and `${name args}`.
 #   - Wildcards: `%` in pattern rules (`%.o: %.c`).
 #   - Conditional / include directives: `ifeq`, `ifneq`,
@@ -67,19 +65,22 @@ number_0x      = false
 number_0b      = false
 number_0o      = false
 
-# `special_vars = true` reuses the shell rule type to match
-# 2-byte automatic variables — only those whose second byte is in
-# its fixed set `#?@!*$-`: `$@`, `$?`, `$*` (and `$$`). `$<`,
-# `$^`, `$%`, `$+`, `$|` come back as `$` + operator (known gap,
-# see header). Bare `$` falls out as a 1-byte operator
-# (then `$(name)` tokenizes as `$` + `(` + ident + `)`).
-special_vars = true
+# Automatic variables are operators (below), not `special_vars` —
+# its byte set is shell's (`#?@!*$-`, digits), which missed `$<` `$^`
+# `$%` `$+` `$|`. A bare `$` is an operator, so `$(name)` is `$` + `(`
+# + ident + `)`.
+special_vars = false
 unicode_ident = true
 char_literal  = false
 
 # Operators in longest-match order. Make-specific assignment
 # forms `:=`, `?=`, `+=`, `!=` (latter only in GNU 4.0+).
 operators = [
+    "$@", "$<", "$^", "$?", "$*", "$%", "$+", "$|", "$$",
+    # `$1` … `$9`: `$(call f,a,b)` arguments (one token, as with
+    # `special_vars` through 2.7.0).
+    "$0", "$1", "$2", "$3", "$4", "$5", "$6", "$7", "$8", "$9",
+    "$",
     ":=", "?=", "+=", "!=",
     "=",
     "+", "-", "*", "/", "%",

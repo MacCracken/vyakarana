@@ -136,21 +136,40 @@ fn _ds_byte_in(set, b) {
 fn _ds_try_line_rules(g, src, src_len, i, prev0) {
     var rules = grammar_line_rules(g);
     var n = vec_len(rules);
+    var b0 = load8(src + i);
     var r_i = 0;
     while (r_i < n) {
         var r = vec_get(rules, r_i);
         var marker = line_rule_start(r);
-        var mlen = strlen(marker);
-        # Marker first (it fails on the first byte almost everywhere),
-        # the `start_after` boundary only on a match.
+        # First byte inline — it fails almost everywhere, and cyrius has
+        # 17 `#word` rules (2.7.1) — then the full marker, then the
+        # `start_after` boundary only on a match.
         var boundary_ok = 0;
-        if ((i + mlen <= src_len) && (memeq(src + i, marker, mlen) == 1)) {
+        var mlen = 0;
+        if (load8(marker) == b0) { mlen = strlen(marker); }
+        if ((mlen > 0) && (i + mlen <= src_len) && (memeq(src + i, marker, mlen) == 1)) {
             boundary_ok = 1;
             var after = line_rule_after(r);
             if (after != 0) {
                 var pb = prev0;
                 if (i > 0) { pb = load8(src + i - 1); }
                 if (pb >= 0) { boundary_ok = _ds_byte_in(after, pb); }
+            }
+        }
+        # The byte after the marker (ADR 0027): none at the end of input.
+        if (boundary_ok == 1) {
+            var fb = line_rule_followed(r);
+            var nfb = line_rule_not_followed(r);
+            if ((fb != 0) || (nfb != 0)) {
+                var nb = (0 - 1);
+                if (i + mlen < src_len) { nb = load8(src + i + mlen); }
+                if (fb != 0) {
+                    if (nb < 0) { boundary_ok = 0; }
+                    if ((nb >= 0) && (char_class_match(fb, nb) == 0)) { boundary_ok = 0; }
+                }
+                if ((nfb != 0) && (nb >= 0)) {
+                    if (char_class_match(nfb, nb) == 1) { boundary_ok = 0; }
+                }
             }
         }
         if (boundary_ok == 1) {
@@ -583,7 +602,65 @@ fn _ds_try_compose_fenced_rules(g, src, src_len, i, tb) {
 }
 
 # Try each [[rules]] match="pair". Returns packed (kind << 56) | len.
+# 1 if `src[i..i+n)` is one of the cstrs in `v`.
+fn _ds_in_word_list(v, src, i, n) {
+    var k = 0;
+    while (k < vec_len(v)) {
+        var w = vec_get(v, k);
+        if (strlen(w) == n) {
+            if (memeq(src + i, w, n) == 1) { return 1; }
+        }
+        k = k + 1;
+    }
+    return 0;
+}
+
+# A string prefix (ADR 0027): when the identifier src[i..i+ilen) is one
+# of the grammar's `string_prefixes` / `raw_string_prefixes` and a
+# string — or, for a plain prefix, a char literal — starts right after
+# it, the length of prefix + literal as ONE string token; else 0.
+# `f"{x}"`, `rb'\d'`, Rust `b'\n'` / `r"C:\"`, C `L"wide"`. Through 2.7.0
+# the prefix was an identifier before the string.
+fn _ds_prefixed_string(g, src, src_len, i, ilen) {
+    if (i + ilen >= src_len) { return 0; }
+    var q = load8(src + i + ilen);
+    if ((q != 34) && (q != 39) && (q != 96)) { return 0; }      # " ' `
+    var raw = _ds_in_word_list(grammar_raw_string_prefixes(g), src, i, ilen);
+    var plain = 0;
+    if (raw == 0) { plain = _ds_in_word_list(grammar_string_prefixes(g), src, i, ilen); }
+    if ((raw == 0) && (plain == 0)) { return 0; }
+    var packed = _ds_try_pair_rules_x(g, src, src_len, i + ilen, raw);
+    if (packed != 0) {
+        if ((packed >> 56) == TK_STRING) { return ilen + (packed & 0x00FFFFFFFFFFFFFF); }
+    }
+    if ((plain == 1) && (grammar_char_literal(g) == 1)) {
+        var cl = _ds_try_char_literal(g, src, src_len, i + ilen);
+        if (cl > 0) { return ilen + cl; }
+    }
+    return 0;
+}
+
+# `ident_lead` check (ADR 0027): the byte after a lead byte must be able
+# to both start and continue an identifier — `--x`, `-webkit`, not `-2`
+# or `-$x` — or be a non-ASCII byte under `unicode_ident`.
+fn _ds_ident_lead_ok(g, src, src_len, i) {
+    if (i + 1 >= src_len) { return 0; }
+    var nb = load8(src + i + 1);
+    if ((nb >= 128) && (grammar_unicode_ident(g) == 1)) { return 1; }
+    var st = grammar_ident_start(g);
+    var ct = grammar_ident_cont(g);
+    if ((st == 0) || (ct == 0)) { return 0; }
+    if ((char_class_match(st, nb) == 1) && (char_class_match(ct, nb) == 1)) { return 1; }
+    return 0;
+}
+
 fn _ds_try_pair_rules(g, src, src_len, i) {
+    return _ds_try_pair_rules_x(g, src, src_len, i, 0);
+}
+
+# As `_ds_try_pair_rules`; `noesc` = 1 ignores the rule's escape byte
+# (a raw-string prefix, ADR 0027: Rust's `r"C:\"` ends at its quote).
+fn _ds_try_pair_rules_x(g, src, src_len, i, noesc) {
     var rules = grammar_pair_rules(g);
     var n = vec_len(rules);
     var r_i = 0;
@@ -595,6 +672,7 @@ fn _ds_try_pair_rules(g, src, src_len, i) {
             var endp = pair_rule_end(r);
             var elen = strlen(endp);
             var esc = pair_rule_escape(r);
+            if (noesc == 1) { esc = 0; }
             var j = i + slen;
             while (j < src_len) {
                 var b = load8(src + j);
@@ -1032,6 +1110,131 @@ var _ds_hd_budget = 0;
 # Queue buffer for the current nesting depth (entries of 40 bytes:
 # delim ptr, delim len, indent flag, kind, opener offset), allocated
 # once per depth.
+# Decoded-delimiter scratch for the current depth: one 256-byte slot
+# per queue entry plus one for an opener the full queue cannot take.
+# Only a delimiter that quote removal rewrote (`"E"OF`, `E\OF`) lives
+# here; a plain or singly-quoted one points into `src`.
+var DS_HD_DELIM_MAX = 255;
+var _ds_hd_dpool = 0;
+
+fn _ds_hd_dscratch() {
+    if (_ds_hd_dpool == 0) {
+        _ds_hd_dpool = vec_new();
+        if (_ds_hd_dpool == 0) { return 0; }
+    }
+    while (vec_len(_ds_hd_dpool) <= _ds_depth) {
+        var d = alloc((DS_HEREDOC_QUEUE + 1) * 256);
+        if (d == 0) { return 0; }
+        vec_push(_ds_hd_dpool, d);
+    }
+    return vec_get(_ds_hd_dpool, _ds_depth);
+}
+
+# `_ds_hd_parse_delim` results.
+var _ds_hdd_ptr = 0;      # delimiter bytes (into src, or a scratch slot)
+var _ds_hdd_len = 0;
+var _ds_hdd_end = 0;      # src offset just past the word
+var _ds_hdd_pos = (0 - 1);  # src offset of the bytes when contiguous, else -1
+
+# The heredoc delimiter at src[p] as bash reads it: a word of bare
+# bytes, `'…'` and `"…"` segments and `\X` escapes, ended by a blank,
+# a newline or one of `;&|()<>`, the quotes removed — `EOF`, `'EOF'`,
+# `\EOF`, `"E"OF` and `E\OF` all mean `EOF`; `''` is the empty
+# delimiter (its terminator is an empty line); `!` and `END-OF-DATA`
+# are words. Through 2.7.0 a delimiter was one quoted run or a bare
+# `[A-Za-z_][A-Za-z0-9_.-]*`, so the mixed forms read as `E` and `<<!`
+# / `<<''` were no heredoc at all. A bare word may not start with a
+# digit (`1 << 2` outside `((`…`))` stays a shift). Returns 0 with the
+# word in `_ds_hdd_*`, 1 if the buffer ends inside it (undecided), 2
+# if there is no delimiter here.
+fn _ds_hd_parse_delim(src, src_len, p, slot) {
+    var start = p;
+    var n = 0;
+    var segs = 0;
+    var first = (0 - 1);      # src offset of the first delimiter byte
+    var quoted = 0;
+    var go = 1;
+    var rc = 0;
+    while ((go == 1) && (p < src_len)) {
+        var b = load8(src + p);
+        var bare = 1;
+        if ((b == 32) || (b == 9) || (b == 10) || (b == 13)) { go = 0; bare = 0; }
+        if ((b == 59) || (b == 38) || (b == 124) || (b == 40) || (b == 41) || (b == 60) || (b == 62) || (b == 96)) {
+            go = 0;
+            bare = 0;
+        }
+        if ((go == 1) && ((b == 39) || (b == 34))) {
+            bare = 0;
+            quoted = 1;
+            segs = segs + 1;
+            var q = p + 1;
+            var closed = 0;
+            while ((q < src_len) && (closed == 0)) {
+                var c = load8(src + q);
+                if (c == 10) { closed = 2; }
+                if ((closed == 0) && (c == b)) { closed = 1; }
+                if ((closed == 0) && (b == 34) && (c == 92) && (q + 1 < src_len)) {
+                    var e = load8(src + q + 1);
+                    if ((e == 34) || (e == 92) || (e == 36) || (e == 96)) {
+                        q = q + 1;
+                        c = e;
+                    }
+                }
+                if (closed == 0) {
+                    if (first < 0) { first = q; }
+                    if (n < DS_HD_DELIM_MAX) { store8(slot + n, c); }
+                    n = n + 1;
+                    q = q + 1;
+                }
+            }
+            if (closed == 0) { return 1; }            # quote still open
+            if (closed == 2) { return 2; }            # a newline inside it
+            p = q + 1;
+        }
+        if ((go == 1) && (b == 92)) {
+            bare = 0;
+            segs = segs + 1;
+            if (p + 1 >= src_len) { return 1; }
+            var x = load8(src + p + 1);
+            if (x == 10) { go = 0; }
+            if (x != 10) {
+                if (first < 0) { first = p + 1; }
+                if (n < DS_HD_DELIM_MAX) { store8(slot + n, x); }
+                n = n + 1;
+                p = p + 2;
+            }
+        }
+        if ((go == 1) && (bare == 1)) {
+            if ((n == 0) && (quoted == 0) && (b >= 48) && (b <= 57)) { return 2; }
+            if ((n == 0) || (load8(src + p - 1) == 39) || (load8(src + p - 1) == 34)) { segs = segs + 1; }
+            if (first < 0) { first = p; }
+            if (n < DS_HD_DELIM_MAX) { store8(slot + n, b); }
+            n = n + 1;
+            p = p + 1;
+        }
+    }
+    if ((n == 0) && (quoted == 0)) { return 2; }
+    if (n > DS_HD_DELIM_MAX) { return 2; }
+    _ds_hdd_len = n;
+    _ds_hdd_end = p;
+    _ds_hdd_ptr = slot;
+    _ds_hdd_pos = (0 - 1);
+    # The common forms keep pointing into `src` (the drain's terminator
+    # watch needs an offset): the decoded bytes are one contiguous run.
+    if ((first >= 0) && (first + n <= src_len)) {
+        if (memeq(src + first, slot, n) == 1) {
+            _ds_hdd_ptr = src + first;
+            _ds_hdd_pos = first;
+        }
+    }
+    if (n == 0) {
+        _ds_hdd_ptr = src + start;
+        _ds_hdd_pos = start;
+    }
+    if (p >= src_len) { rc = 1; }
+    return rc;
+}
+
 fn _ds_hd_queue() {
     if (_ds_hd_pool == 0) {
         _ds_hd_pool = vec_new();
@@ -1043,20 +1246,6 @@ fn _ds_hd_queue() {
         vec_push(_ds_hd_pool, q);
     }
     return vec_get(_ds_hd_pool, _ds_depth);
-}
-
-# Bytes after a bare delimiter's first letter / `_`. `-` and `.` joined
-# in the 2.6.x audit: `cat <<END-OF-DATA` was not a heredoc, so an
-# apostrophe in its body opened a string to EOF. A wider delimiter can
-# only add heredocs whose terminator line exists, so it cannot turn code
-# into a body by accident.
-fn _ds_hd_word_byte(b) {
-    if ((b == 45) || (b == 46)) { return 1; }   # - .
-    if ((b >= 48) && (b <= 57)) { return 1; }
-    if ((b >= 65) && (b <= 90)) { return 1; }
-    if ((b >= 97) && (b <= 122)) { return 1; }
-    if (b == 95) { return 1; }
-    return 0;
 }
 
 # Offset just past the delimiter on the first line at or after `from`
@@ -1168,32 +1357,28 @@ fn _ds_heredoc_open(g, src, src_len, i, hdq, hd_n, in_arith) {
             var im = heredoc_rule_indent(r);
             if ((im != 0) && (load8(src + p) == load8(im))) { ind = 1; p = p + 1; }
             while ((p < src_len) && ((load8(src + p) == 32) || (load8(src + p) == 9))) { p = p + 1; }
-            if ((p < src_len) && (load8(src + p) == 92)) { p = p + 1; }   # `\EOF`
             if (p >= src_len) { undecided = 1; }
             var ds = (0 - 1);
             var dl = 0;
             var dend = 0;
+            var dptr = 0;
+            var dcontig = 0;
             if (p < src_len) {
-                var q0 = load8(src + p);
-                if ((q0 == 39) || (q0 == 34)) {
-                    var q = p + 1;
-                    while ((q < src_len) && (load8(src + q) != q0) && (load8(src + q) != 10)) { q = q + 1; }
-                    if (q >= src_len) { undecided = 1; }
-                    if ((q < src_len) && (load8(src + q) == q0) && (q > p + 1)) {
-                        ds = p + 1;
-                        dl = q - p - 1;
-                        dend = q + 1;
-                    }
-                }
-                # A bare delimiter must START with a letter or `_`: `1 << 2`
-                # in arithmetic is a shift, not a heredoc ending at a `2`.
-                if ((q0 != 39) && (q0 != 34)) {
-                    if ((q0 == 95) || ((q0 >= 65) && (q0 <= 90)) || ((q0 >= 97) && (q0 <= 122))) {
-                        var w = p + 1;
-                        while ((w < src_len) && (_ds_hd_word_byte(load8(src + w)) == 1)) { w = w + 1; }
-                        ds = p;
-                        dl = w - p;
-                        dend = w;
+                var dslot = _ds_hd_dscratch();
+                if (dslot != 0) {
+                    var qslot = res;
+                    if (qslot > DS_HEREDOC_QUEUE) { qslot = DS_HEREDOC_QUEUE; }
+                    var dst = _ds_hd_parse_delim(src, src_len, p, dslot + qslot * 256);
+                    if (dst == 1) { undecided = 1; }
+                    if (dst != 2) {
+                        dptr = _ds_hdd_ptr;
+                        dl = _ds_hdd_len;
+                        dend = _ds_hdd_end;
+                        ds = 0;
+                        if (_ds_hdd_pos >= 0) {
+                            ds = _ds_hdd_pos;
+                            dcontig = 1;
+                        }
                     }
                 }
             }
@@ -1204,19 +1389,21 @@ fn _ds_heredoc_open(g, src, src_len, i, hdq, hd_n, in_arith) {
                 var known_none = 0;
                 if ((_ds_hd_fail_gen == _ds_cur_gen) && (_ds_hd_fail_len == dl) &&
                   (_ds_hd_fail_ind == ind) && (lf + 1 >= _ds_hd_fail_from)) {
-                    if (memeq(_ds_hd_fail_ptr, src + ds, dl) == 1) { known_none = 1; }
+                    if (memeq(_ds_hd_fail_ptr, dptr, dl) == 1) { known_none = 1; }
                 }
                 if ((lf < src_len) && (known_none == 0)) {
-                    term = _ds_hd_find_term(src, src_len, lf + 1, src + ds, dl, ind);
+                    term = _ds_hd_find_term(src, src_len, lf + 1, dptr, dl, ind);
                     # Budget spent: decide "not a heredoc" — no queue, no
                     # hold — so the scan stays linear.
                     if (term == (0 - 2)) {
                         gave_up = 1;
                         term = (0 - 1);
                     }
-                    if ((gave_up == 0) && (term < 0)) {
+                    # Cached only for a delimiter inside `src`: a scratch slot
+                    # is rewritten by the next opener.
+                    if ((gave_up == 0) && (term < 0) && (dcontig == 1)) {
                         _ds_hd_fail_gen = _ds_cur_gen;
-                        _ds_hd_fail_ptr = src + ds;
+                        _ds_hd_fail_ptr = dptr;
                         _ds_hd_fail_len = dl;
                         _ds_hd_fail_ind = ind;
                         _ds_hd_fail_from = lf + 1;
@@ -1234,7 +1421,7 @@ fn _ds_heredoc_open(g, src, src_len, i, hdq, hd_n, in_arith) {
                 }
                 if ((term >= 0) && (res < DS_HEREDOC_QUEUE) && (hdq != 0)) {
                     var e = hdq + res * 40;
-                    store64(e,      src + ds);
+                    store64(e,      dptr);
                     store64(e + 8,  dl);
                     store64(e + 16, ind);
                     store64(e + 24, heredoc_rule_kind(r));
@@ -1243,7 +1430,7 @@ fn _ds_heredoc_open(g, src, src_len, i, hdq, hd_n, in_arith) {
                 }
                 if ((complete == 0) && (gave_up == 0)) {
                     undecided = 1;
-                    if ((term < 0) && (lf < src_len)) {
+                    if ((term < 0) && (lf < src_len) && (dcontig == 1)) {
                         fast_ok = 1;
                         f_dpos = ds;
                         f_dlen = dl;
@@ -1511,13 +1698,29 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
             if ((ident_ok == 0) && (grammar_unicode_ident(g) == 1) && (b >= 128)) {
                 ident_ok = 1;
             }
+            # `ident_lead` (ADR 0027): css's `-` starts `-webkit-x` and
+            # `--var`, but alone (`100% - 10px`) or before a digit
+            # (`-2px`) it is the operator.
+            var lead_tbl = grammar_ident_lead(g);
+            if ((ident_ok == 1) && (lead_tbl != 0)) {
+                if (char_class_match(lead_tbl, b) == 1) {
+                    if (_ds_ident_lead_ok(g, src, src_len, i) == 0) { ident_ok = 0; }
+                }
+            }
             if (ident_ok == 1) {
                 len = _ds_scan_ident(g, src, src_len, i);
-                var kw_kind = _ds_lookup_keyword(g, src, i, len);
-                if (kw_kind >= 0) {
-                    kind = kw_kind;
-                } else {
-                    kind = TK_IDENT;
+                var pre_len = _ds_prefixed_string(g, src, src_len, i, len);
+                if (pre_len > 0) {
+                    kind = TK_STRING;
+                    len = pre_len;
+                }
+                if (pre_len == 0) {
+                    var kw_kind = _ds_lookup_keyword(g, src, i, len);
+                    if (kw_kind >= 0) {
+                        kind = kw_kind;
+                    } else {
+                        kind = TK_IDENT;
+                    }
                 }
             }
         }

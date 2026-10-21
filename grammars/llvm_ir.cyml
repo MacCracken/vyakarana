@@ -149,9 +149,7 @@ words = [
     "noinline", "noredzone", "noreturn",
     "optimize", "optsize", "speculatable",
     "ssp", "sspreq", "sspstrong",
-    # `uwtable` repeats the parameter-attributes entry above —
-    # harmless (first match wins, same kind).
-    "strictfp", "uwtable",
+    "strictfp",
     # Types (frequent enough to keyword)
     "void", "ptr", "label", "token", "metadata",
     "i1", "i8", "i16", "i32", "i64", "i128",

@@ -3976,6 +3976,112 @@ fn main() {
     var nl7_g2 = "[grammar]\nname = \"x\"\n[defaults]\nnumber_decimal = true\nnumber_separator = \"1\"\n";
     assert_eq(_gp_parse(nl7_g2, strlen(nl7_g2)), 0, "a digit number_separator rejects the grammar");
 
+    test_group("2.7.1 grammar polish (ADR 0027)");
+    var gp7_php = _t_tokenize("<?php\n#[Route(\"/x\")]\nfunction f() {} # c\n", "php");
+    assert_eq(_t_kind_at(gp7_php, 6), TK_PUNCTUATION, "php #[ opens an attribute, not a comment");
+    assert_eq(_t_len_at(gp7_php, 6), 2, "  ... as one `#[` token");
+    assert_eq(_t_kind_at(gp7_php, 37), TK_COMMENT, "php # c is still a comment");
+    var gp7_rb = _t_tokenize("@@count += 1\n", "ruby");
+    assert_eq(_t_len_at(gp7_rb, 0), 7, "ruby @@count is one ident");
+    var gp7_cr = _t_tokenize("@@count += 1\n", "crystal");
+    assert_eq(_t_len_at(gp7_cr, 0), 7, "crystal @@count is one ident");
+    var gp7_mk = _t_tokenize("a:\n\tcc $< $^ $% $+ $| $$x\n", "makefile");
+    assert_eq(_t_len_at(gp7_mk, 7), 2, "makefile $< is one operator");
+    assert_eq(_t_len_at(gp7_mk, 10), 2, "makefile $^");
+    assert_eq(_t_len_at(gp7_mk, 13), 2, "makefile $%");
+    assert_eq(_t_len_at(gp7_mk, 16), 2, "makefile $+");
+    assert_eq(_t_len_at(gp7_mk, 19), 2, "makefile $|");
+    assert_eq(_t_len_at(gp7_mk, 22), 2, "makefile $$");
+    var gp7_css = _t_tokenize("a { width: calc(100% - 10px); margin: -2px; -webkit-x: --y; }\n", "css");
+    assert_eq(_t_kind_at(gp7_css, 21), TK_OPERATOR, "css `100% - 10px`: the `-` is an operator");
+    assert_eq(_t_kind_at(gp7_css, 38), TK_OPERATOR, "css -2px: `-` then a number");
+    assert_eq(_t_kind_at(gp7_css, 39), TK_NUMBER, "  ... and the 2 is a number");
+    assert_eq(_t_len_at(gp7_css, 44), 9, "css -webkit-x is still one ident");
+    assert_eq(_t_len_at(gp7_css, 55), 3, "css --y is still one ident");
+    var gp7_rs = _t_tokenize("let a = b'\\n'; let r = r\"C:\\\"; let s = b\"hi\";\n", "rust");
+    assert_eq(_t_kind_at(gp7_rs, 8), TK_STRING, "rust b'\\n' is one string token");
+    assert_eq(_t_len_at(gp7_rs, 8), 5, "  ... prefix included");
+    assert_eq(_t_len_at(gp7_rs, 23), 6, "rust r\"C:\\\" is raw: it ends at its quote");
+    assert_eq(_t_len_at(gp7_rs, 39), 5, "rust b\"hi\" is one string token");
+    var gp7_py = _t_tokenize("x = f\"{a}\" + rb'\\d' + R\"x\" + ab\"q\"\n", "python");
+    assert_eq(_t_len_at(gp7_py, 4), 6, "python f\"{a}\" is one string token");
+    assert_eq(_t_len_at(gp7_py, 13), 6, "python rb'\\d' is one string token");
+    assert_eq(_t_len_at(gp7_py, 22), 4, "python R\"x\" (upper case prefix)");
+    assert_eq(_t_kind_at(gp7_py, 29), TK_IDENT, "python ab\"q\": `ab` is no prefix");
+    var gp7_cy = _t_tokenize("#ifdef X\nfn f() {} # c\n    #endif\n# note\n", "cyrius");
+    assert_eq(_t_kind_at(gp7_cy, 0), TK_PREPROCESSOR, "cyrius #ifdef is a directive");
+    assert_eq(_t_len_at(gp7_cy, 0), 8, "  ... to the end of its line");
+    assert_eq(_t_kind_at(gp7_cy, 19), TK_COMMENT, "cyrius # c is still a comment");
+    assert_eq(_t_kind_at(gp7_cy, 27), TK_PREPROCESSOR, "cyrius indented #endif is a directive");
+    assert_eq(_t_kind_at(gp7_cy, 34), TK_COMMENT, "cyrius # note is a comment");
+    # A first cut matched `#` + any lowercase letter; cyim's render tests
+    # caught `x #c` coming back as a directive.
+    var gp7_cy2 = _t_tokenize("x #c\n#iffy\n#ifdef X\n", "cyrius");
+    assert_eq(_t_kind_at(gp7_cy2, 2), TK_COMMENT, "cyrius `x #c` is a comment, not a directive");
+    assert_eq(_t_kind_at(gp7_cy2, 5), TK_COMMENT, "cyrius `#iffy` is a comment (`#if` is a whole word)");
+    assert_eq(_t_kind_at(gp7_cy2, 11), TK_PREPROCESSOR, "  ... and `#ifdef X` a directive");
+    var gp7_c = _t_tokenize("w = L\"wide\"; c = u8'x'; L = 1;\n", "c");
+    assert_eq(_t_len_at(gp7_c, 4), 7, "c L\"wide\" is one string token");
+    assert_eq(_t_len_at(gp7_c, 17), 5, "c u8'x' is one string token");
+    assert_eq(_t_kind_at(gp7_c, 24), TK_IDENT, "c `L = 1`: L alone stays an ident");
+    var gp7_sh = _t_tokenize("cat <<\"E\"OF\nit's\nEOF\ncat <<''\nb's\n\ned f <<!\nq's\n!\n", "shell");
+    assert_eq(_t_len_at(gp7_sh, 12), 8, "shell <<\"E\"OF ends at EOF (quote removal)");
+    assert_eq(_t_len_at(gp7_sh, 30), 4, "shell <<'' ends at an empty line");
+    assert_eq(_t_len_at(gp7_sh, 44), 5, "shell <<! ends at a line `!`");
+    # Grammar validation: a two-byte heredoc indent, an escape on a line
+    # rule, a followed_by on a pair rule, a non-identifier prefix.
+    var gp7_b1 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"string\"\nmatch = \"heredoc\"\nstart = \"<<\"\nindent = \"-=\"\n";
+    assert_eq(_gp_parse(gp7_b1, strlen(gp7_b1)), 0, "a two-byte heredoc indent rejects the grammar");
+    var gp7_b2 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"comment\"\nmatch = \"line\"\nstart = \"#\"\nescape = \"\\\\\"\n";
+    assert_eq(_gp_parse(gp7_b2, strlen(gp7_b2)), 0, "an escape on a line rule rejects the grammar");
+    var gp7_b3 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"string\"\nmatch = \"pair\"\nstart = \"'\"\nend = \"'\"\nfollowed_by = \"a\"\n";
+    assert_eq(_gp_parse(gp7_b3, strlen(gp7_b3)), 0, "followed_by on a pair rule rejects the grammar");
+    var gp7_b4 = "[grammar]\nname = \"x\"\n[defaults]\nident_start = \"a-z\"\nident_cont = \"a-z\"\nstring_prefixes = [\"@\"]\n";
+    assert_eq(_gp_parse(gp7_b4, strlen(gp7_b4)), 0, "a non-identifier string prefix rejects the grammar");
+    # No list in any grammar repeats an entry, and no word is in two words
+    # rules (haskell `/=`, llvm `uwtable`, swift `import` / `associatedtype`
+    # were, through 2.7.0).
+    var gp7_names = vec_new();
+    list_languages_into(gp7_names);
+    var gp7_dups = 0;
+    var gp7_gi = 0;
+    while (gp7_gi < vec_len(gp7_names)) {
+        var gp7_g = registry_find_by_name(vec_get(gp7_names, gp7_gi));
+        var gp7_lists = vec_new();
+        vec_push(gp7_lists, grammar_operators(gp7_g));
+        vec_push(gp7_lists, grammar_punctuation(gp7_g));
+        var gp7_words = vec_new();
+        var gp7_wr = grammar_words_rules(gp7_g);
+        var gp7_wi = 0;
+        while (gp7_wi < vec_len(gp7_wr)) {
+            var gp7_wl = words_rule_words(vec_get(gp7_wr, gp7_wi));
+            var gp7_wk = 0;
+            while (gp7_wk < vec_len(gp7_wl)) { vec_push(gp7_words, vec_get(gp7_wl, gp7_wk)); gp7_wk = gp7_wk + 1; }
+            gp7_wi = gp7_wi + 1;
+        }
+        vec_push(gp7_lists, gp7_words);
+        var gp7_li = 0;
+        while (gp7_li < vec_len(gp7_lists)) {
+            var gp7_v = vec_get(gp7_lists, gp7_li);
+            var gp7_a = 0;
+            while (gp7_a < vec_len(gp7_v)) {
+                var gp7_bi = gp7_a + 1;
+                while (gp7_bi < vec_len(gp7_v)) {
+                    if (streq(vec_get(gp7_v, gp7_a), vec_get(gp7_v, gp7_bi)) == 1) {
+                        gp7_dups = gp7_dups + 1;
+                        print("    duplicate: ", 15); print(vec_get(gp7_names, gp7_gi), strlen(vec_get(gp7_names, gp7_gi)));
+                        print(" ", 1); print(vec_get(gp7_v, gp7_a), strlen(vec_get(gp7_v, gp7_a))); print("\n", 1);
+                    }
+                    gp7_bi = gp7_bi + 1;
+                }
+                gp7_a = gp7_a + 1;
+            }
+            gp7_li = gp7_li + 1;
+        }
+        gp7_gi = gp7_gi + 1;
+    }
+    assert_eq(gp7_dups, 0, "no grammar repeats an operator, punctuation or keyword entry");
+
     return assert_summary();
 }
 

@@ -308,6 +308,17 @@ fn _ci_main() {
     if (_ci_every("toml", "d = 1979-05-27T07:32:00.999-07:00\ne = 1979-05-27 07:32:00\nt = 07:32:00\nf = 6.626e-34\n") != 0) { rc = 1; }
     if (_ci_every("yaml", "date: 2001-12-14t21:59:43Z\nv: 1.2.3\nn: 12345\n") != 0) { rc = 1; }
     if (_ci_every("json", "{\"a\": -1.5E+10, \"b\": 0.25, \"c\": 123456789}") != 0) { rc = 1; }
+    # 2.7.1 (ADR 0027): string prefixes, `ident_lead`, `followed_by` /
+    # `not_followed_by`, makefile automatic variables, heredoc word forms.
+    if (_ci_every("python", "x = f\"{a}\" + rb'\\d' + R\"\"\"y\"\"\" + u'z' + ab\"q\" + F''\n") != 0) { rc = 1; }
+    if (_ci_every("rust", "let a = b'\\n'; let r = r\"C:\\\"; let s = br\"x\"; let t = b\"hi\"; r;\n") != 0) { rc = 1; }
+    if (_ci_every("c", "w = L\"wide\"; c = u8'x'; L = 1; u = U\"y\";\n") != 0) { rc = 1; }
+    if (_ci_every("css", "a { width: calc(100% - 10px); margin: -2px; -webkit-x: --y; }\n") != 0) { rc = 1; }
+    if (_ci_every("php", "<?php\n#[Route(\"/x\")]\nfunction f() {} # c\n#\n") != 0) { rc = 1; }
+    if (_ci_every("cyrius", "#ifdef X\nfn f() {} # c\n    #endif\n# note\n#derive(Eq)\n") != 0) { rc = 1; }
+    if (_ci_every("makefile", "a:\n\tcc $< $^ $% $+ $| $$x $(CC) $@\n") != 0) { rc = 1; }
+    if (_ci_every("ruby", "@@count += @x + $y\n") != 0) { rc = 1; }
+    if (_ci_every("shell", "cat <<\"E\"OF\nit's\nEOF\ncat <<''\nb's\n\ned f <<!\nq's\n!\ncat <<E\\OF\nr's\nEOF\n") != 0) { rc = 1; }
     if (_ci_every("php", "<?php $a === $b && $c !== $d;") != 0) { rc = 1; }
     if (_ci_every("ocaml", "let xs = 1 :: 2 :: [];;") != 0) { rc = 1; }
 

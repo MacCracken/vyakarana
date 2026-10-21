@@ -55,6 +55,10 @@ whitespace = true
 # `-` for custom properties (`--color-bg`).
 ident_start = "A-Za-z_@#-"
 ident_cont  = "A-Za-z0-9_-"
+# `-` starts an ident only before a byte that can start one (`--var`,
+# `-webkit-x`); alone (`100% - 10px`) or before a digit (`-2px`) it is
+# the `-` operator (2.7.1, ADR 0027; `-2px` was one ident).
+ident_lead  = "-"
 
 number_decimal = true
 number_0x      = false
@@ -74,10 +78,7 @@ char_literal  = false
 operators = [
     "^=", "$=", "*=", "~=", "|=",
     "::",
-    # `-` never fires: it is in `ident_start` (custom properties),
-    # and the ident step (6) runs before operators (8), so the
-    # minus in `calc(a - b)` is a 1-byte ident. Unreachable but
-    # harmless.
+    # `-` is reachable since 2.7.1 (`ident_lead`): `calc(a - b)`.
     "+", "-", "*", "/", "%",
     "<", ">",
     "&", "|", "~",

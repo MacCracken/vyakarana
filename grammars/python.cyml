@@ -16,8 +16,8 @@
 #   could add INDENT / DEDENT rule types if a consumer demands it.
 #
 # Known cosmetic gaps (not errors):
-#   - F-string prefix: `f"..."` tokenizes as ident(f) + string("..."),
-#     not a unified fstring token. Same pattern for r/b/rb/fr prefixes.
+#   - String prefixes (`f`, `r`, `b`, `u`, `rb`, `fr`, any case) are
+#     part of the string token since 2.7.1 (ADR 0027).
 #   - F-string interpolation `{expr}` stays inside the string span
 #     (not re-tokenized), consistent with ADR 0003.
 
@@ -43,6 +43,8 @@ number_0b      = true
 number_0o      = true
 number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
 number_separator = "_"    # `1_000` (ADR 0026)
+# f / r / b / u prefixes, any case, join the string (2.7.1, ADR 0027).
+string_prefixes = ["B", "BR", "Br", "F", "FR", "Fr", "R", "RB", "RF", "Rb", "Rf", "U", "b", "bR", "br", "f", "fR", "fr", "r", "rB", "rF", "rb", "rf", "u"]
 
 special_vars = false
 

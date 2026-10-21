@@ -4,6 +4,64 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.7.1] — 2026-10-20
+
+**Grammar polish.** The gaps the 2.5.2 header cross-check and the 2.6.x audit
+scheduled, closed with three narrow grammar keys
+([ADR 0027](docs/adr/0027-prefixes-lead-bytes-next-byte-rules.md)) and data
+fixes. Token boundaries change in python, rust, c, cpp, css, scss, php, cyrius,
+makefile, ruby, crystal and shell — shipped as fixes in a patch, as 2.5.2 did.
+Over 4,500 real files, 366 tokenize differently, every change one of the
+shapes below; no exit code changes. 1056/1056 tests, smoke OK, lint+fmt exit 0,
+fuzz 5/5; consumers (cyim 1,329, vidya 139, owl 7) pass against the bundle. No closeout audit for 2.7.x: the next one is 2.9.1, covering 2.7.x –
+2.9.x.
+
+### Fixed
+
+- **String prefixes are part of the string:** Python `f"{a}"`, `rb'\d'`,
+  `R"x"` (any case of f / r / b / u / rb / br / fr / rf); Rust `b'\n'`, `b"…"`,
+  `c"…"`, and raw `r"…"` / `br"…"` / `cr"…"`, which end at their quote with no
+  escapes (`r"C:\"`); C and C++ `L"…"`, `u8"…"`, `u'x'`, `U"…"`. They were an
+  identifier then a string.
+- **PHP 8 attributes:** `#[Route("/x")]` is `#[` punctuation and ordinary
+  tokens; it was a comment to the end of the line.
+- **Cyrius directives:** `#ifdef`, `#ifndef`, `#endif`, `#else`, `#if`,
+  `#define`, `#derive(…)`, `#must_use`, `#inline`, `#host_only`, `#naked`, `#io`
+  … — the 17 line-start `#word`s used across the Cyrius sources — are
+  `preprocessor` lines, indented or not; `# text`, `x #c` and `#iffy` stay
+  comments. Every directive was a comment. (A first cut — `#` plus any
+  lowercase letter — turned cyim's `x #c` render-test comment into a directive;
+  the consumer suite caught it before release.)
+- **CSS / SCSS `-`:** `calc(100% - 10px)` has a `-` operator and `-2px` is `-`
+  + number + unit; both were identifiers. `--var` and `-webkit-x` are still one
+  identifier. SCSS's `$=` (`[href$=x]`) is reachable the same way.
+- **Makefile automatic variables** `$<` `$^` `$%` `$+` `$|` are one operator
+  each, like `$@` `$?` `$*` `$$` and `$1`; they were `$` + an operator.
+- **Ruby / Crystal class variables** `@@count` are one identifier (they were
+  `@` + `@count`).
+- **Shell heredoc delimiters are read as bash reads a word:** `<<"E"OF` and
+  `<<E\OF` end at `EOF` (they were read as `E`), `<<''` ends at an empty line,
+  and `<<!` is a heredoc.
+- **Grammar validation:** a heredoc `indent` longer than one byte, `escape` on
+  anything but a pair rule, and the new line-rule options on other rule types
+  reject the grammar — each was silently truncated or ignored.
+- Duplicate list entries removed: haskell `/=`, llvm `uwtable`, swift `import`
+  and `associatedtype`; a new test fails if any grammar repeats an operator,
+  punctuation or keyword entry.
+
+### Added
+
+- **`[defaults] string_prefixes` / `raw_string_prefixes`**, **`[defaults]
+  ident_lead`**, and line-rule **`followed_by` / `not_followed_by`** (ADR 0027).
+- Tests: "2.7.1 grammar polish" (43 assertions — 32 fail on 2.7.0, the rest
+  are controls, among them cyim's `x #c` case below); nine every-offset streaming shapes; a smoke group for Python
+  prefixes, PHP attributes, Cyrius directives and the shell `"E"OF` form.
+
+### Changed
+
+- The roadmap no longer schedules a 2.7.x closeout audit; one closeout, 2.9.1,
+  covers 2.7.x – 2.9.x.
+
 ## [2.7.0] — 2026-10-20
 
 **Number literals.** [ADR 0026](docs/adr/0026-number-literal-shapes.md): a

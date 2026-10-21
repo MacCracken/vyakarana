@@ -22,12 +22,6 @@
 # 2-byte operator.
 #
 # Known gaps (not triggered by the stand-in):
-#   - `#[Attribute]` syntax (PHP 8). The `#` line-comment rule
-#     (step 2) claims the `#` first, so `#[Foo]` — and anything
-#     after it on the same line — reads as one TK_COMMENT.
-#     Coverage holds, but the attribute is mis-typed. A future
-#     ADR could promote `#[…]` to a unified attribute token if a
-#     corpus needs it.
 #   - Heredocs / nowdocs (`<<<EOT … EOT;`). Variable-length
 #     terminator. Same scanner-shape gap as Lua's `[==[…]==]`
 #     and Ruby's heredocs — track collectively.
@@ -88,9 +82,6 @@ operators = [
     "!", "~", "&", "|", "^",
     "<", ">",
     "?",
-    # `#` never fires: the `#` line-comment rule (step 2) claims
-    # every `#` first. Unreachable but harmless.
-    "#",
     "@",
     # `\` is PHP's namespace separator (`Vyakarana\Concept`,
     # `\RuntimeException`). The string-pair rule's `escape =
@@ -100,6 +91,7 @@ operators = [
 ]
 
 punctuation = [
+    "#[",
     "(", ")", "{", "}", "[", "]",
     ";", ",", ":",
 ]
@@ -120,6 +112,9 @@ start = "//"
 kind = "comment"
 match = "line"
 start = "#"
+# PHP 8 attributes `#[Route("/x")]` are code, not comments (2.7.1,
+# ADR 0027): `#[` is punctuation, then ordinary tokens to its `]`.
+not_followed_by = "["
 
 
 # Block comments `/* … */`. Same shape as C/Java/C++.

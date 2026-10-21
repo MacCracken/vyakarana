@@ -19,11 +19,17 @@ host — variance ~±10% between runs.
 
 | Artifact                    | Size (bytes) | Size (KB) | Notes                                         |
 |-----------------------------|-------------:|----------:|-----------------------------------------------|
-| `build/vyk` (CLI binary)    |      480,144 |     468.9 | Includes 46 inlined grammars (~234 KB of text) |
-| `build/vyk`, `CYRIUS_DCE=1` |      390,032 |     380.9 | Same tree, dead fns compacted out — **what releases ship** |
-| `dist/vyakarana.cyr`        |      481,212 |     469.9 | Single-file bundle for `cyrius deps` (6,139 lines) |
+| `build/vyk` (CLI binary)    |      490,560 |     479.1 | Includes 46 inlined grammars (~236 KB of text) |
+| `build/vyk`, `CYRIUS_DCE=1` |      400,448 |     391.1 | Same tree, dead fns compacted out — **what releases ship** |
+| `dist/vyakarana.cyr`        |      496,247 |     484.6 | Single-file bundle for `cyrius deps` (6,428 lines) |
 
-**Re-captured 2026-10-20 at `2.7.0`, 6.7.15 toolchain.** 2.6.2 →
+**Re-captured 2026-10-20 at `2.7.1`, 6.7.15 toolchain.** 2.7.0 →
+2.7.1: 480,144 → 490,560 (+10,416; DCE 390,032 → 400,448) — the
+string-prefix, `ident_lead` and next-byte line-rule paths, the bash-word
+heredoc delimiter parser with its scratch pool, and cyrius's seventeen
+directive rules plus python's 24 prefixes in the blobs (+2.4 KB).
+
+**`2.7.0` capture (same day).** 2.6.2 →
 2.7.0: 473,936 → 480,144 (+6,208; DCE 383,824 → 390,032) — the number
 scanner (`_ds_digit_run`, `_ds_scan_datetime`, `_ds_scan_time`), the
 three new `[defaults]` keys and the drain's number lookahead; the
@@ -249,6 +255,27 @@ microsecond-scale row by ~1.3 µs and can masquerade as a real
 win. The `2.3.0` table was captured on 6.5.4, which does subtract
 it. Table not refreshed: the documented cadence is minor-release
 boundaries, and this is a patch.
+
+## Bench note (2.7.1, 2026-10-20) — grammar polish, A/B'd
+
+Paired protocol, 2.7.0 and 2.7.1 alternated for 10 rounds, host load
+≈ 3.6 (a second run at load 11–19 agreed within its wider spread):
+
+| Benchmark                  | Median 2.7.1 / 2.7.0 | IQR             |
+|----------------------------|---------------------:|-----------------|
+| detect/content-python      |               −9.7 % | −10.6 … −6.2 %  |
+| detect/path-shell          |               −2.8 % | −2.9 … +0.0 %   |
+| tokenize/json-small        |               +1.0 % | −0.6 … +2.2 %   |
+| detect/combined-asm-arm    |               +1.3 % | −0.1 … +3.6 %   |
+| tokenize/html-compose      |               +1.3 % | +1.1 … +3.4 %   |
+| tokenize/shell-small       |               +2.2 % | +1.1 … +2.7 %   |
+| tokenize/rust-small        |               +2.3 % | +1.4 … +4.7 %   |
+| blob/grammar-load-shell    |               +4.8 % | +2.0 … +8.7 %   |
+
+The tokenize rows pay ~2 % for the identifier step's prefix and
+`ident_lead` checks; grammar-load for the extra keys the loader compares
+(the loaded run measured it −0.7 %). `content-python` is the
+layout-sensitive row again. The 2.7.0 latency table stays the baseline.
 
 ## Tokenize / detect / load latencies (2.7.0 baseline, 2026-10-20)
 

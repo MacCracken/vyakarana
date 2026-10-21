@@ -48,15 +48,19 @@ var GRAMMAR_FILE_CAP = 32768;
 #  200  number_float        i64  (0/1) — `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026, 2.7.0)
 #  208  number_separator    i64  digit separator byte (`_`, `'`), 0 = none, -1 = invalid (ADR 0026)
 #  216  number_datetime     i64  (0/1) — RFC 3339 dates / times as one number (ADR 0026)
+#  224  ident_lead_tbl      ptr to char-class, or 0 — bytes that start an ident only
+#                           before an ident byte: css `-` (ADR 0027, 2.7.1)
+#  232  string_prefixes     Vec<cstr> — idents that join a following string / char (ADR 0027)
+#  240  raw_string_prefixes Vec<cstr> — the same, with the string's escape off (ADR 0027)
 #  -----
-#  224 bytes total
+#  248 bytes total
 #
 # `extensions`, `filenames` and `shebangs` declare what
 # `src/detect.cyr` routes to this grammar. Detection does not read
 # them — it is compiled — but tests/vyakarana.tcyr and
 # scripts/check-detect.sh hold the two equal in both directions.
 
-var GRAMMAR_SIZE = 224;
+var GRAMMAR_SIZE = 248;
 
 fn grammar_new() {
     var g = alloc(GRAMMAR_SIZE);
@@ -77,6 +81,8 @@ fn grammar_new() {
     store64(g + 176, vec_new());   # compose_region_rules
     store64(g + 184, vec_new());   # heredoc_rules (2.6.0)
     store64(g + 192, vec_new());   # filenames (2.6.2)
+    store64(g + 232, vec_new());   # string_prefixes (2.7.1)
+    store64(g + 240, vec_new());   # raw_string_prefixes (2.7.1)
     return g;
 }
 
@@ -108,6 +114,9 @@ fn grammar_filenames(g)            { return load64(g + 192); }
 fn grammar_number_float(g)         { return load64(g + 200); }
 fn grammar_number_sep(g)           { return load64(g + 208); }
 fn grammar_number_datetime(g)      { return load64(g + 216); }
+fn grammar_ident_lead(g)           { return load64(g + 224); }
+fn grammar_string_prefixes(g)      { return load64(g + 232); }
+fn grammar_raw_string_prefixes(g)  { return load64(g + 240); }
 
 # Here-document rule (ADR 0023): `start` opens it (`<<`); an optional
 # one-byte `indent` marker right after the start (`-` for `<<-`) lets
@@ -128,12 +137,16 @@ fn heredoc_rule_indent(r) { return load64(r + 16); }
 
 # ── Rule sub-records ────────────────────────
 
-var LINE_RULE_SIZE = 24;   # +8 in 2.6.0: start_after @ 16 (ADR 0022)
+# start_after @ 16 (2.6.0, ADR 0022); followed_by @ 24, not_followed_by @ 32
+# (2.7.1, ADR 0027).
+var LINE_RULE_SIZE = 40;
 fn line_rule_new(kind, start) {
     var r = alloc(LINE_RULE_SIZE);
     store64(r,     kind);
     store64(r + 8, start);
     store64(r + 16, 0);
+    store64(r + 24, 0);
+    store64(r + 32, 0);
     return r;
 }
 fn line_rule_kind(r)  { return load64(r); }
@@ -142,6 +155,13 @@ fn line_rule_start(r) { return load64(r + 8); }
 # marker counts only at the start of input or right after one of these
 # bytes — shell's `#` begins a comment only at the start of a word.
 fn line_rule_after(r) { return load64(r + 16); }
+# `followed_by` / `not_followed_by` (ADR 0027, 2.7.1): 256-byte char-class
+# tables, or 0. The marker counts only when the byte after it is (is
+# not) in the class — Cyrius's `#ifdef` is a directive and `# x` a
+# comment; PHP 8's `#[Attr]` is not a comment. At the end of input
+# there is no next byte: `followed_by` fails, `not_followed_by` holds.
+fn line_rule_followed(r)     { return load64(r + 24); }
+fn line_rule_not_followed(r) { return load64(r + 32); }
 
 var PAIR_RULE_SIZE = 32;
 fn pair_rule_new(kind, start, end, escape_byte) {
@@ -558,6 +578,20 @@ fn _gp_apply_kv(g, current_rule, section, buf, len, key_pos, key_len, value_pos)
             }
             return 0;
         }
+        if (_gp_slice_eq(buf, key_pos, key_len, "ident_lead") == 1) {
+            _gp_parse_string(buf, len, value_pos, out_str_slot);
+            var ils = load64(out_str_slot);
+            if (_gp_nonempty(ils) == 1) { store64(g + 224, char_class_new(ils)); }
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "string_prefixes") == 1) {
+            _gp_parse_string_array(buf, len, value_pos, grammar_string_prefixes(g));
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "raw_string_prefixes") == 1) {
+            _gp_parse_string_array(buf, len, value_pos, grammar_raw_string_prefixes(g));
+            return 0;
+        }
         if (_gp_slice_eq(buf, key_pos, key_len, "number_datetime") == 1) {
             _gp_parse_bool(buf, len, value_pos, out_bool_slot);
             store64(g + 216, load64(out_bool_slot));
@@ -601,7 +635,8 @@ fn _gp_apply_kv(g, current_rule, section, buf, len, key_pos, key_len, value_pos)
         # flag @ 56 (those two exist only for `_gp_close_rule`'s
         # validation, 2.5.2), start_after @ 64 (cstr, line rules only;
         # ADR 0022, 2.6.0), indent @ 72 (cstr, heredoc rules only;
-        # ADR 0023, 2.6.0).
+        # ADR 0023, 2.6.0), followed_by @ 80 / not_followed_by @ 88
+        # (char-class tables, line rules only; ADR 0027, 2.7.1).
         if (_gp_slice_eq(buf, key_pos, key_len, "kind") == 1) {
             _gp_parse_string(buf, len, value_pos, out_str_slot);
             var kname = load64(out_str_slot);
@@ -646,6 +681,20 @@ fn _gp_apply_kv(g, current_rule, section, buf, len, key_pos, key_len, value_pos)
             # allows a tab-indented terminator (`-` for shell's `<<-`).
             _gp_parse_string(buf, len, value_pos, out_str_slot);
             store64(current_rule + 72, load64(out_str_slot));
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "followed_by") == 1) {
+            _gp_parse_string(buf, len, value_pos, out_str_slot);
+            var fbs = load64(out_str_slot);
+            store64(current_rule + 80, 1);                     # given, even if empty
+            if (_gp_nonempty(fbs) == 1) { store64(current_rule + 80, char_class_new(fbs)); }
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "not_followed_by") == 1) {
+            _gp_parse_string(buf, len, value_pos, out_str_slot);
+            var nfs = load64(out_str_slot);
+            store64(current_rule + 88, 1);
+            if (_gp_nonempty(nfs) == 1) { store64(current_rule + 88, char_class_new(nfs)); }
             return 0;
         }
         if (_gp_slice_eq(buf, key_pos, key_len, "start_after") == 1) {
@@ -736,9 +785,21 @@ fn _gp_close_rule(g, rule_acc) {
     if ((after != 0) && (mt != 1)) { return 1; }          # start_after: line rules only
     if ((after != 0) && (_gp_nonempty(after) == 0)) { return 1; }
     var indent = load64(rule_acc + 72);
+    var fby = load64(rule_acc + 80);
+    var nfby = load64(rule_acc + 88);
     if ((mt < 1) || (mt > 7)) { return 1; }               # unknown `match`
     if ((indent != 0) && (mt != 7)) { return 1; }         # indent: heredoc rules only
     if ((indent != 0) && (_gp_nonempty(indent) == 0)) { return 1; }
+    # One byte: the scanner compares only the first, so `indent = "-="`
+    # silently meant `-` (2.6.x audit, fixed 2.7.1).
+    if ((indent != 0) && (strlen(indent) != 1)) { return 1; }
+    # `escape` means something only to a pair rule; on a line or heredoc
+    # rule it was accepted and ignored (2.6.x audit, fixed 2.7.1).
+    if ((esc != 0) && (mt != 2)) { return 1; }
+    # followed_by / not_followed_by: line rules only, and not empty
+    # (an empty class would never — or always — match). 1 = given empty.
+    if (((fby != 0) || (nfby != 0)) && (mt != 1)) { return 1; }
+    if ((fby == 1) || (nfby == 1)) { return 1; }
     if ((mt == 7) && (endp != 0)) { return 1; }           # a heredoc's end is its delimiter
     if ((mt != 3) && (_gp_nonempty(start) == 0)) { return 1; }   # all but `words` need `start`
     if (((mt <= 3) || (mt == 7)) && (kind_given == 0)) { return 1; }   # line / pair / words / heredoc need `kind`
@@ -753,6 +814,8 @@ fn _gp_close_rule(g, rule_acc) {
     if (mt == 1) {
         var lr = line_rule_new(kind, start);
         store64(lr + 16, after);
+        store64(lr + 24, fby);
+        store64(lr + 32, nfby);
         vec_push(grammar_line_rules(g), lr);
         return 0;
     }
@@ -798,10 +861,10 @@ fn _gp_close_rule(g, rule_acc) {
 }
 
 fn _gp_new_rule_acc() {
-    var r = alloc(80);
+    var r = alloc(96);
     if (r == 0) { return 0; }
     var i = 0;
-    while (i < 80) { store8(r + i, 0); i = i + 1; }
+    while (i < 96) { store8(r + i, 0); i = i + 1; }
     return r;
 }
 
@@ -818,6 +881,29 @@ fn _gp_validate(g) {
     if (grammar_number_sep(g) < 0) { return 1; }
     var st = grammar_ident_start(g);
     var ct = grammar_ident_cont(g);
+    # A string prefix is matched as a whole identifier (ADR 0027): one that
+    # is not identifier-shaped could never match, so reject it.
+    var pv = vec_new();
+    vec_push(pv, grammar_string_prefixes(g));
+    vec_push(pv, grammar_raw_string_prefixes(g));
+    var pvi = 0;
+    while (pvi < 2) {
+        var plist = vec_get(pv, pvi);
+        var pk = 0;
+        while (pk < vec_len(plist)) {
+            var pw = vec_get(plist, pk);
+            if (_gp_nonempty(pw) == 0) { return 1; }
+            if ((st == 0) || (ct == 0)) { return 1; }
+            if (char_class_match(st, load8(pw)) == 0) { return 1; }
+            var pc = 1;
+            while (pc < strlen(pw)) {
+                if (char_class_match(ct, load8(pw + pc)) == 0) { return 1; }
+                pc = pc + 1;
+            }
+            pk = pk + 1;
+        }
+        pvi = pvi + 1;
+    }
     if ((st == 0) && (ct != 0)) { return 1; }
     if ((st != 0) && (ct == 0)) { return 1; }
     if ((grammar_unicode_ident(g) == 1) && (st == 0)) { return 1; }

@@ -18,8 +18,10 @@ from this file.
   source.
 - **Versioning.** A minor when token boundaries change for some input
   (a consumer can see the difference) or a feature lands; a patch
-  otherwise. Every minor closes with the CLAUDE.md hardening step as
-  its `.y.last` closeout patch.
+  otherwise. The CLAUDE.md hardening step runs as a closeout patch —
+  but not after every minor for now: the remaining pinned work (2.8.0
+  – 2.9.0) ships first, and **one closeout audit, 2.9.1, covers 2.7.x
+  – 2.9.x** (decided 2026-10-20).
 - **Toolchain catch-ups** are user-directed patch releases at any point
   in the train (pin → re-vendor → gates → byte-identical output A/B).
   They never carry other work.
@@ -32,22 +34,6 @@ from this file.
 ---
 
 ## Pinned releases
-
-### 2.7.1 — Grammar polish *(patch)*
-
-- PHP 8 `#[attr]` (swallowed by the `#` comment rule); ruby / crystal
-  `@@x` class variables; makefile `$<` `$^` `$%` `$+` `$|`; css `-`
-  unreachable as an operator; harmless duplicates (haskell `/=`, llvm
-  `uwtable`, swift words).
-- Rust byte chars `b'\n'`; Python f / r / b string prefixes; Cyrius
-  `#ifdef` / `#define` lines as preprocessor, not comments.
-- **Shell heredoc delimiters bash accepts and we do not** (2.6.x
-  audit): mixed quoting `<<"E"OF`, a backslash inside `<<E\OF` (both
-  read as `E`), the empty delimiter `<<''`, and `<<!`.
-- **Grammar validation gaps** (2.6.x audit): a multi-byte heredoc
-  `indent` silently uses its first byte; `escape` on a heredoc or line
-  rule is accepted and ignored.
-- Close with the 2.7.x closeout audit.
 
 ### 2.8.0 — Streaming engine *(minor)*
 
@@ -79,8 +65,8 @@ from this file.
 
 ### 2.9.0 — Size and tooling *(minor)*
 
-- **Binary size.** The default `vyk` is ~480 KB and the DCE build
-  (what releases ship) ~390 KB, against 1.13.0's 300 KB soft cap. The
+- **Binary size.** The default `vyk` is ~490 KB and the DCE build
+  (what releases ship) ~400 KB, against 1.13.0's 300 KB soft cap. The
   cheapest lever: strip comments when embedding — the blobs carry each
   `.cyml` verbatim and most of their ~232 KB is comment text. Then
   revisit the cap or the blob encoding (ADR 0014).
@@ -93,6 +79,14 @@ from this file.
   reruns them instead of rebuilding them.
 - Script the loaded-host latency protocol (short runs, alternating
   versions, paired ratios — `performance.md`) so every refresh uses it.
+
+### 2.9.1 — Closeout audit *(patch)*
+
+- The CLAUDE.md hardening step over everything 2.7.0 – 2.9.0 changed
+  (number literals, grammar polish, the streaming engine, size and
+  tooling), with the empirical sweeps re-run over the whole library —
+  by then from `scripts/`, not rebuilt by hand. No 2.7.x or 2.8.x
+  closeout before it.
 
 ---
 
@@ -110,6 +104,11 @@ does.
   `detect_language_registered(path)` that walks the registry, if a
   consumer wants vyakarana to route its own grammars
   ([ADR 0025](../adr/0025-detection-declared-by-grammars.md)).
+- **Literal shapes ADR 0027 left out** — variable-length delimiters
+  (Rust `r#"…"#`, C++ `R"d(…)d"`, Lua `[==[…]==]`, Ruby `<<~EOS`, PHP
+  `<<<EOT`, Swift `#"…"#`; ADR 0023 says extend the heredoc rule),
+  non-identifier string prefixes (C# `@"…"` / `$"…"`), SQL `N'…'`,
+  Julia string macros.
 - **Number shapes ADR 0026 left out** — leading- / trailing-dot floats
   (`.5`, `1.`) and suffixes as part of the literal (`1.5f`, `2j`,
   `1u32`), if a consumer wants them coloured as one token.

@@ -40,6 +40,7 @@ sub-blocks).
 | 0024 | [Char-literal escape forms beyond `'\C'` / `'\xHH'`](0024-char-literal-escape-forms.md) | Accepted | 2026-10-20 |
 | 0025 | [Grammars declare their detection routes; `detect.cyr` stays compiled](0025-detection-declared-by-grammars.md) | Accepted | 2026-10-20 |
 | 0026 | [Number literal shapes: floats, digit separators, datetimes](0026-number-literal-shapes.md) | Accepted | 2026-10-20 |
+| 0027 | [String prefixes, identifier lead bytes, next-byte line rules](0027-prefixes-lead-bytes-next-byte-rules.md) | Accepted | 2026-10-20 |
 
 ## Conventions
 

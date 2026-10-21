@@ -139,14 +139,21 @@ was removed in 2.0.0 (ADR 0017).
 
 ## Status
 
+**2.7.1** (2026-10-20) — grammar polish
+([ADR 0027](docs/adr/0027-prefixes-lead-bytes-next-byte-rules.md)):
+`f"…"` / `b'\n'` / `L"…"` prefixes belong to their string, PHP 8
+`#[attributes]` and Cyrius `#ifdef` lines are no longer comments, CSS
+`calc(a - b)` has a minus, makefile `$<` / `$^`, Ruby `@@vars` and shell
+`<<"E"OF` heredocs tokenize correctly. 1056/1056 tests. Next on the
+[roadmap](docs/development/roadmap.md): 2.8.0 streaming engine.
+
 **2.7.0** (2026-10-20) — number literals. A float (`2.5e-3`), a
 digit-separated integer (`1_000`, C++ `1'000`) and a TOML / YAML
 date-time (`1979-05-27T07:32:00Z`) are each one `number` token in the
 grammars whose languages have them
 ([ADR 0026](docs/adr/0026-number-literal-shapes.md)); ranges like
 `0..10` stay split. Token boundaries change, so consumers render these
-differently. 1013/1013 tests. Next on the
-[roadmap](docs/development/roadmap.md): 2.7.1 grammar polish.
+differently. 1013/1013 tests.
 
 **2.6.2** (2026-10-20) — detection from grammar data, and the 2.6.x
 closeout audit. Each grammar's `extensions`, `filenames` and

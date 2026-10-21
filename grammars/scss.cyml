@@ -40,6 +40,10 @@ whitespace = true
 # (`#{…}`), `$` for variables, `-` for custom properties.
 ident_start = "A-Za-z_@#$-"
 ident_cont  = "A-Za-z0-9_-"
+# `-` starts an ident only before a byte that can start one (`--var`,
+# `-webkit-x`); alone (`100% - 10px`) or before a digit (`-2px`) it is
+# the `-` operator (2.7.1, ADR 0027; `-2px` was one ident).
+ident_lead  = "-$"   # `$var` an ident; `[href$=x]` the `$=` operator
 
 number_decimal = true
 number_0x      = false
@@ -56,10 +60,8 @@ operators = [
     # 2.5.1 `$a == $b` came out `=` + `=` (2.5.2 audit P3-a). Listed
     # first — the scanner takes the first entry that matches.
     "==", "!=", "<=", ">=",
-    # `$=` and `-` never fire: `$` and `-` are in `ident_start`, and
-    # the ident step (6) runs before operators (8) — `[href$=x]`
-    # gives ident `$` + `=`, and the minus in `$a - $b` is a 1-byte
-    # ident. Unreachable but harmless.
+    # `$=` and `-` are reachable since 2.7.1: `$` and `-` are
+    # `ident_lead`, so they start an ident only before an ident byte.
     "^=", "$=", "*=", "~=", "|=",
     "::",
     "+", "-", "*", "/",

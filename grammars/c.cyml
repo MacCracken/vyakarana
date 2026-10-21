@@ -36,6 +36,8 @@ number_0x      = true
 number_0b      = false
 number_0o      = false
 number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
+# `L"wide"`, `u8"…"`, `u'x'` join their prefix (2.7.1, ADR 0027).
+string_prefixes = ["L", "u", "U", "u8"]
 
 special_vars = false
 

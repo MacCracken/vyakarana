@@ -159,10 +159,6 @@ words = [
     # Type / generics
     "any", "some", "Any", "Type",
     "inout",
-    # Misc — both repeat entries above (`import` under Module,
-    # `associatedtype` under Type-declaration heads). Harmless:
-    # first match wins, same kind.
-    "import", "associatedtype",
 ]
 
 # Backtick-escaped identifier — ``let `default` = 1`` lets a reserved

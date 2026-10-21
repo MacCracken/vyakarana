@@ -22,10 +22,8 @@
 #     `{{ ... }}` for ECR-style metaprogramming. `{%` and
 #     `{{` markers are short pair rules; we don't model them
 #     yet (would need pair rules).  Documented limitation.
-#   - Instance / class vars: `@var`, `@@var`. `@` is in
-#     ident_start so `@var` tokenizes as one ident. `@` is NOT
-#     in ident_cont, so `@@var` splits into ident `@` + ident
-#     `@var` — known gap (see below).
+#   - Instance / class vars: `@var`, `@@var` are one ident each
+#     (`@` in ident_start and, since 2.7.1, ident_cont).
 #
 # Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
 # `tests/corpus/concept.cr` exercises classes, modules,
@@ -38,8 +36,6 @@
 #     part of the surrounding string. Same trade-off as JS
 #     template literals.
 #   - **Macro markers** `{% %}` and `{{ }}`.
-#   - **Class vars** `@@var` come back as two idents (`@` +
-#     `@var`); coverage holds, theme can re-pair.
 
 [grammar]
 name = "crystal"
@@ -49,12 +45,11 @@ extensions = [".cr"]
 shebang = false
 whitespace = true
 
-# `@` in ident_start: instance vars (`@x`). Not in ident_cont,
-# so a class var `@@y` is `@` + `@y` (header, Known gaps).
+# `@` in ident_start and ident_cont: `@x`, `@@y` (2.7.1).
 # `?` and `!` in ident_cont: method-name suffixes
 # (`is_a?`, `push!`).
 ident_start = "A-Za-z_@"
-ident_cont  = "A-Za-z0-9_?!"
+ident_cont  = "A-Za-z0-9_?!@"
 
 number_decimal = true
 number_0x      = true
