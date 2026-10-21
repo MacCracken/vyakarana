@@ -39,6 +39,7 @@
 [grammar]
 name = "lua"
 extensions = [".lua"]
+shebangs = ["lua"]
 
 [defaults]
 shebang = true

@@ -87,7 +87,7 @@ fn print_help() {
     out_line("Exit codes:");
     out_line("  0  success");
     out_line("  1  tokenization produced an `error` token kind");
-    out_line("  2  bad usage: unknown option, missing or invalid value");
+    out_line("  2  bad usage: unknown option, missing or invalid value, extra FILE");
     out_line("  3  I/O error: cannot read FILE, or cannot write output");
     out_line("  4  no grammar matched FILE");
     out_line("");
@@ -305,11 +305,15 @@ fn _sanitize_for_stderr(s) {
     return out;
 }
 
-# Error functions split by failure class (1.13.1):
+# Error functions split by failure class (1.13.1; the list was
+# missing the 2.3.4 and 2.6.1 additions until the 2.6.x audit):
 #   - unknown_option_error(flag)        — `--bogus` style
+#   - missing_value_error(flag)         — `--language=` with nothing after
 #   - bad_value_error(flag, allowed)    — `--theme=nope`
+#   - usage_error(msg)                  — any other bad combination
 #   - extra_arg_error(arg)              — second positional file
-#   - io_error(path)                    — file read failed
+#   - io_error(path) / stdin_error()    — the input could not be read
+#   - too_large_error(path)             — input over VYK_SRC_CAP
 #   - no_grammar_error(path)            — extension/content didn't match
 # Each one tells the user *what* the problem is and *what* to do
 # next. The `try --help` reference is consistent across all.
@@ -378,6 +382,13 @@ fn io_error(path) {
     eprint(safe, strlen(safe));
     var m2 = ": file not found or not readable\n";
     eprint(m2, strlen(m2));
+    return 0;
+}
+
+# `-` could not be read: stdin closed (`<&-`), a directory, EIO.
+fn stdin_error() {
+    var m = "vyk: cannot read standard input\n";
+    eprint(m, strlen(m));
     return 0;
 }
 
@@ -553,10 +564,12 @@ fn main() {
         return EXIT_OK;
     }
 
-    # Two-pass: collect an optional --language= override, an optional
-    # --handcoded flag (regression oracle — see src/tokenize.cyr),
-    # and the first non-flag arg (the file path). Flags may appear
-    # in any order.
+    # One pass over argv: an optional --language= override, an
+    # optional --handcoded flag (regression oracle — see
+    # src/tokenize.cyr), --theme= / --export-theme=, and at most one
+    # FILE (a second is a usage error). Flags may appear in any order;
+    # `--` ends them. (This said "two-pass … the first non-flag arg"
+    # through 2.6.1.)
     var lang_override = 0;
     var path = 0;
     var handcoded = 0;
@@ -640,6 +653,14 @@ fn main() {
             }
         }
 
+        if ((opts_done == 0) && (handled == 0)) {
+            # `--language shell` — a space instead of `=`. Name the form
+            # that is wanted instead of "unknown option" (2.6.x audit).
+            if (streq(a, "--language") == 1) { missing_value_error("--language="); return EXIT_USAGE; }
+            if (streq(a, "--theme") == 1) { missing_value_error("--theme="); return EXIT_USAGE; }
+            if (streq(a, "--export-theme") == 1) { missing_value_error("--export-theme="); return EXIT_USAGE; }
+        }
+
         if (handled == 0) {
             # Not a known flag. Before `--`, anything else starting with
             # `-` is an unknown option — except `-` alone, which is
@@ -687,14 +708,20 @@ fn main() {
     }
     var n = 0;
     # `-` is standard input; messages call it `<stdin>`, and detection
-    # falls to the content sniff (no extension to go on).
+    # falls to the content sniff (no extension to go on). The flag, not
+    # the name, decides how to read: 2.6.1 tested the name, so a real
+    # file called `<stdin>` was never read — exit 0, no tokens (2.6.x
+    # audit).
+    var is_stdin = 0;
     if (streq(path, "-") == 1) {
+        is_stdin = 1;
         path = "<stdin>";
         n = _read_stdin(buf, VYK_SRC_CAP - 1);
     }
-    if (streq(path, "<stdin>") == 0) { n = file_read_all(path, buf, VYK_SRC_CAP - 1); }
+    if (is_stdin == 0) { n = file_read_all(path, buf, VYK_SRC_CAP - 1); }
     if (n < 0) {
-        io_error(path);
+        if (is_stdin == 1) { stdin_error(); }
+        if (is_stdin == 0) { io_error(path); }
         return EXIT_IO;
     }
     # `file_read_all` stops once it has filled `maxlen`, so hitting

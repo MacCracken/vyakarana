@@ -24,11 +24,11 @@
 # is statically bound at build time, no runtime expansion
 # semantics.)
 #
-# Filename dispatch: Dockerfile uses no extension. `detect_language`
-# in `src/detect.cyr` matches a path ending in `Dockerfile` or
-# `Containerfile` (so `*.Dockerfile` too). `Dockerfile.*` variants
-# (`Dockerfile.dev`) are NOT matched; users with those or other
-# non-standard names pass `--language=dockerfile` explicitly.
+# Filename dispatch: Dockerfile uses no extension — `filenames`
+# below. A path ending in `Dockerfile` or `Containerfile` matches
+# (so `app.Dockerfile` too), and since 2.6.2 so does a variant like
+# `Dockerfile.dev` when no extension claims it first (ADR 0025).
+# Other names need `--language=dockerfile`.
 #
 # Known gaps (not triggered by the stand-in):
 #   - Heredoc syntax (`COPY <<EOT`, etc.). Variable-length
@@ -41,6 +41,7 @@
 [grammar]
 name = "dockerfile"
 extensions = []
+filenames = ["Dockerfile", "Containerfile"]
 
 [defaults]
 shebang = false

@@ -29,6 +29,10 @@
 #   - Multi-line values via line-continuation (`\` at end of
 #     line). Tokenizes as `\` operator + newline + content.
 #     Cosmetic; coverage holds.
+#   - `.properties` (Java, 2.6.2): `#` comments and `key=value`
+#     fit; `!` comment lines do not, and a `;` or `#` inside a
+#     value starts a comment (`Pkg.Path=cmake;3.22.1`) — 22 lines
+#     in 5 of 722 real files. No error tokens.
 #   - `KEY[]` repeated-key array syntax (PHP-style ini).
 #     Tokenizes as ident + `[` + `]`. Cosmetic.
 

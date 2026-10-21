@@ -276,6 +276,23 @@ fn _ci_main() {
     # delimiter, an arithmetic `<<`, a here-string, an unterminated one.
     if (_ci_every("shell", "cat <<EOF > o\nit's # x\nEOF\ny=$((1 << n))\nc <<'Q' <<-T\nq\nQ\n\tt\n\tT\nr <<< x\nd <<NOEND\nn # c\n") != 0) { rc = 1; }
     if (_ci_every("shell", "a <<A <<B <<C\n1\nA\n2\nB\n3\nC\nz <<X; y <<Y\nx\nX\ny\nY\necho e\n") != 0) { rc = 1; }
+    # 2.6.x audit: each failed at some split offsets on 2.6.1 — an
+    # arithmetic `<<` read as a heredoc once the `((` had committed; a
+    # body whose opener was "resolved" by a terminator that belongs to
+    # an earlier body, or sits inside a string spanning lines; a 1-byte
+    # body held by the marker window while its opener line committed.
+    if (_ci_every("shell", "y=$((1 << n))\necho a\nn\necho b # c\n") != 0) { rc = 1; }
+    if (_ci_every("shell", "x=1\n(( v = a << b ))\necho a # c\nb\necho z\n") != 0) { rc = 1; }
+    if (_ci_every("shell", "x=$(( a << b ))\nb\ncat <<EOF\nit's\nEOF\n") != 0) { rc = 1; }
+    if (_ci_every("shell", "cat <<EOF \"a\nEOF\n\"\nbody # x\nEOF\necho end\n") != 0) { rc = 1; }
+    if (_ci_every("shell", "cat <<EOF | awk '\nEOF\n'\nbody # x\nEOF\necho end\n") != 0) { rc = 1; }
+    if (_ci_every("shell", "cat <<A <<B\nB\nA\nbody b # x\nB\necho end\n") != 0) { rc = 1; }
+    if (_ci_every("shell", "cat <<E <<E\nx\nE\ny # c\nE\necho end\n") != 0) { rc = 1; }
+    if (_ci_every("shell", "cat <<EOF >a; cat <<EOF >b\nx\nEOF\nit's\nEOF\necho z\n") != 0) { rc = 1; }
+    if (_ci_every("shell", "cat <<E\nE\necho z\n") != 0) { rc = 1; }
+    if (_ci_every("shell", "a <<E <<F\nE\nF\nz\n") != 0) { rc = 1; }
+    if (_ci_every("shell", "sed 's/((a)/' <<EOF\nit's\nEOF\ncat <<END-OF-DATA\nb # c\nEND-OF-DATA\n") != 0) { rc = 1; }
+    if (_ci_every("shell", "cat <<EOF\r\nx # y\r\nEOF\r\nb=${dir##*/}\r#c\n") != 0) { rc = 1; }
     if (_ci_every("php", "<?php $a === $b && $c !== $d;") != 0) { rc = 1; }
     if (_ci_every("ocaml", "let xs = 1 :: 2 :: [];;") != 0) { rc = 1; }
 
@@ -290,7 +307,9 @@ fn _harness_main() {
         eprint("chunk-invariance fuzz: FAIL\n", 28);
         return 1;
     }
-    print("chunk-invariance fuzz: OK (15 grammars x 8 chunk sizes)\n", 55);
+    # The counts are this file's `_ci_one` / `_ci_every` lines; this
+    # message said "15 grammars" from 2.4.0 until 2.6.2.
+    print("chunk-invariance fuzz: OK (42 corpora x 8 chunk sizes + 37-byte two-feed splits; 12 every-offset shapes)\n", 105);
     return 0;
 }
 

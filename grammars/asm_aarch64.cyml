@@ -22,6 +22,10 @@
 # to always pass `--language` and called content-based detection a
 # "future pass (1.13.0)"; it landed in 1.11.2.)
 #
+# `.asm` is not claimed: it is NASM / MASM / armasm territory, whose
+# `;` comments this grammar does not have (AArch64 GAS uses `//`).
+# Listed until 2.6.2 but never routed (ADR 0025).
+#
 # Opcodes (`mov`, `bl`, `stp`, `ldp`, `ldrb`, `cmp`, `b.eq`,
 # `ret`, …) and registers (`x0`-`x30`, `w0`-`w30`, `sp`, `pc`,
 # `lr`, `xzr`, `wzr`, …) tokenize as `TK_IDENT`, NOT
@@ -41,7 +45,7 @@
 
 [grammar]
 name = "asm_aarch64"
-extensions = [".s", ".S", ".asm"]
+extensions = [".s", ".S"]
 
 [defaults]
 shebang = false

@@ -19,9 +19,13 @@
 [grammar]
 name = "javascript"
 extensions = [".js", ".mjs", ".cjs"]
+shebangs = ["node"]
 
 [defaults]
-shebang = false
+# `#!/usr/bin/env node` routes here, and ES2023 makes a leading `#!`
+# line a comment, so it is one token rather than operator soup
+# (`#` `!` `/` `usr` …, 2.6.1 and earlier).
+shebang = true
 whitespace = true
 
 ident_start = "A-Za-z_$"

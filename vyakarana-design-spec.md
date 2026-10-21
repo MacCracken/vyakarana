@@ -147,6 +147,10 @@ kind = "keyword"
 words = ["if", "then", "else", "fi", "for", "while", "do", "done", "case", "esac"]
 ```
 
+`extensions`, `shebangs` and (2.6.2) `filenames` declare which paths
+and interpreters `src/detect.cyr` routes to the grammar. Detection is
+compiled; tests hold the two equal (ADR 0025).
+
 Rule types (M2 set):
 
 - `line` — from marker to end-of-line

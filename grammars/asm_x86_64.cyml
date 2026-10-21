@@ -46,10 +46,16 @@
 #   - `;` line comments (NASM/MASM convention). GAS uses `#`,
 #     which is what vidya's sample uses; if a NASM corpus shows
 #     up, switch the line-comment rule.
+#
+# `.asm` is not claimed: it is NASM / MASM / armasm territory, whose
+# `;` comments this grammar does not have (in GAS `;` separates
+# statements). Listed until 2.6.2 but never routed; forced through
+# here, all 1,611 `;` comment lines in 81 real `.asm` files came out
+# as code. A NASM grammar would take it (ADR 0025).
 
 [grammar]
 name = "asm_x86_64"
-extensions = [".s", ".S", ".asm"]
+extensions = [".s", ".S"]
 
 [defaults]
 shebang = false

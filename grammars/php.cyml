@@ -39,9 +39,12 @@
 [grammar]
 name = "php"
 extensions = [".php", ".phtml"]
+shebangs = ["php"]
 
 [defaults]
-shebang = false
+# `#!/usr/bin/env php` routes here; the line is one shebang token
+# (it read as a `#` comment through 2.6.1).
+shebang = true
 whitespace = true
 
 ident_start = "A-Za-z_$"

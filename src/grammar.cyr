@@ -21,8 +21,8 @@ var GRAMMAR_FILE_CAP = 32768;
 # ── Grammar record ──────────────────────────
 # Layout (offsets in bytes):
 #    0  name                cstr ptr
-#    8  extensions          Vec<cstr>
-#   16  shebangs            Vec<cstr>
+#    8  extensions          Vec<cstr>   path suffixes that route here (ADR 0025)
+#   16  shebangs            Vec<cstr>   interpreters that route here (ADR 0025)
 #   24  shebang_on          i64  (0/1)
 #   32  whitespace_on       i64
 #   40  ident_start_tbl     ptr to 256-byte char-class lookup
@@ -44,10 +44,16 @@ var GRAMMAR_FILE_CAP = 32768;
 #  168  compose_fenced_rules Vec<ComposeFencedRule> — captured-tag routing (ADR 0016)
 #  176  compose_region_rules Vec<ComposeRegionRule> — open-ended region routing (ADR 0019)
 #  184  heredoc_rules       Vec<HeredocRule> — here-documents (ADR 0023, 2.6.0)
+#  192  filenames           Vec<cstr>   basenames that route here (ADR 0025, 2.6.2)
 #  -----
-#  192 bytes total
+#  200 bytes total
+#
+# `extensions`, `filenames` and `shebangs` declare what
+# `src/detect.cyr` routes to this grammar. Detection does not read
+# them — it is compiled — but tests/vyakarana.tcyr and
+# scripts/check-detect.sh hold the two equal in both directions.
 
-var GRAMMAR_SIZE = 192;
+var GRAMMAR_SIZE = 200;
 
 fn grammar_new() {
     var g = alloc(GRAMMAR_SIZE);
@@ -67,6 +73,7 @@ fn grammar_new() {
     store64(g + 168, vec_new());   # compose_fenced_rules
     store64(g + 176, vec_new());   # compose_region_rules
     store64(g + 184, vec_new());   # heredoc_rules (2.6.0)
+    store64(g + 192, vec_new());   # filenames (2.6.2)
     return g;
 }
 
@@ -94,6 +101,7 @@ fn grammar_compose_rules(g)        { return load64(g + 160); }
 fn grammar_compose_fenced_rules(g) { return load64(g + 168); }
 fn grammar_compose_region_rules(g) { return load64(g + 176); }
 fn grammar_heredoc_rules(g)        { return load64(g + 184); }
+fn grammar_filenames(g)            { return load64(g + 192); }
 
 # Here-document rule (ADR 0023): `start` opens it (`<<`); an optional
 # one-byte `indent` marker right after the start (`-` for `<<-`) lets
@@ -306,9 +314,18 @@ fn _gp_skip_to_eol(buf, len, pos) {
     return pos;
 }
 
+# Escapes `_gp_parse_string` could not decode in the current
+# `_gp_parse` — a backslash before a letter or digit other than n / t
+# / r. Counted, and the grammar rejected, because the old behaviour
+# (drop the backslash, keep the letter) turned shell's `start_after`
+# `\r` into the letter `r`: every `#` after an `r` opened a comment,
+# `${dir##*/}` included (2.6.0; 2.6.x audit). A backslash before
+# punctuation (`\$`, `\.`) still means that byte.
+var _gp_bad_escape = 0;
+
 # Parse a quoted string starting at buf[pos] (first byte must be `"`).
 # Writes the resulting cstr to *out_ptr and returns the position just
-# past the closing `"`. Handles \\, \", \n, \t escapes.
+# past the closing `"`. Handles \\, \", \n, \t, \r escapes.
 fn _gp_parse_string(buf, len, pos, out_ptr) {
     if (load8(buf + pos) != 34) { store64(out_ptr, 0); return pos; }
     pos = pos + 1;
@@ -339,7 +356,13 @@ fn _gp_parse_string(buf, len, pos, out_ptr) {
             var out = esc;
             if (esc == 110) { out = 10; }   # \n
             if (esc == 116) { out = 9; }    # \t
+            if (esc == 114) { out = 13; }   # \r (2.6.x audit)
             # \\ and \" pass through as the next byte itself.
+            if (out == esc) {
+                if (((esc >= 48) && (esc <= 57)) || ((esc >= 65) && (esc <= 90)) || ((esc >= 97) && (esc <= 122))) {
+                    _gp_bad_escape = _gp_bad_escape + 1;
+                }
+            }
             store8(s + di, out);
             di = di + 1;
             q = q + 2;
@@ -354,6 +377,22 @@ fn _gp_parse_string(buf, len, pos, out_ptr) {
     return q;
 }
 
+# Scratch out-parameter slots for the parse helpers: +0 / +8 are
+# `_gp_apply_kv`'s string and bool results, +16 is the array parser's
+# element. Each value is read back the moment it is written, and no
+# helper re-enters another while holding one, so one 24-byte block
+# serves every grammar. Through 2.6.1 every key took two fresh 8-byte
+# allocations and every array element one, never freed: 55,688 of the
+# 305,944 bytes `bootstrap_grammars` allocated (2.6.x audit).
+var _gp_slots = 0;
+
+fn _gp_slot(off) {
+    if (_gp_slots == 0) { _gp_slots = alloc(24); }
+    if (_gp_slots == 0) { return 0; }
+    store64(_gp_slots + off, 0);
+    return _gp_slots + off;
+}
+
 # Parse an array literal starting at buf[pos] (first byte must be `[`).
 # Pushes each element (as a cstr) into out_vec. Returns position past `]`.
 fn _gp_parse_string_array(buf, len, pos, out_vec) {
@@ -366,8 +405,8 @@ fn _gp_parse_string_array(buf, len, pos, out_vec) {
         if (b == 93) { return pos + 1; }    # `]`
         if (b == 44) { pos = pos + 1; continue; }  # `,`
         if (b == 34) {
-            var out_slot = alloc(8);
-            store64(out_slot, 0);
+            var out_slot = _gp_slot(16);
+            if (out_slot == 0) { return len; }
             pos = _gp_parse_string(buf, len, pos, out_slot);
             var sptr = load64(out_slot);
             if (sptr != 0) { vec_push(out_vec, sptr); }
@@ -428,8 +467,9 @@ fn _gp_apply_kv(g, current_rule, section, buf, len, key_pos, key_len, value_pos)
     #   2 = [defaults]
     #   3 = [[rules]]
     # (passed in as `section`; we just branch on it.)
-    var out_str_slot = alloc(8); store64(out_str_slot, 0);
-    var out_bool_slot = alloc(8); store64(out_bool_slot, 0);
+    var out_str_slot = _gp_slot(0);
+    var out_bool_slot = _gp_slot(8);
+    if (out_bool_slot == 0) { return 0; }
 
     if (section == 1) {   # [grammar]
         if (_gp_slice_eq(buf, key_pos, key_len, "name") == 1) {
@@ -443,6 +483,10 @@ fn _gp_apply_kv(g, current_rule, section, buf, len, key_pos, key_len, value_pos)
         }
         if (_gp_slice_eq(buf, key_pos, key_len, "shebangs") == 1) {
             _gp_parse_string_array(buf, len, value_pos, grammar_shebangs(g));
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "filenames") == 1) {
+            _gp_parse_string_array(buf, len, value_pos, grammar_filenames(g));
             return 0;
         }
         return 0;
@@ -781,6 +825,7 @@ fn _gp_validate(g) {
 fn _gp_parse(buf, len) {
     var g = grammar_new();
     var invalid = 0;      # count of rules `_gp_close_rule` rejected
+    _gp_bad_escape = 0;
     var section = 0;      # 0=unset, 1=grammar, 2=defaults, 3=rules
     var current_rule = 0;
     var pos = 0;
@@ -853,6 +898,7 @@ fn _gp_parse(buf, len) {
 
     if (current_rule != 0) { invalid = invalid + _gp_close_rule(g, current_rule); }
     if (invalid > 0) { return 0; }
+    if (_gp_bad_escape > 0) { return 0; }
     if (_gp_validate(g) == 1) { return 0; }
     return g;
 }

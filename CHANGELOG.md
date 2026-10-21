@@ -4,6 +4,109 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.6.2] — 2026-10-20
+
+**Detection from grammar data, and the 2.6.x closeout audit.**
+[ADR 0025](docs/adr/0025-detection-declared-by-grammars.md): detection stays
+compiled in `src/detect.cyr`, and every grammar's `extensions` / `filenames` /
+`shebangs` now declare exactly what routes to it, held equal by a test in each
+direction. Through 2.6.1 the arrays were documentation only and had drifted.
+The closeout audit fixed a 2.6.0 shell regression and the heredoc streaming
+machinery (below). Over 6,357 real files the only output changes from 2.6.1 are
+the 925 files that now route (exit 4 → 0; two → 1) and 10 shell scripts with a
+`#` after an `r`; separately, line 1 of 190 javascript / php scripts with a
+shebang. 990/990 tests, smoke OK, lint+fmt exit 0, fuzz 5/5. Audit write-up:
+[docs/audit/2026-10-20-2.6.x-closeout-audit.md](docs/audit/2026-10-20-2.6.x-closeout-audit.md).
+
+### Added
+
+- **Routes that grammars declared but detection never had:** `.hh` → cpp,
+  `.csx` → csharp, `.phtml` → php, `.properties` → ini (722 real files, 0 error
+  tokens), and the `pwsh` / `powershell` shebangs → powershell.
+- **New routes:** `.mk` → makefile (125 real files, 0 error tokens); a basename
+  of `<filename>.<anything>` when no extension claims it first —
+  `Dockerfile.dev`, `Containerfile.prod`, `Makefile.am`, `Makefile.in` (80 real
+  files); the `julia` shebang → julia.
+- **`filenames = [...]`** grammar key (`[grammar]` table; `grammar_filenames(g)`;
+  Grammar record grows 192 → 200 bytes). Dockerfile and makefile declare their
+  basenames there.
+- `scripts/check-detect.sh`, run by smoke: every route compiled into
+  `detect.cyr` must be declared by its grammar, and every `memeq` length must
+  match its literal. POSIX; run under dash.
+- Test group "2.6.2 detection matches grammar declarations": every declared
+  extension, filename and interpreter of every loaded grammar routes to it, and
+  a grammar that lists interpreters has `shebang = true`. Both checks fail
+  against the 2.6.1 sources (19 misroutes; every undeclared route by name).
+
+### Fixed
+
+- **A `#!/usr/bin/env node` script tokenized its shebang as operator soup**
+  (`#` `!` `/` `usr` …): it was detected as javascript *by* that line, and
+  javascript had `shebang = false`. javascript and php now have
+  `shebang = true` — on 190 real scripts, line 1 becomes one token and every
+  later token is unchanged.
+- **`#` after a word ending in `r` opened a comment** (2.6.0). shell.cyml's
+  `start_after` set lists `\r`, which the grammar loader decoded as the letter
+  `r`, so `${dir##*/}`, `${var#pre}` and `for#x` lost the rest of the line to a
+  comment — 10 of 2,091 local scripts. The loader decodes `\r` now, and a
+  grammar that escapes any other letter or digit (`\e`, `\0`) is rejected
+  instead of silently mis-decoded; `\$`-style punctuation escapes still load.
+- **Streaming: an arithmetic `<<` turned into a heredoc** once an earlier drain
+  had committed the `((` (`y=$((1 << n))` split after `$((`). With no matching
+  line it held everything until finish: 19 MB fed after a 7-byte first chunk
+  overflowed the 16 MiB buffer and broke coverage. The scanner now counts
+  `((` / `))` as it emits tokens — quotes and comments skipped — and a drain
+  never commits into an open `((`.
+- **Streaming: the 1 MiB heredoc hold was not enforced once its watch armed.**
+  An unterminated `cat <<EOF` fed 17.8 MB in 4 KB chunks failed 221 feeds. The
+  bound holds on both paths now; past it the held bytes commit as code, the
+  trade-off ADR 0023 documents.
+- **Streaming: heredoc bodies were lost at some split offsets.** An opener was
+  counted as resolved by a terminator that belonged to an earlier body or sat
+  inside a string spanning lines (`cat <<A <<B`, `cat <<EOF "a\nEOF\n"`,
+  `cat <<EOF | awk '…'`), and a 1-byte body (`cat <<E\nE`) was held by the
+  marker window while its opener line committed. The new fuzz shapes fail at 91
+  split offsets on 2.6.1, none now; 813 real scripts with heredocs stream
+  identically at chunk sizes 1–9, random chunkings and 4 KB feeds.
+- **`((` inside quotes hid a heredoc** (`sed 's/((a)/' <<EOF` — the body came
+  out as code and its apostrophe as a string to EOF), and **`<<END-OF-DATA`**
+  (a delimiter with `-` or `.`) was not a heredoc at all.
+- **Heredoc scanning was quadratic.** Each `<<` re-scanned its line, twice: a
+  100 KB line of `x<<y` took 10 s (now 0.07 s), 200 KB 40 s (0.14 s), a 20 KB
+  one in 64-byte chunks 31 s (0.02 s). A held opener whose line never ends — a
+  CR-only file — was re-scanned every feed: 1 MiB in 4 KB chunks, 37 s → 0.38 s
+  (a second watch mode waits for the next line break instead).
+- **A file named `<stdin>` was never read** (2.6.1): the CLI used that name as
+  its stdin marker, so `vyk --language=shell '<stdin>'` exited 0 with no tokens.
+  A flag decides now. A closed or unreadable stdin says `cannot read standard
+  input` instead of "file not found".
+- `--language shell` / `--theme dark` / `--export-theme vscode` (a space, not
+  `=`) report `missing value for --language=` instead of `unknown option`.
+- `vyk --help` lists "extra FILE" under exit 2, as the man page does; the man
+  page said "all 45 grammars".
+
+### Changed
+
+- The stream record grows 144 → 152 bytes (the held region's start, for the
+  bound above); internal, `tokenize_stream_*` is unchanged. Its layout table in
+  `src/tokenize.cyr` had stopped at offset 80 since 2.5.2.
+- **Grammar loading allocates 18 % less** — `bootstrap_grammars` 305,944 →
+  250,256 bytes. The loader took two fresh 8-byte slots per key and one per
+  array element, never freed; one shared 24-byte block now serves them (each
+  is read back the moment it is written). Output identical on 4,500 real files.
+
+- **`.asm` is no longer claimed** by either asm grammar — it is NASM / MASM /
+  armasm. Forced through asm_x86_64, all 1,611 `;` comment lines in 81 real
+  `.asm` files came out as code. It still exits 4; `--language=` forces it.
+- `extensions` arrays corrected to match routing: shell gains `.zsh`; cyrius
+  drops `.cyml` (cyml's). Python, php, javascript, ruby, lua and julia declare
+  their `shebangs`.
+- `tests/corpus/` re-synced from vidya (ADR 0001): `rust.rs`, `go.go`,
+  `cyrius.cyr`, `concept.toml` had drifted since 2026-08-20. Zero error tokens.
+- `fuzz/chunk_invariance.fcyr` reported "15 grammars x 8 chunk sizes" — stale
+  since 2.5.2 widened it; it now reports what it ran (42 corpora, the 37-byte
+  two-feed splits, 12 every-offset shapes).
+
 ## [2.6.1] — 2026-10-20
 
 **CLI hardening.** The `vyk` command line only; the library bundle is unchanged

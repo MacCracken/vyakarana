@@ -3,6 +3,8 @@
 # Consumes a loaded grammar record (see src/grammar.cyr) and tokenizes
 # source bytes into a tokenbuf. Scanner dispatch follows ADR 0005:
 #
+#   H. queued here-document bodies (ADR 0023), at the
+#      line start after their opener line            → kind, 1 per body
 #   0. [[rules]] match="compose" (ADR 0013)           → recursive
 #      (start marker + inner-grammar body + end marker)
 #   0b. [[rules]] match="compose_fenced" (ADR 0016)   → recursive
@@ -19,6 +21,8 @@
 #      via [[rules]] match="words" lookup
 #   7. defaults.number_decimal/_0x/_0b/_0o            → number
 #   7b. defaults.char_literal `'C'`/`'\C'`/`'\xHH'`   → string
+#   7c. [[rules]] match="heredoc" opener (ADR 0023)   → consumes nothing;
+#      queues the body for step H on the next line
 #   8. defaults.operators (longest match)             → operator
 #   9. defaults.punctuation (longest match)           → punctuation
 #  10. defaults.whitespace (run)                      → whitespace
@@ -108,9 +112,6 @@ fn _ds_try_shebang(g, src, src_len, i) {
     return src_len - i;
 }
 
-# Try each [[rules]] match="line" in order. Returns kind packed into
-# high 8 bits and len in low 56 bits — 0 if none matched. (This is
-# the cheapest multi-return I could find without tuples.)
 # Is `b` one of the bytes of cstr `set`?
 fn _ds_byte_in(set, b) {
     var k = 0;
@@ -123,6 +124,9 @@ fn _ds_byte_in(set, b) {
     return 0;
 }
 
+# Try each [[rules]] match="line" in order. Returns kind packed into
+# high 8 bits and len in low 56 bits — 0 if none matched. (This is
+# the cheapest multi-return I could find without tuples.)
 # `prev0` is the byte before `src[0]` — the streaming drain's last
 # committed byte — or -1 when `src` starts the input. A rule with
 # `start_after` (ADR 0022) matches only at input start or right after
@@ -883,9 +887,20 @@ var _ds_hd_hold_dlen = 0;
 var _ds_hd_hold_ind = 0;
 var _ds_hd_hold_body = 0;
 
+# The last depth-1 heredoc GROUP fully emitted — the opener line's first
+# `<<` through the end of its last body token. Every token in it is
+# final (the opener line ended, each terminator line has its LF), so the
+# drain commits the group whole instead of letting its tail-of-buffer
+# checks split it: a 1-byte body (`cat <<E\nE`) sat inside shell's
+# 3-byte marker window and was held while its opener line committed —
+# the next drain read the body as code (2.6.x audit P2-b). -1: none.
+var _ds_hd_grp_from = (0 - 1);
+var _ds_hd_grp_to = (0 - 1);
+
 # One-entry failed-search cache: delimiter `_ds_hd_fail_ptr/len` (with
 # indent flag) has no terminator line at or after `_ds_hd_fail_from`
-# in the current scan. Keeps `(( a << b ))` repeated N times linear.
+# in the current scan. Keeps a repeated unterminated `x << b` outside
+# arithmetic linear (inside `((` … `))` no search is made at all).
 var _ds_hd_fail_gen = 0;
 var _ds_hd_fail_ptr = 0;
 var _ds_hd_fail_len = 0;
@@ -898,8 +913,12 @@ var _ds_hd_fail_from = 0;
 # `x << b2`, …) would each scan to EOF — O(N^2), the denial-of-service
 # shape 2.5.2's compose watermarks closed. Real files spend a fraction
 # of the budget (bodies are found, not scanned past); once it is spent,
-# further openers are tokenized as code. Linear time always; degraded
-# heredoc recognition only on pathological input.
+# further openers are tokenized as code. Linear time; degraded heredoc
+# recognition only on pathological input — where, because the budget
+# scales with the BUFFER, a stream that compacted earlier bytes away
+# can give up sooner than a single feed (2.6.x audit, scheduled for
+# 2.8.0). The per-opener arithmetic check and line-end scan that used
+# to be O(line) each are now O(1) (`_ds_hd_lf_after`).
 var _ds_hd_budget_gen = 0;
 var _ds_hd_budget = 0;
 
@@ -919,7 +938,13 @@ fn _ds_hd_queue() {
     return vec_get(_ds_hd_pool, _ds_depth);
 }
 
+# Bytes after a bare delimiter's first letter / `_`. `-` and `.` joined
+# in the 2.6.x audit: `cat <<END-OF-DATA` was not a heredoc, so an
+# apostrophe in its body opened a string to EOF. A wider delimiter can
+# only add heredocs whose terminator line exists, so it cannot turn code
+# into a body by accident.
 fn _ds_hd_word_byte(b) {
+    if ((b == 45) || (b == 46)) { return 1; }   # - .
     if ((b >= 48) && (b <= 57)) { return 1; }
     if ((b >= 65) && (b <= 90)) { return 1; }
     if ((b >= 97) && (b <= 122)) { return 1; }
@@ -954,31 +979,39 @@ fn _ds_hd_find_term(src, src_len, from, dptr, dlen, ind) {
     return found;
 }
 
-# 1 if src[i] sits inside an arithmetic `((` … `))` opened earlier on
-# the same line — there `<<` is always a shift, never a heredoc. Counts
-# `((` against `))` from the line start to `i` (`$((` contains `((`).
-# Without it an identifier operand (`$(( 1 << n ))`) looked like a
-# delimiter with no terminator, and a streaming drain held everything
-# after it until finish.
-fn _ds_hd_in_arith(src, i) {
-    var ls = i;
-    while ((ls > 0) && (load8(src + ls - 1) != 10)) { ls = ls - 1; }
-    var opens = 0;
-    var p = ls;
-    while (p + 1 < i + 1) {
-        var two = 0;
-        if (p + 1 < i) {
-            if ((load8(src + p) == 40) && (load8(src + p + 1) == 40)) { opens = opens + 1; two = 1; }
-            if ((two == 0) && (load8(src + p) == 41) && (load8(src + p + 1) == 41)) {
-                if (opens > 0) { opens = opens - 1; }
-                two = 1;
-            }
-        }
-        if (two == 1) { p = p + 2; }
-        if (two == 0) { p = p + 1; }
+# Arithmetic `((` … `))` state for the opener check — inside it `<<`
+# is always a shift, never a heredoc. Through 2.6.1 `_ds_hd_in_arith`
+# re-counted `((` against `))` from the line start at every `<<`: O(line)
+# per opener (a 100 KB line of `x<<y` took 10 s), it counted parens
+# inside quotes (`sed 's/((a)/' <<EOF` lost its heredoc), and once a
+# streaming drain had committed the `((` it scanned only to the buffer
+# start, so `$(( 1 << n ))` became a heredoc at some splits (2.6.x
+# audit). `tokenize_with_grammar` now keeps the count as it pushes
+# operator / punctuation tokens — greedy adjacent-pair matching as
+# before, strings and comments skipped, reset at every line break —
+# and passes the verdict in. At the end of a depth-1 scan it reports a
+# hold from the outermost still-open `((` (see `_ds_hd_hold_from`), so
+# a drain never commits into one: the next buffer always starts with
+# the `((` in view, or at a point where none is open.
+
+# One-entry cache for the line break after a delimiter: every opener on
+# one line ends at the same LF, and re-scanning to it per opener was the
+# other O(line)-per-opener cost.
+var _ds_hd_lf_gen = 0;
+var _ds_hd_lf_src = 0;
+var _ds_hd_lf_from = 0;
+var _ds_hd_lf_at = 0;
+
+fn _ds_hd_lf_after(src, src_len, from) {
+    if ((_ds_hd_lf_gen == _ds_cur_gen) && (_ds_hd_lf_src == src)) {
+        if ((from >= _ds_hd_lf_from) && (from <= _ds_hd_lf_at)) { return _ds_hd_lf_at; }
     }
-    if (opens > 0) { return 1; }
-    return 0;
+    var lf = _ds_scan_to_lf(src, src_len, from);
+    _ds_hd_lf_gen = _ds_cur_gen;
+    _ds_hd_lf_src = src;
+    _ds_hd_lf_from = from;
+    _ds_hd_lf_at = lf;
+    return lf;
 }
 
 # At src[i]: if a heredoc rule's opener starts here (and is not the
@@ -986,7 +1019,7 @@ fn _ds_hd_in_arith(src, i) {
 # parse the delimiter and, when its terminator line exists, queue it.
 # Returns the new queue length. Consumes nothing: the `<<` is tokenized
 # by the operator step exactly as before 2.6.0.
-fn _ds_heredoc_open(g, src, src_len, i, hdq, hd_n) {
+fn _ds_heredoc_open(g, src, src_len, i, hdq, hd_n, in_arith) {
     var rules = grammar_heredoc_rules(g);
     var n = vec_len(rules);
     var res = hd_n;
@@ -1015,7 +1048,7 @@ fn _ds_heredoc_open(g, src, src_len, i, hdq, hd_n) {
             }
         }
         if ((opens == 1) || (undecided == 1)) {
-            if (_ds_hd_in_arith(src, i) == 1) {
+            if (in_arith == 1) {
                 opens = 0;
                 undecided = 0;
                 decided = 1;
@@ -1058,7 +1091,7 @@ fn _ds_heredoc_open(g, src, src_len, i, hdq, hd_n) {
                 }
             }
             if (ds >= 0) {
-                var lf = _ds_scan_to_lf(src, src_len, dend);
+                var lf = _ds_hd_lf_after(src, src_len, dend);
                 var term = (0 - 1);
                 var gave_up = 0;
                 var known_none = 0;
@@ -1174,6 +1207,14 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
         if (hd_rules == 1) { hd_b0 = load8(heredoc_rule_start(vec_get(grammar_heredoc_rules(g), 0))); }
     }
     var hd_n = 0;
+    # Arithmetic state for the opener check (grammars with heredoc rules
+    # only): open `((` on this line, the offset of the outermost, and the
+    # last unpaired paren byte (`ar_pend`, at `ar_pend_at`) so `(` `(`
+    # split over two tokens still pairs.
+    var ar_depth = 0;
+    var ar_open = (0 - 1);
+    var ar_pend = 0;
+    var ar_pend_at = (0 - 2);
     var i = 0;
     while (i < src_len) {
         var b = load8(src + i);
@@ -1188,16 +1229,58 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
             var cur = i;
             var qi = 0;
             var hd_stop = 0;
+            # Not every queued body may be emittable from this buffer: the
+            # opener's own check searched from ITS line's end, but bodies
+            # run in order from here — after a string spanning lines, after
+            # an earlier body. Then (and when a terminator's line break has
+            # not arrived) the group is unresolved and the drain must hold
+            # from the line's first opener, or it commits the opener line
+            # and the next drain reads the body as code (2.6.x audit P2-a).
+            var h_hold = 0;
+            var h_fast = 0;
+            var h_dpos = 0;
+            var h_dlen = 0;
+            var h_ind = 0;
+            var h_body = 0;
             while ((qi < hd_n) && (hd_stop == 0)) {
                 var e = hdq + qi * 40;
                 var te = _ds_hd_find_term(src, src_len, cur, load64(e), load64(e + 8), load64(e + 16));
-                if (te < 0) { hd_stop = 1; }
+                if (te < 0) {
+                    hd_stop = 1;
+                    h_hold = 1;
+                    # Budget spent (-2) is "not a heredoc" — nothing to watch.
+                    if (te == (0 - 1)) {
+                        h_fast = 1;
+                        h_dpos = load64(e) - src;
+                        h_dlen = load64(e + 8);
+                        h_ind = load64(e + 16);
+                        h_body = cur;
+                    }
+                }
                 if (te >= 0) {
                     tokenbuf_push(tb, load64(e + 24), cur, te - cur);
+                    var tdone = 0;
+                    if (te < src_len) {
+                        if (load8(src + te) == 10) { tdone = 1; }
+                        if ((load8(src + te) == 13) && (te + 1 < src_len)) {
+                            if (load8(src + te + 1) == 10) { tdone = 1; }
+                        }
+                    }
+                    if (tdone == 0) {
+                        h_hold = 1;
+                        h_fast = 1;
+                        h_dpos = load64(e) - src;
+                        h_dlen = load64(e + 8);
+                        h_ind = load64(e + 16);
+                        h_body = cur;
+                    }
                     cur = te;
                     if (qi + 1 < hd_n) {
                         var lf2 = _ds_scan_to_lf(src, src_len, cur);
-                        if (lf2 >= src_len) { hd_stop = 1; }
+                        if (lf2 >= src_len) {
+                            hd_stop = 1;
+                            if (h_hold == 0) { h_hold = 1; }
+                        }
                         if (lf2 < src_len) {
                             tokenbuf_push(tb, TK_WHITESPACE, cur, lf2 + 1 - cur);
                             cur = lf2 + 1;
@@ -1206,7 +1289,27 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
                     qi = qi + 1;
                 }
             }
+            if (_ds_depth == 1) {
+                var g_from = load64(hdq + 32);
+                if (h_hold == 1) {
+                    if ((_ds_hd_hold_from < 0) || (g_from < _ds_hd_hold_from)) {
+                        _ds_hd_hold_from = g_from;
+                        _ds_hd_hold_fast = h_fast;
+                        _ds_hd_hold_dpos = h_dpos;
+                        _ds_hd_hold_dlen = h_dlen;
+                        _ds_hd_hold_ind = h_ind;
+                        _ds_hd_hold_body = h_body;
+                    }
+                }
+                if (h_hold == 0) {
+                    _ds_hd_grp_from = g_from;
+                    _ds_hd_grp_to = cur;
+                }
+            }
             hd_n = 0;
+            ar_depth = 0;
+            ar_open = (0 - 1);
+            ar_pend = 0;
             i = cur;
             continue;
         }
@@ -1341,7 +1444,9 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
         # nothing — the `<<` is still the operator step's token.
         if ((len == 0) && (hd_rules > 0)) {
             if ((hd_b0 < 0) || (b == hd_b0)) {
-                hd_n = _ds_heredoc_open(g, src, src_len, i, hdq, hd_n);
+                var in_ar = 0;
+                if (ar_depth > 0) { in_ar = 1; }
+                hd_n = _ds_heredoc_open(g, src, src_len, i, hdq, hd_n, in_ar);
             }
         }
 
@@ -1389,9 +1494,77 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
         }
 
         tokenbuf_push(tb, kind, i, len);
+        # Arithmetic state (see `_ds_hd_lf_after`'s header). Parens only
+        # ever sit in operator / punctuation tokens; a line break in any
+        # token ends the line.
+        if (hd_rules > 0) {
+            if ((kind == TK_OPERATOR) || (kind == TK_PUNCTUATION)) {
+                var ak = 0;
+                while (ak < len) {
+                    var ab = load8(src + i + ak);
+                    var ap = i + ak;
+                    var apaired = 0;
+                    if ((ab == 40) || (ab == 41)) {
+                        if ((ar_pend == ab) && (ar_pend_at == ap - 1)) {
+                            apaired = 1;
+                            if (ab == 40) {
+                                if (ar_depth == 0) { ar_open = ap - 1; }
+                                ar_depth = ar_depth + 1;
+                            }
+                            if (ab == 41) {
+                                if (ar_depth > 0) { ar_depth = ar_depth - 1; }
+                                if (ar_depth == 0) { ar_open = (0 - 1); }
+                            }
+                            ar_pend = 0;
+                        }
+                        if (apaired == 0) {
+                            ar_pend = ab;
+                            ar_pend_at = ap;
+                        }
+                    }
+                    if ((ab != 40) && (ab != 41)) { ar_pend = 0; }
+                    ak = ak + 1;
+                }
+            }
+            if ((kind != TK_OPERATOR) && (kind != TK_PUNCTUATION)) {
+                ar_pend = 0;
+                if ((ar_depth > 0) && (_ds_index_byte(src, i, i + len, 10) >= 0)) {
+                    ar_depth = 0;
+                    ar_open = (0 - 1);
+                }
+            }
+        }
         i = i + len;
+    }
+    # Bodies still queued at the end: the line break that starts them
+    # never came (`cat <<EOF "a` with the string still open). Same as an
+    # unemittable group in the H step — hold from the line's first opener.
+    if ((hd_n > 0) && (_ds_depth == 1) && (hdq != 0)) {
+        var q_from = load64(hdq + 32);
+        if ((_ds_hd_hold_from < 0) || (q_from < _ds_hd_hold_from)) {
+            _ds_hd_hold_from = q_from;
+            _ds_hd_hold_fast = 0;
+        }
+    }
+    # The buffer ends inside an arithmetic `((` opened on its last line:
+    # hold from it, so the next drain still sees the `((` (P1-a above).
+    if ((hd_rules > 0) && (_ds_depth == 1) && (ar_depth > 0) && (ar_open >= 0)) {
+        if ((_ds_hd_hold_from < 0) || (ar_open < _ds_hd_hold_from)) {
+            _ds_hd_hold_from = ar_open;
+            _ds_hd_hold_fast = 0;
+        }
     }
     _ds_depth = _ds_depth - 1;
     _ds_cur_gen = saved_gen;
     return tokenbuf_count(tb);
+}
+
+# Offset of the first byte == `b` in src[from..to), or -1.
+fn _ds_index_byte(src, from, to, b) {
+    var p = from;
+    while (p < to) {
+        if (load8(src + p) == b) { return p; }
+        p = p + 1;
+    }
+    return (0 - 1);
 }

@@ -35,9 +35,10 @@
 # authors who might be tempted to add layout-sensitive
 # tokenization.
 #
-# Filename dispatch: standard names are `Makefile`, `makefile`,
-# `GNUmakefile`. `detect_language` matches them by basename
-# suffix.
+# Filename dispatch: `filenames` below. A path ending in one of
+# them matches, and so does `<name>.<anything>` when no extension
+# claims it first — `Makefile.am`, `Makefile.in` (2.6.2, ADR 0025).
+# `.mk` include files route here too (2.6.2).
 #
 # Known gaps (not triggered by the stand-in):
 #   - `define VAR …` … `endef` multi-line variable bodies
@@ -51,7 +52,8 @@
 
 [grammar]
 name = "makefile"
-extensions = []
+extensions = [".mk"]
+filenames = ["Makefile", "makefile", "GNUmakefile"]
 
 [defaults]
 shebang = false

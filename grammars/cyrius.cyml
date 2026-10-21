@@ -25,11 +25,9 @@
 
 [grammar]
 name = "cyrius"
-# `extensions` is documentation only — it is parsed, but nothing
-# dispatches on it. Path detection is hardcoded in src/detect.cyr,
-# which routes `.cyml` to the cyml grammar, not this one; the
-# `.cyml` entry here is stale but inert.
-extensions = [".cyr", ".cyml"]
+# `.cyml` belongs to the cyml grammar; it was listed here too until
+# 2.6.2, when the arrays became checked declarations (ADR 0025).
+extensions = [".cyr"]
 
 [defaults]
 shebang = false

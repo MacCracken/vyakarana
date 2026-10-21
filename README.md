@@ -139,12 +139,23 @@ was removed in 2.0.0 (ADR 0017).
 
 ## Status
 
+**2.6.2** (2026-10-20) — detection from grammar data, and the 2.6.x
+closeout audit. Each grammar's `extensions`, `filenames` and
+`shebangs` now say exactly which files route to it, and the tests hold
+detection to that ([ADR 0025](docs/adr/0025-detection-declared-by-grammars.md)).
+New: `.hh`, `.csx`, `.phtml`, `.properties`, `.mk`, `Dockerfile.dev`
+style names, `Makefile.am` / `.in`, and `pwsh` / `julia` shebangs.
+`.asm` is no longer claimed (NASM's `;` comments). A node or php script's
+`#!` line is one token. The audit fixed `${dir##*/}` (any `#` after an `r`
+opened a comment since 2.6.0) and the heredoc streaming path — chunked feeds
+now match a single feed on 813 real scripts. Next on the
+[roadmap](docs/development/roadmap.md): 2.7.0 number literals. Audit:
+[docs/audit/2026-10-20-2.6.x-closeout-audit.md](docs/audit/2026-10-20-2.6.x-closeout-audit.md).
+
 **2.6.1** (2026-10-20) — CLI hardening: write failures (a full disk, a
 closed stdout) exit 3 instead of 0, bad or empty flag values are clear
 usage errors, `-` reads standard input, `--` ends options, and NDJSON
-output is 3.5x faster. Tokens unchanged from 2.6.0. Next on the
-[roadmap](docs/development/roadmap.md): 2.6.2 detection from grammar
-data.
+output is 3.5x faster. Tokens unchanged from 2.6.0.
 
 **2.6.0** (2026-10-20) — shell correctness. `${#arr[@]}`, `${x#p}` and
 `a#b` are code, not comments; here-documents (`<<EOF`, `<<'EOF'`,
@@ -215,7 +226,7 @@ release gate green for the first time.
 `docs/development/state.md` is the authoritative live tracker;
 `CHANGELOG.md` is the per-cut log;
 [`docs/development/roadmap.md`](./docs/development/roadmap.md)
-holds the milestone history and parked backlog.
+holds the future work — pinned releases and backlog.
 
 ## License
 

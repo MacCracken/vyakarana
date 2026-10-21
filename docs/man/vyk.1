@@ -8,7 +8,7 @@
 .\" file, which is how the .TH line sat at 1.13.1 across the whole
 .\" 2.x line.  Smoke probes `--help` output, never this page.
 .\"
-.TH VYK 1 "2026-10-20" "vyakarana 2.6.1" "User Commands"
+.TH VYK 1 "2026-10-20" "vyakarana 2.6.2" "User Commands"
 .SH NAME
 vyk \- source-code tokenizer (vyakarana demo CLI)
 .SH SYNOPSIS
@@ -31,8 +31,12 @@ is given.
 .PP
 Detection is automatic: extension first
 .RI "(" .sh ", " .py ", " ".rs," " ...),"
-content sniff for extensionless files (shebang, BOM, magic
-bytes), and an asm flavour vote for
+then file name
+.RI "(" Makefile ", " Dockerfile ,
+and variants such as
+.IR Dockerfile.dev ),
+then a content sniff (shebang, BOM, magic bytes), and an asm
+flavour vote for
 .IR .s / .S .
 Override with
 .B \-\-language=<name>\fR.
@@ -208,7 +212,7 @@ span (the
 .I dist/vyakarana.cyr
 Single-file bundle for downstream
 .BR cyrius (1)
-consumers. Includes all 45 grammars inlined as Cyrius string
+consumers. Includes all 46 grammars inlined as Cyrius string
 literals.
 .TP
 .I grammars/<name>.cyml

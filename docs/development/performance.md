@@ -19,11 +19,22 @@ host — variance ~±10% between runs.
 
 | Artifact                    | Size (bytes) | Size (KB) | Notes                                         |
 |-----------------------------|-------------:|----------:|-----------------------------------------------|
-| `build/vyk` (CLI binary)    |      459,632 |     448.9 | Includes 46 inlined grammars (~230 KB of text) |
-| `build/vyk`, `CYRIUS_DCE=1` |      369,520 |     360.9 | Same tree, dead fns compacted out — **what releases ship** |
-| `dist/vyakarana.cyr`        |      454,039 |     443.4 | Single-file bundle for `cyrius deps` (5,673 lines) |
+| `build/vyk` (CLI binary)    |      473,936 |     462.8 | Includes 46 inlined grammars (~232 KB of text) |
+| `build/vyk`, `CYRIUS_DCE=1` |      383,824 |     374.8 | Same tree, dead fns compacted out — **what releases ship** |
+| `dist/vyakarana.cyr`        |      471,842 |     460.8 | Single-file bundle for `cyrius deps` (5,982 lines) |
 
-**Re-captured 2026-10-20 at `2.6.0`, 6.7.15 toolchain.** 444,032 →
+**Re-captured 2026-10-20 at `2.6.2`, 6.7.15 toolchain.** 2.6.0 →
+2.6.1: 459,632 → 464,320 (+4,688; DCE 369,520 → 374,208) — the CLI's
+checked stdout writer (`src/out.cyr`) and argument parsing; CLI-only,
+so the bundle did not grow. 2.6.1 → 2.6.2: → 473,936 (+9,616; DCE →
+383,824) — the detection routes and `_detect_fname`, the grammars' new
+declarations, and the closeout audit's scanner / drain fixes (the
+running arithmetic count, group and hold reporting, watch mode 2).
+4,096 bytes of it is one page of segment alignment that the build
+happened to cross. Bundle 454,039 → 471,842 (it carries the source
+comments).
+
+**`2.6.0` capture (same day).** 444,032 →
 459,632 (+15,600; DCE +15,600): the heredoc rule type, `start_after`,
 and the drain's hold / watch / last-byte machinery. `shell.cyml`'s
 comments were trimmed in the same cut (5,392 → 2,742 B) once the
@@ -290,6 +301,36 @@ Against the `2.3.0` table below: every tokenize row is faster
 (shell 20.3 → 19.5, rust 29.0 → 27.7, json 6.1 → 4.4, html 11.5 →
 9.3 µs), grammar load 33.2 → 28.9 µs, and `detect/content-python`
 is back to 198 ns from ~250 ns at 2.5.0 (2.5.1's shebang rewrite).
+
+## Bench note (2.6.2, 2026-10-20) — detection routes + audit fixes, A/B'd
+
+Same paired protocol as 2.5.2 (below): bench built with iterations
+÷ 10, 2.6.1 and the final 2.6.2 alternated for 10 rounds, median of the
+per-round ratios. Host load ≈ 5 from other work; the pairing absorbs it.
+
+| Benchmark                  | Median 2.6.2 / 2.6.1 | IQR             | Best avg 2.6.2 |
+|----------------------------|---------------------:|-----------------|---------------:|
+| blob/grammar-load-shell    |               −3.0 % | −4.8 … −2.2 %   |      30.420 µs |
+| detect/combined-asm-arm    |               −0.3 % | −1.2 … +0.3 %   |       5.370 µs |
+| tokenize/rust-small        |               +0.6 % | −0.2 … +1.8 %   |      16.456 µs |
+| detect/path-shell          |               +1.4 % | +0.0 … +2.9 %   |       0.034 µs |
+| tokenize/json-small        |               +1.8 % | +0.7 … +2.7 %   |       3.803 µs |
+| tokenize/shell-small       |               +2.0 % | +0.9 … +3.4 %   |      11.066 µs |
+| tokenize/html-compose      |               +2.9 % | +1.6 … +3.6 %   |       7.721 µs |
+| detect/content-python      |              +13.1 % | +11.1 … +13.5 % |       0.221 µs |
+
+Nothing at the 20 % line. `grammar-load` is the shared parse slots
+(the audit's −18 % heap). `shell-small` +2 % is the running arithmetic
+count the heredoc fixes added (operator / punctuation tokens only).
+
+**`detect/content-python` +13 % is code placement, not work.** No
+code on its path changed after a first, quiet run of the same
+protocol measured it at −1.5 %; only the scanner grew. Inserting one
+unused function ahead of `src/detect.cyr` in the same tree — no
+executed path touched — moved it **−11.3 %** (6 paired rounds), back
+to 2.6.1's 0.195 µs. It is the row 2.5.1 already found sensitive to
+small shifts; treat a move of this size in it as layout until a
+same-tree padding test says otherwise.
 
 ## Bench note (2.5.2, 2026-10-20) — the audit's fixes, A/B'd
 

@@ -135,6 +135,13 @@ Design reasoning lives in `vyakarana-design-spec.md`. When adding a new
 bundled grammar, start from the shell grammar shipped in M1 and copy
 its shape. Don't invent a new structure ad-hoc.
 
+**Detection routes are declared twice, on purpose** (ADR 0025). A new
+extension, filename or shebang interpreter goes in the grammar's
+`[grammar]` table (`extensions`, `filenames`, `shebangs`) *and* as a
+route in `src/detect.cyr`. `cyrius test` fails if a declared entry does
+not route; `sh scripts/check-detect.sh` (run by smoke) fails if a route
+is not declared. A grammar with `shebangs` needs `shebang = true`.
+
 ## Zero-copy discipline
 
 Tokens are `(kind, start, len)` into the caller's source buffer. No

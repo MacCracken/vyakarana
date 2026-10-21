@@ -4,13 +4,23 @@
 > (1.x and 2.x cuts), plus any session that shifts the gates'
 > colour or the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.6.1 are
-> shipped. **2.6.1 is CLI hardening**: stdout goes through a checked,
+> **Read this file before doing anything.** 1.0.0–2.6.2 are
+> shipped. **2.6.2 is detection from grammar data + the 2.6.x closeout
+> audit.** Each grammar's `extensions` / `filenames` / `shebangs` now
+> declare exactly what `src/detect.cyr` routes to it, checked both ways
+> (ADR 0025). The audit fixed a 2.6.0 regression — `#` after a word
+> ending in `r` opened a comment, from a mis-decoded `\r` — and the
+> heredoc streaming machinery: an arithmetic `<<` read as a heredoc
+> across a compaction, the 1 MiB hold unenforced once the watch armed,
+> bodies lost at some split offsets, quadratic per-`<<` scans. Report:
+> [`../audit/2026-10-20-2.6.x-closeout-audit.md`](../audit/2026-10-20-2.6.x-closeout-audit.md).
+> **Next: 2.7.0 number literals.**
+> **2.6.1 is CLI hardening**: stdout goes through a checked,
 > buffered writer (write failures exit 3 instead of 0; NDJSON 3.5x
 > faster), flag values are validated (`--language=` empty / unknown is
 > exit 2), `--export-theme` honours `--theme` on either side and
 > refuses a FILE, `-` reads stdin and `--` ends options. Tokenization is
-> byte-identical to 2.6.0. **Next: 2.6.2 detection from grammar data.**
+> byte-identical to 2.6.0.
 > **2.6.0 is shell correctness**, the first pinned release:
 > `#` opens a comment only at the start of a word (`${#v}`, `${x#p}`,
 > `a#b` are code — ADR 0022's `start_after`), here-documents are one
@@ -28,8 +38,8 @@
 > non-compose grammar is now chunk-invariant at every split offset
 > (41/41, was 29). Report:
 > [`../audit/2026-10-20-2.5.x-closeout-audit.md`](../audit/2026-10-20-2.5.x-closeout-audit.md).
-> **The roadmap is now a pinned release train** (2.6.0 shell
-> correctness → 2.9.0 size/tooling) — see §Next up.
+> **The roadmap is a pinned release train** of future work only —
+> see §Next up.
 > **2.5.1** — pin 6.7.9 → 6.7.15; `hashmap` dropped and
 > `assert` moved to `[test] stdlib` (`vyk` −33,160 bytes, output
 > byte-identical); the `detect/content-python` drift bisected to
@@ -147,7 +157,7 @@
 > contracts, durable invariants): [`../architecture/`](../architecture/).
 > Decision rationale: [`../adr/`](../adr/). Design context:
 > [`../../vyakarana-design-spec.md`](../../vyakarana-design-spec.md).
-> Milestones: [`./roadmap.md`](./roadmap.md). Process and rules:
+> Future releases: [`./roadmap.md`](./roadmap.md). Process and rules:
 > [`../../CLAUDE.md`](../../CLAUDE.md).
 >
 > *(This file used to live at the repo root as `HANDOFF.md`.
@@ -161,7 +171,7 @@
 
 ## Current status (2026-10-20)
 
-- **Version:** `2.6.1` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `2.6.2` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`.
 - **Toolchain pin:** `cyrius = "6.7.15"` (bumped from 6.7.9 in
   2.5.1; 6.7.9 came from 6.6.20 in 2.5.0, 6.6.20 from 6.6.2 in
@@ -174,20 +184,23 @@
   fmt, io, fs, str, string, vec, args; `[test] stdlib` = assert.
   `lib/` is 28 files. `tests/vyakarana.tcyr` also includes
   `lib/assert.cyr` directly so editors (build-scope resolve) see it.
-- **Gates (re-run 2026-10-20 on 6.7.15, 2.6.1):** build OK, 0 warnings · **956/956** tests · smoke OK · **lint+fmt
+- **Gates (re-run 2026-10-20 on 6.7.15, 2.6.2):** build OK, 0 warnings · **990/990** tests · smoke OK (incl. `scripts/check-detect.sh`) · **lint+fmt
   exit 0, 0 warnings** (enforced via `--exit-with-count` since 2.5.1
   — before that a warning still exited 0) · fuzz **5/5** · 0 untracked deferrals. **46 grammars.** `scripts/smoke.sh`
   gained two regression groups in 2.3.4 (oversize input must fail
   loudly; shebangs with interpreter arguments must route) — both
   verified to fail against the pre-fix binary.
-- **Chunk-invariance: 15 of 20 corpora clean** as of 2.4.0, gated
-  by `fuzz/chunk_invariance.fcyr` at 8 chunk sizes. Still
-  divergent, deliberately: **markdown, html, vue, svelte, cyml** —
-  the compose grammars. The marker window that fixed the rest
-  cannot be applied to them without breaking the compose
-  prefix-hold interaction (three attempts, each regressed the
-  markdown/fence-rust fuzz case). Coverage never breaks in any
-  case; only boundaries move. **Top follow-up** — see §Next up.
+- **Chunk-invariance: every non-compose corpus** — 41 plus
+  `shell_modules.sh` — clean at every two-feed split offset since
+  2.5.2 (it was 15 of 20 at 2.4.0; this line said so until 2.6.2).
+  Gated by `fuzz/chunk_invariance.fcyr`: 8 chunk sizes, two-feed
+  splits every 37 bytes, 12 every-offset shapes. Still divergent,
+  deliberately: **markdown, html, vue, svelte, cyml** — the compose
+  grammars. The marker window that fixed the rest cannot be applied
+  to them without breaking the compose prefix-hold interaction
+  (three attempts, each regressed the markdown/fence-rust fuzz case).
+  Coverage never breaks in any case; only boundaries move. Scheduled
+  for 2.8.0.
 - **`lib/` is inert at build time.** On 6.5.32 `cycc` resolves
   stdlib from `~/.cyrius/versions/<pin>/lib`, so the **pin** —
   not the vendored `lib/` — decides what is compiled. Verified
@@ -219,6 +232,30 @@
   rows — the hot path consumers actually run — are all
   fractionally *faster*. Table not refreshed: the documented
   cadence is minor-release boundaries, and this is a patch.
+- **What 2.6.2 changed (detection + 2.6.x closeout audit):**
+  - Detection: compiled routes in `src/detect.cyr`, declared by each
+    grammar (`extensions`, new `filenames`, `shebangs`); the
+    "2.6.2 detection matches grammar declarations" test group and
+    `scripts/check-detect.sh` (whole-file, guards, unrecognised shapes)
+    hold them equal. **Adding a route is two edits** — see
+    CONTRIBUTING §Grammar format decisions.
+  - Scanner: the heredoc opener's arithmetic check is a running count
+    kept in `tokenize_with_grammar` (operator / punctuation tokens
+    only; reset per line) and passed to `_ds_heredoc_open`;
+    `_ds_hd_in_arith` is gone. Holds are reported for an open `((` at
+    the buffer end, for an unemittable or unfinished body group, and
+    for bodies still queued at the end of the scan; a fully emitted
+    group is reported (`_ds_hd_grp_from/_to`) so the drain commits it
+    whole.
+  - Drain: the watch has two modes (1 terminator search, 2 next line
+    break) and both enforce `VYK_HEREDOC_HOLD_MAX` via the new
+    hold-start field (stream record 152 bytes).
+  - Loader: `\r` decoded; letter / digit escapes reject the grammar;
+    parse scratch slots shared (bootstrap heap −18 %).
+  - Known, scheduled (roadmap 2.8.0): the terminator-search budget
+    scales with the buffer, so pathological input can diverge between
+    chunked and single feeds.
+
 - **What 2.6.1 changed (CLI hardening):**
   - `src/out.cyr` — CLI-only checked, buffered stdout (not in the
     bundle). Every stdout call site in `main.cyr` /
@@ -1215,24 +1252,11 @@ over an unchanged public API.
 
 ## Next up — open queue
 
-**The queue is the roadmap's pinned release train** —
-[`./roadmap.md`](./roadmap.md) §Forward plan. In order:
-
-1. ~~2.6.0 — shell correctness~~ — **shipped 2026-10-20** (ADRs 0022,
-   0023).
-2. ~~2.6.1 — CLI hardening~~ — **shipped 2026-10-20**.
-3. **2.6.2 — detection from grammar data** (ADR), then the 2.6.x
-   closeout audit.
-4. **2.7.0 — `number_float`** (minor, ADR); **2.7.1 — grammar polish**
-   from the 2.5.2 header cross-check, then the 2.7.x closeout audit.
-5. **2.8.0 — streaming engine**: long non-pair tokens re-scanned per
-   drain (512 KB line comment in 64 B chunks: 4 s); compose-grammar
-   chunk invariance (the 2.4.0 open item — three attempts regressed
-   the markdown/fence-rust fuzz case; needs prefix-hold restructured);
-   residual O(N^1.6) compose drains.
-6. **2.9.0 — size and tooling**: binary cap, `[embed]` instead of the
-   gawk-only embed script, real-corpus fuzz, the 2.5.2 sweep scripts
-   moved into `scripts/`.
+**Next: 2.7.0 — number literals** (`[defaults] number_float`, ADR;
+token boundaries change, so a minor). After it 2.7.1 grammar polish +
+the 2.7.x closeout audit, 2.8.0 streaming engine, 2.9.0 size and
+tooling. The detail, including what the 2.6.x audit scheduled, is in
+[`./roadmap.md`](./roadmap.md) — future work only.
 
 Toolchain catch-ups slot in as patches whenever the user directs one.
 

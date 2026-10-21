@@ -100,6 +100,45 @@ fn _t_same_tokens(a, b) {
     return 1;
 }
 
+# Path-detect, mapping 0 to "(none)" — same reason as `_t_detect`
+# (2.6.2).
+fn _t_path(path) {
+    var r = detect_language(path);
+    if (r == 0) { return "(none)"; }
+    return r;
+}
+
+# `a` + `b` + `c` into `buf` (256 bytes, NUL-terminated); returns
+# `buf` (2.6.2).
+fn _t_cat3(buf, a, b, c) {
+    var n = 0;
+    var parts = vec_new();
+    vec_push(parts, a); vec_push(parts, b); vec_push(parts, c);
+    var pi = 0;
+    while (pi < 3) {
+        var p = vec_get(parts, pi);
+        var pl = strlen(p);
+        if (n + pl < 255) { memcpy(buf + n, p, pl); n = n + pl; }
+        pi = pi + 1;
+    }
+    store8(buf + n, 0);
+    return buf;
+}
+
+# 1 if detection result `got` is grammar `nm`; otherwise print what
+# `what` routed to and return 0 (2.6.2).
+fn _t_route_ok(what, got, nm) {
+    if (got != 0) {
+        if (streq(got, nm) == 1) { return 1; }
+    }
+    print("    misrouted: ", 15); print(what, strlen(what));
+    print(" -> ", 4);
+    if (got == 0) { print("(none)", 6); }
+    if (got != 0) { print(got, strlen(got)); }
+    print(", declared by ", 14); print(nm, strlen(nm)); print("\n", 1);
+    return 0;
+}
+
 fn main() {
     alloc_init();
 
@@ -260,9 +299,10 @@ fn main() {
     assert_eq(grammar_special_vars(gshell),    1, "special_vars enabled");
 
     var exts = grammar_extensions(gshell);
-    assert_eq(vec_len(exts), 2, "2 extensions loaded");
+    assert_eq(vec_len(exts), 3, "3 extensions loaded");
     assert_eq(streq(vec_get(exts, 0), ".sh"),   1, "ext[0] == '.sh'");
     assert_eq(streq(vec_get(exts, 1), ".bash"), 1, "ext[1] == '.bash'");
+    assert_eq(streq(vec_get(exts, 2), ".zsh"),  1, "ext[2] == '.zsh' (2.6.2)");
 
     var ops = grammar_operators(gshell);
     assert(vec_len(ops) > 0, "operators list non-empty");
@@ -3742,6 +3782,153 @@ fn main() {
     }
     assert_eq(ord5_bad, 0, "no grammar lists a prefix before a longer operator / punctuation entry");
     assert_eq(vec_len(ord5_names), 46, "all 46 bundled grammars loaded (none rejected by 2.5.2 validation)");
+
+    test_group("2.6.2 detection matches grammar declarations (ADR 0025)");
+    # Every `extensions`, `filenames` and `shebangs` entry of every
+    # loaded grammar routes to that grammar. Through 2.6.1 the arrays
+    # were documentation only: `.hh`, `.csx`, `.phtml`, `.properties`,
+    # `.asm` and `pwsh` were declared and never routed. The reverse
+    # direction — every route in src/detect.cyr is declared — is
+    # scripts/check-detect.sh, run by smoke.
+    var dd6_names = vec_new();
+    list_languages_into(dd6_names);
+    var dd6_buf = alloc(256);
+    var dd6_arm = "\t.arch armv8-a\n\tldp x0, x1, [sp]\n\tb.eq 1f\n";
+    var dd6_bad = 0;
+    var dd6_ext_n = 0;
+    var dd6_fn_n = 0;
+    var dd6_sb_n = 0;
+    var dd6_gi = 0;
+    while (dd6_gi < vec_len(dd6_names)) {
+        var dd6_nm = vec_get(dd6_names, dd6_gi);
+        var dd6_g = registry_find_by_name(dd6_nm);
+        var dd6_ev = grammar_extensions(dd6_g);
+        var dd6_i = 0;
+        while (dd6_i < vec_len(dd6_ev)) {
+            var dd6_p = _t_cat3(dd6_buf, "src.d/x", vec_get(dd6_ev, dd6_i), "");
+            var dd6_got = detect_language(dd6_p);
+            # `.s` / `.S` are shared; ARM content votes them to aarch64
+            # (ADR 0015).
+            if (streq(dd6_nm, "asm_aarch64") == 1) {
+                dd6_got = detect_language_combined(dd6_p, dd6_arm, strlen(dd6_arm));
+            }
+            if (_t_route_ok(dd6_p, dd6_got, dd6_nm) == 0) { dd6_bad = dd6_bad + 1; }
+            dd6_ext_n = dd6_ext_n + 1;
+            dd6_i = dd6_i + 1;
+        }
+        var dd6_fv = grammar_filenames(dd6_g);
+        dd6_i = 0;
+        while (dd6_i < vec_len(dd6_fv)) {
+            var dd6_f = vec_get(dd6_fv, dd6_i);
+            # Bare, in a directory, as a suffix, and as `<name>.<x>`.
+            if (_t_route_ok(dd6_f, detect_language(dd6_f), dd6_nm) == 0) { dd6_bad = dd6_bad + 1; }
+            var dd6_fp = _t_cat3(dd6_buf, "ci/", dd6_f, "");
+            if (_t_route_ok(dd6_fp, detect_language(dd6_fp), dd6_nm) == 0) { dd6_bad = dd6_bad + 1; }
+            dd6_fp = _t_cat3(dd6_buf, "ci/app.", dd6_f, "");
+            if (_t_route_ok(dd6_fp, detect_language(dd6_fp), dd6_nm) == 0) { dd6_bad = dd6_bad + 1; }
+            dd6_fp = _t_cat3(dd6_buf, "ci/", dd6_f, ".dev");
+            if (_t_route_ok(dd6_fp, detect_language(dd6_fp), dd6_nm) == 0) { dd6_bad = dd6_bad + 1; }
+            dd6_fn_n = dd6_fn_n + 1;
+            dd6_i = dd6_i + 1;
+        }
+        var dd6_sv = grammar_shebangs(dd6_g);
+        if (vec_len(dd6_sv) > 0) {
+            # A shebang that routes here must also tokenize as one.
+            if (grammar_shebang_on(dd6_g) != 1) {
+                print("    shebang = false but shebangs listed: ", 41);
+                print(dd6_nm, strlen(dd6_nm)); print("\n", 1);
+                dd6_bad = dd6_bad + 1;
+            }
+        }
+        dd6_i = 0;
+        while (dd6_i < vec_len(dd6_sv)) {
+            var dd6_s = vec_get(dd6_sv, dd6_i);
+            # `env` form, absolute path with an argument, and a
+            # versioned name (`python3`, `sh5`).
+            var dd6_c = _t_cat3(dd6_buf, "#!/usr/bin/env ", dd6_s, "\n");
+            if (_t_route_ok(dd6_c, detect_language_from_content(dd6_c, strlen(dd6_c)), dd6_nm) == 0) { dd6_bad = dd6_bad + 1; }
+            dd6_c = _t_cat3(dd6_buf, "#!/usr/local/bin/", dd6_s, " -x\n");
+            if (_t_route_ok(dd6_c, detect_language_from_content(dd6_c, strlen(dd6_c)), dd6_nm) == 0) { dd6_bad = dd6_bad + 1; }
+            dd6_c = _t_cat3(dd6_buf, "#!/bin/", dd6_s, "5\n");
+            if (_t_route_ok(dd6_c, detect_language_from_content(dd6_c, strlen(dd6_c)), dd6_nm) == 0) { dd6_bad = dd6_bad + 1; }
+            dd6_sb_n = dd6_sb_n + 1;
+            dd6_i = dd6_i + 1;
+        }
+        dd6_gi = dd6_gi + 1;
+    }
+    assert_eq(dd6_bad, 0, "every declared extension / filename / shebang routes to its grammar");
+    assert(dd6_ext_n >= 78, "checked every extension (78 declared in 2.6.2)");
+    assert_eq(dd6_fn_n, 5, "checked all 5 filenames (Dockerfile, Containerfile, 3 makefiles)");
+    assert(dd6_sb_n >= 12, "checked every shebang interpreter (12 declared in 2.6.2)");
+
+    # The 2.6.2 routing changes, by name.
+    assert_streq(_t_path("a.hh"),           "cpp",        "2.6.2: .hh -> cpp");
+    assert_streq(_t_path("a.csx"),          "csharp",     "2.6.2: .csx -> csharp");
+    assert_streq(_t_path("a.phtml"),        "php",        "2.6.2: .phtml -> php");
+    assert_streq(_t_path("a.properties"),   "ini",        "2.6.2: .properties -> ini");
+    assert_streq(_t_path("rules.mk"),       "makefile",   "2.6.2: .mk -> makefile");
+    assert_streq(_t_path("Dockerfile.dev"), "dockerfile", "2.6.2: Dockerfile.dev -> dockerfile");
+    assert_streq(_t_path("x/Makefile.am"),  "makefile",   "2.6.2: Makefile.am -> makefile");
+    assert_streq(_t_path("x/Makefile.py"),  "python",     "an extension still beats a filename prefix");
+    assert_eq(detect_language("a.asm"), 0, "2.6.2: .asm is not routed (NASM `;` comments; ADR 0025)");
+    assert_eq(detect_language("x/NotDockerfile.dev"), 0, "filename prefix is basename-anchored");
+    assert_eq(detect_language("Dockerfile."), 0, "`<name>.` needs something after the dot");
+    assert_streq(_t_path("a.cyml"),         "cyml",       ".cyml is cyml's alone (dropped from cyrius)");
+    assert_streq(_t_detect("#!/usr/bin/env pwsh\n"),   "powershell", "2.6.2: pwsh shebang -> powershell");
+    assert_streq(_t_detect("#!/usr/bin/env julia\n"),  "julia",      "2.6.2: julia shebang -> julia");
+    var dd6_js = _t_tokenize("#!/usr/bin/env node\nx;\n", "javascript");
+    assert_eq(tokenbuf_kind(dd6_js, 0), TK_PREPROCESSOR, "2.6.2: a node shebang is one preprocessor token");
+    assert_eq(tokenbuf_len(dd6_js, 0), 19, "  ... spanning the line");
+    var dd6_php = _t_tokenize("#!/usr/bin/env php\n<?php echo 1;\n", "php");
+    assert_eq(tokenbuf_kind(dd6_php, 0), TK_PREPROCESSOR, "2.6.2: a php shebang is a shebang, not a # comment");
+
+    test_group("2.6.x audit — shell scanner and heredoc streaming");
+    # `\r` in shell.cyml's `start_after` was decoded as the letter `r`,
+    # so any `#` after an `r` opened a comment: `${dir##*/}`, `${var#p}`.
+    var au6_a = _t_tokenize("b=${dir##*/}; v=${var#p}\n", "shell");
+    assert_eq(_t_kind_at(au6_a, 7), TK_OPERATOR, "${dir##*/}: # after r is code, not a comment");
+    assert_eq(_t_kind_at(au6_a, 21), TK_OPERATOR, "${var#p}: # after r is code");
+    var au6_cr = _t_tokenize("a\r#c\n", "shell");
+    assert_eq(_t_kind_at(au6_cr, 2), TK_COMMENT, "# after a CR starts a comment (CR is a word boundary)");
+    # A grammar escaping a letter is rejected, not silently mis-decoded;
+    # punctuation escapes still mean the byte.
+    var au6_g1 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"comment\"\nmatch = \"line\"\nstart = \"\\e\"\n";
+    assert_eq(_gp_parse(au6_g1, strlen(au6_g1)), 0, "a \\e escape in a grammar string rejects the grammar");
+    var au6_g2 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"comment\"\nmatch = \"line\"\nstart = \"\\$\"\n";
+    assert_neq(_gp_parse(au6_g2, strlen(au6_g2)), 0, "a \\$ escape still loads (the byte itself)");
+    # `((` inside quotes is not arithmetic; `-` joins a delimiter.
+    var au6_q = _t_tokenize("sed 's/((a)/' <<EOF\nit's\nEOF\necho z\n", "shell");
+    assert_eq(_t_kind_at(au6_q, 20), TK_STRING, "`((` inside quotes does not hide a heredoc");
+    var au6_d = _t_tokenize("cat <<END-OF-DATA\nit's\nEND-OF-DATA\necho z\n", "shell");
+    assert_eq(_t_kind_at(au6_d, 18), TK_STRING, "<<END-OF-DATA is a heredoc");
+    assert_eq(_t_kind_at(au6_d, 34), TK_WHITESPACE, "  ... and the apostrophe in its body opens no string");
+    var au6_ar = _t_tokenize("y=$((1 << n))\necho a\nn\n", "shell");
+    assert_eq(_t_kind_at(au6_ar, 14), TK_IDENT, "an arithmetic << is a shift, not a heredoc");
+    # The 1 MiB heredoc hold is enforced while the watch is armed: 2.6.1
+    # held until VYK_STREAM_CAP (16 MiB) and then failed every feed.
+    var au6_s = tokenize_stream_new("shell");
+    var au6_tb = tokenbuf_new();
+    var au6_line = "line of body text # not a comment\n";
+    var au6_ll = strlen(au6_line);
+    var au6_chunk = alloc(4096);
+    var au6_cl = 0;
+    while (au6_cl + au6_ll <= 4096) { memcpy(au6_chunk + au6_cl, au6_line, au6_ll); au6_cl = au6_cl + au6_ll; }
+    var au6_fed = 0;
+    var au6_bad = 0;
+    var au6_max = 0;
+    tokenize_stream_feed(au6_s, "cat <<EOF\n", 10);
+    au6_fed = 10;
+    while (au6_fed < 1300000) {
+        if (tokenize_stream_feed(au6_s, au6_chunk, au6_cl) != 0) { au6_bad = au6_bad + 1; }
+        au6_fed = au6_fed + au6_cl;
+        tokenize_stream_drain(au6_s, au6_tb);
+        if (load64(au6_s + 8) > au6_max) { au6_max = load64(au6_s + 8); }
+    }
+    tokenize_stream_finish(au6_s, au6_tb);
+    assert_eq(au6_bad, 0, "a 1.3 MB unterminated heredoc streams without a feed error");
+    assert(au6_max <= VYK_HEREDOC_HOLD_MAX + 8192, "  ... and the held buffer stays within the 1 MiB bound");
+    var au6_end = tokenbuf_start(au6_tb, tokenbuf_count(au6_tb) - 1) + tokenbuf_len(au6_tb, tokenbuf_count(au6_tb) - 1);
+    assert_eq(au6_end, au6_fed, "  ... and the tokens still cover every byte");
 
     return assert_summary();
 }

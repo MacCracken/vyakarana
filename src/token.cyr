@@ -159,8 +159,7 @@ fn tokenbuf_push(tb, kind, start, len) {
 
 # Accessors by index (bounds-unchecked — caller must compare to
 # tokenbuf_count). Kept small so the hot path stays inline-friendly
-# for the streaming-tokenizer work scheduled for 2.0.0 (see
-# `docs/development/roadmap.md`).
+# (the streaming tokenizer, 2.0.0+, leans on it).
 fn _tokenbuf_slot(tb, i) {
     var data = load64(tb);
     return data + i * TOKEN_SIZE;

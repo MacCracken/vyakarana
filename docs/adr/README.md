@@ -38,6 +38,7 @@ sub-blocks).
 | 0022 | [`start_after`: a line rule that only opens at a word boundary](0022-line-rule-start-after.md) | Accepted | 2026-10-20 |
 | 0023 | [`heredoc` rule type for here-documents](0023-heredoc-rule.md)                        | Accepted | 2026-10-20 |
 | 0024 | [Char-literal escape forms beyond `'\C'` / `'\xHH'`](0024-char-literal-escape-forms.md) | Accepted | 2026-10-20 |
+| 0025 | [Grammars declare their detection routes; `detect.cyr` stays compiled](0025-detection-declared-by-grammars.md) | Accepted | 2026-10-20 |
 
 ## Conventions
 

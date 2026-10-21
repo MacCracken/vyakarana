@@ -48,6 +48,7 @@
 [grammar]
 name = "ruby"
 extensions = [".rb"]
+shebangs = ["ruby"]
 
 [defaults]
 shebang = true

@@ -47,6 +47,7 @@
 [grammar]
 name = "julia"
 extensions = [".jl"]
+shebangs = ["julia"]
 
 [defaults]
 shebang = true

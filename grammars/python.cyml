@@ -24,6 +24,7 @@
 [grammar]
 name = "python"
 extensions = [".py"]
+shebangs = ["python"]
 
 [defaults]
 shebang = true

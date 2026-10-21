@@ -33,7 +33,9 @@ fn _out_raw(buf, n) {
     while ((off < n) && (_out_failed == 0)) {
         var w = syscall(1, 1, buf + off, n - off);
         # -4 is EINTR: retry. Anything else <= 0 (EPIPE, ENOSPC, EBADF,
-        # EIO, a 0-byte write) is a failure.
+        # EIO, a 0-byte write) is a failure — EAGAIN included: a parent
+        # that hands vyk a non-blocking stdout gets exit 3 and a
+        # truncated stream, loudly, as coreutils does (2.6.x audit).
         if (w > 0) { off = off + w; }
         if ((w <= 0) && (w != (0 - 4))) { _out_failed = 1; }
     }

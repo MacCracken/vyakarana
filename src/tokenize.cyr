@@ -59,8 +59,22 @@
 #                          scan body bytes already known not to contain
 #                          the close marker — drops O(N²) → O(N) for
 #                          big-partial cases.
+#   88  scratch_tb  ptr — the drain's scan tokenbuf, reused (2.5.2)
+#   96  last_byte   i64 — last committed byte, -1 = none; the
+#                          `start_after` boundary at the buffer start
+#                          (ADR 0022, 2.6.0)
+#  104  watch_mode  i64 — heredoc hold watch (ADR 0023): 0 off,
+#                          1 terminator search, 2 next line break
+#                          (2.6.0; mode 2 in 2.6.2)
+#  112  watch_dpos  i64 —   mode 1: delimiter offset in buf
+#  120  watch_dlen  i64 —   mode 1: delimiter length
+#  128  watch_ind   i64 —   mode 1: tab-stripped (`<<-`) terminator
+#  136  watch_from  i64 —   where the next search resumes in buf
+#  144  hold_start  i64 —   the held region's start in buf, for the
+#                          VYK_HEREDOC_HOLD_MAX bound (2.6.2)
 #   -----
-#   88 bytes total
+#  152 bytes total (STREAM_REC_SIZE). This table stopped at offset 80
+#  — "88 bytes total" — from 2.5.2 until the 2.6.x audit.
 #
 # Bundled into `dist/vyakarana.cyr`. Public symbols — this list is
 # what CLAUDE.md's frozen-API rule points at, so keep it accurate:
@@ -160,12 +174,15 @@ var VYK_COMPOSE_HOLD_MAX = 8388608;
 # unresolved here-document opener (ADR 0023) — a `<<WORD` whose
 # terminator line has not arrived. Past it the bytes commit as ordinary
 # code, so only a heredoc body longer than this, split across feeds,
-# can tokenize differently from a single feed. Smaller than the compose
-# bound because every drain re-scans the held bytes, and an arithmetic
-# `<< x` with no line `x` ever holds until finish.
+# can tokenize differently from a single feed. Enforced on both the
+# full-scan path and the watch (through 2.6.1 the watch skipped it, and
+# an armed hold grew to VYK_STREAM_CAP, after which every feed failed).
+# Smaller than the compose bound because a mode-2 watch still re-scans
+# the held bytes at each new line break.
 var VYK_HEREDOC_HOLD_MAX = 1048576;
 
-var STREAM_REC_SIZE = 144;  # 2.5.2: scratch_tb @ 88; 2.6.0: prev byte @ 96, heredoc watch @ 104..136
+# Layout in the table at the top of this file.
+var STREAM_REC_SIZE = 152;
 
 # Error codes returned by tokenize_stream_feed.
 var VYK_OK            = 0;
@@ -317,7 +334,8 @@ fn tokenize_stream_new(lang) {
     store64(s + 112, 0);               #   delimiter offset in buf
     store64(s + 120, 0);               #   delimiter length
     store64(s + 128, 0);               #   indent (tab-stripped terminator) flag
-    store64(s + 136, 0);               #   terminator search resume offset
+    store64(s + 136, 0);               #   resume offset (terminator / LF search)
+    store64(s + 144, 0);               #   held region's start in buf (2.6.2)
     return s;
 }
 
@@ -389,12 +407,6 @@ fn tokenize_stream_feed(s, chunk, n) {
     return VYK_OK;
 }
 
-# Returns 1 if the token at index `idx` of `temp_tb` (with src
-# bytes in `buf`) is definitively complete — i.e., its trailing
-# bytes are at a hard boundary (closing pair-rule marker, line
-# break, single-byte fallthrough) and so the token wouldn't
-# extend if more bytes arrived. Used by drain to decide whether
-# to commit the trailing token even though its end == buf_len.
 # Longest marker in the grammar's operator + punctuation tables.
 #
 # Needed because those tables are matched LONGEST-FIRST, which makes
@@ -538,6 +550,12 @@ fn _stream_pair_provisional(g, buf, buf_len, kind, t_start, t_len) {
     return prov;
 }
 
+# Returns 1 if the token at index `idx` of `temp_tb` (with src
+# bytes in `buf`) is definitively complete — i.e., its trailing
+# bytes are at a hard boundary (closing pair-rule marker, line
+# break, single-byte fallthrough) and so the token wouldn't
+# extend if more bytes arrived. Used by drain to decide whether
+# to commit the trailing token even though its end == buf_len.
 fn _stream_is_trailing_complete(g, buf, buf_len, temp_tb, idx) {
     var kind    = tokenbuf_kind(temp_tb, idx);
     var t_start = tokenbuf_start(temp_tb, idx);
@@ -714,10 +732,6 @@ fn _stream_is_trailing_complete(g, buf, buf_len, temp_tb, idx) {
     return 0;
 }
 
-# Find which pair rule emitted a token at `[start, start+len)`
-# in `buf`. Used to detect what to look for when the trailing
-# token is a partial pair-rule open. Returns rule index, or -1
-# if no pair rule's start marker matches the leading bytes.
 # Returns the number of trailing buffer bytes to hold so that
 # compose-rule routing isn't lost across chunk boundaries.
 # Two cases covered:
@@ -908,6 +922,10 @@ fn _stream_compose_prefix_hold(g, buf, buf_len, temp_tb, n_temp) {
     return max_hold;
 }
 
+# Find which pair rule emitted a token at `[start, start+len)`
+# in `buf`. Used to detect what to look for when the trailing
+# token is a partial pair-rule open. Returns rule index, or -1
+# if no pair rule's start marker matches the leading bytes.
 fn _stream_find_pair_rule(g, buf, start, len, kind) {
     var rules = grammar_pair_rules(g);
     var n = vec_len(rules);
@@ -989,8 +1007,35 @@ fn tokenize_stream_drain(s, out_tb) {
     # terminator in the NEW lines only; return with nothing committed
     # while it is absent; fall through to the full scan once it is
     # present with its line break, or at finish.
-    if (load64(s + 104) == 1) {
-        if (finishing == 1) { store64(s + 104, 0); }
+    # Mode 2 (2.6.x audit) watches for ANY new line break instead: the
+    # hold is one no new byte can resolve before the next LF (an opener
+    # line still arriving, a terminator line without its LF, an open
+    # arithmetic `((`), and re-scanning the held bytes per feed until
+    # then was O(N^2) — 1 MiB of CR-only lines in 4 KB chunks, 37 s.
+    # Both modes give up at VYK_HEREDOC_HOLD_MAX, like the full-scan
+    # path: through 2.6.1 the watch returned before that check ran, so
+    # an armed hold grew to VYK_STREAM_CAP and every later feed failed.
+    var wmode = load64(s + 104);
+    if (wmode != 0) {
+        if (finishing == 1) {
+            store64(s + 104, 0);
+            wmode = 0;
+        }
+        if ((wmode != 0) && (buf_len - load64(s + 144) > VYK_HEREDOC_HOLD_MAX)) {
+            store64(s + 104, 0);
+            wmode = 0;
+        }
+    }
+    if (wmode == 2) {
+        var lres = load64(s + 136);
+        if (lres < 0) { lres = 0; }
+        if (_ds_index_byte(buf, lres, buf_len, 10) < 0) {
+            store64(s + 136, buf_len);
+            return 0;
+        }
+        store64(s + 104, 0);
+    }
+    if (wmode == 1) {
         if (finishing == 0) {
             var hres = load64(s + 136);
             _ds_gen_counter = _ds_gen_counter + 1;
@@ -1130,9 +1175,17 @@ fn tokenize_stream_drain(s, out_tb) {
     }
     _ds_hd_hold_from = (0 - 1);
     _ds_hd_hold_fast = 0;
+    _ds_hd_grp_from = (0 - 1);
+    _ds_hd_grp_to = (0 - 1);
     tokenize_with_grammar(g, buf, buf_len, temp_tb);
     var hd_hold = _ds_hd_hold_from;
     var hd_fast = _ds_hd_hold_fast;
+    var hd_dpos = _ds_hd_hold_dpos;
+    var hd_dlen = _ds_hd_hold_dlen;
+    var hd_ind = _ds_hd_hold_ind;
+    var hd_body = _ds_hd_hold_body;
+    var grp_from = _ds_hd_grp_from;
+    var grp_to = _ds_hd_grp_to;
     _ds_hd_hold_from = (0 - 1);
     var hd_applied = 0;
     var n_temp = tokenbuf_count(temp_tb);
@@ -1184,17 +1237,22 @@ fn tokenize_stream_drain(s, out_tb) {
             var t_kind  = tokenbuf_kind(temp_tb, i);
             var safe = 0;
             if (t_start + t_len < buf_len) { safe = 1; }
+            # A token inside a fully emitted heredoc group (the opener's
+            # `<<` through its last body) is final — the tail checks
+            # below must not split the group (`_ds_hd_grp_from`).
+            var in_grp = 0;
+            if ((grp_from >= 0) && (t_start >= grp_from) && (t_start + t_len <= grp_to)) { in_grp = 1; }
             # ...and the whole marker window has to be in the buffer,
             # for EVERY kind, not just the longest-match tables. Any
             # token within `max_marker` of the tail may turn out to
             # be the first bytes of a rule opener once more input
             # arrives — that is how xml's `<!--` comment was lost.
             # Holds back at most `max_marker` bytes per drain.
-            if (t_start + max_marker > buf_len) { safe = 0; }
+            if ((in_grp == 0) && (t_start + max_marker > buf_len)) { safe = 0; }
             # A pair token a longer opener could still claim is not
             # settled either, no matter where it ends — this is the
             # path that actually committed python's stray `""`.
-            if (_stream_pair_provisional(g, buf, buf_len, t_kind, t_start, t_len) == 1) {
+            if ((in_grp == 0) && (_stream_pair_provisional(g, buf, buf_len, t_kind, t_start, t_len) == 1)) {
                 safe = 0;
             }
             if (safe == 1) { commit_count = i + 1; }
@@ -1414,12 +1472,21 @@ fn tokenize_stream_drain(s, out_tb) {
     # Arm the heredoc watch (fast path at the top of this function) when
     # this drain held for a terminator that has not arrived. Offsets are
     # rebased past the bytes about to be compacted away.
-    if ((hd_applied == 1) && (hd_fast == 1) && (_ds_hd_hold_dpos >= consumed)) {
-        store64(s + 104, 1);
-        store64(s + 112, _ds_hd_hold_dpos - consumed);
-        store64(s + 120, _ds_hd_hold_dlen);
-        store64(s + 128, _ds_hd_hold_ind);
-        store64(s + 136, _ds_hd_hold_body - consumed);
+    if (hd_applied == 1) {
+        if ((hd_fast == 1) && (hd_dpos >= consumed) && (hd_body >= consumed)) {
+            store64(s + 104, 1);
+            store64(s + 112, hd_dpos - consumed);
+            store64(s + 120, hd_dlen);
+            store64(s + 128, hd_ind);
+            store64(s + 136, hd_body - consumed);
+        }
+        if (hd_fast != 1) {
+            # Mode 2: only a line break after the bytes already seen can
+            # change the verdict.
+            store64(s + 104, 2);
+            store64(s + 136, buf_len - consumed);
+        }
+        store64(s + 144, hd_hold - consumed);
     }
     if (consumed > 0) {
         store64(s + 96, load8(buf + consumed - 1));   # see the fast path (ADR 0022)
@@ -1612,6 +1679,11 @@ fn tokenize_stream_free(s) {
     store64(s + 88, 0);   # scratch_tb (2.5.2)
     store64(s + 96, 0);   # last committed byte (2.6.0)
     store64(s + 104, 0);  # heredoc watch (2.6.0)
+    store64(s + 112, 0);
+    store64(s + 120, 0);
+    store64(s + 128, 0);
+    store64(s + 136, 0);
+    store64(s + 144, 0);  # hold start (2.6.2)
     # pending_idx's "none" sentinel is -1, NOT 0 — 0 is a valid
     # pair-rule index. Every other field here poisons safely to 0,
     # and two call sites lean on that ("_free zeroes every field"

@@ -700,4 +700,42 @@ cp tests/corpus/shell.sh "$TMPDIR/-dash.sh"
 (cd "$TMPDIR" && "$ABS_BIN" -- -dash.sh > /dev/null 2>&1) || fail "'vyk -- -dash.sh' did not read the file"
 exp_rc 2 "dash-named file without --" "$BIN" -dash.sh
 
+# ── 2.6.2 detection from grammar data (ADR 0025) ──
+# Every route compiled into src/detect.cyr is declared by its grammar;
+# the tcyr suite checks the other direction.
+cd_out=$(sh scripts/check-detect.sh 2>&1) || fail "$cd_out"
+# Routes that were declared but dead through 2.6.1, end to end.
+mkdir -p "$TMPDIR/routes"
+printf 'FROM scratch\n' > "$TMPDIR/routes/Dockerfile.dev"
+printf 'all:\n\ttrue\n' > "$TMPDIR/routes/Makefile.am"
+printf 'a=1\n' > "$TMPDIR/routes/rules.mk"
+printf 'key = value\n' > "$TMPDIR/routes/app.properties"
+printf 'int x;\n' > "$TMPDIR/routes/a.hh"
+for f in Dockerfile.dev Makefile.am rules.mk app.properties a.hh; do
+    exp_rc 0 "route $f" "$BIN" "$TMPDIR/routes/$f"
+done
+# `.asm` is pruned, not routed: NASM `;` comments (ADR 0025).
+printf 'mov eax, 1 ; c\n' > "$TMPDIR/routes/a.asm"
+exp_rc 4 ".asm (unrouted)" "$BIN" "$TMPDIR/routes/a.asm"
+# A node script detected by its shebang tokenizes the shebang as one
+# token (javascript gained shebang = true).
+printf '#!/usr/bin/env node\nx;\n' > "$TMPDIR/routes/tool"
+exp_rc 0 "node shebang script" "$BIN" "$TMPDIR/routes/tool"
+head -1 "$TMPDIR/cli.out" | grep -q '"kind":"preprocessor","start":0,"len":19' \
+    || fail "node shebang line is not one preprocessor token: $(head -1 "$TMPDIR/cli.out")"
+# 2.6.x audit: a real file named `<stdin>` is read (2.6.1 took the name
+# for its stdin marker: exit 0, no tokens); a closed stdin says so; a
+# space instead of `=` names the wanted form.
+printf 'echo hi\n' > "$TMPDIR/routes/<stdin>"
+(cd "$TMPDIR/routes" && "$ABS_BIN" --language=shell '<stdin>' > "$TMPDIR/stdin-named.out" 2>&1) \
+    || fail "a file named <stdin>: non-zero exit"
+[ "$(wc -l < "$TMPDIR/stdin-named.out")" -eq 4 ] || fail "a file named <stdin> was not read"
+set +e
+"$BIN" - <&- > /dev/null 2> "$TMPDIR/cli.err"; rc=$?
+set -e
+[ "$rc" = "3" ] || fail "closed stdin: exit $rc, expected 3"
+grep -q "^vyk: cannot read standard input" "$TMPDIR/cli.err" || fail "closed stdin: wrong message"
+exp_rc 2 "--language shell (space)" "$BIN" --language shell tests/corpus/shell.sh
+grep -q "^vyk: missing value for --language=" "$TMPDIR/cli.err" || fail "--language without = : wrong message"
+
 echo "smoke: OK ($v_long) — M0 + M1 + M2 + M3 gates passing"

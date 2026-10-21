@@ -25,6 +25,21 @@
 # scope of what counts as "content sniffing" — deliberately narrow
 # (a few well-known signatures + the asm flavor split). Anything
 # heavier (Yara-style fingerprinting, full lexical voting) is out.
+#
+# Routing is compiled here, and each grammar DECLARES its routes:
+# `extensions`, `filenames` and `shebangs` in its `[grammar]`
+# table (ADR 0025). Both must change together — tests/vyakarana.tcyr
+# checks every declared entry routes to its grammar, and
+# scripts/check-detect.sh (run by smoke) checks every path and
+# interpreter route in this file is declared, that each `memeq`
+# length matches its literal, and that the read is guarded (`n >=` /
+# `wlen >=`). Keep route lines in the one-line
+# `memeq(...) == 1) { return "lang"; }` / `_detect_fname(...)` shape:
+# the check reports any other line that could be a route as
+# unrecognised. The content sniff (`_detect_signature`, the asm vote)
+# is ADR 0015's and declares nothing.
+# (Through 2.6.1 the arrays were documentation only and had drifted:
+# nine entries never routed, six routes were undeclared.)
 
 include "src/token.cyr"
 
@@ -66,6 +81,8 @@ fn _detect_short(path, n) {
         if (memeq(path + n - 3, ".rb", 3) == 1) { return "ruby"; }
         if (memeq(path + n - 3, ".ex", 3) == 1) { return "elixir"; }
         if (memeq(path + n - 3, ".ml", 3) == 1) { return "ocaml"; }
+        if (memeq(path + n - 3, ".hh", 3) == 1) { return "cpp"; }
+        if (memeq(path + n - 3, ".mk", 3) == 1) { return "makefile"; }
     }
     return 0;
 }
@@ -106,6 +123,7 @@ fn _detect_4byte(path, n) {
         if (memeq(path + n - 4, ".zig", 4) == 1) { return "zig"; }
         if (memeq(path + n - 4, ".ps1", 4) == 1) { return "powershell"; }
         if (memeq(path + n - 4, ".vue", 4) == 1) { return "vue"; }
+        if (memeq(path + n - 4, ".csx", 4) == 1) { return "csharp"; }
     }
     if (n >= 3) {
         if (memeq(path + n - 3, ".cr", 3) == 1) { return "crystal"; }
@@ -134,6 +152,7 @@ fn _detect_5plus(path, n) {
     if (n >= 6) {
         if (memeq(path + n - 6, ".swift", 6) == 1) { return "swift"; }
         if (memeq(path + n - 6, ".proto", 6) == 1) { return "protobuf"; }
+        if (memeq(path + n - 6, ".phtml", 6) == 1) { return "php"; }
     }
     if (n >= 7) {
         if (memeq(path + n - 7, ".svelte", 7) == 1) { return "svelte"; }
@@ -145,23 +164,40 @@ fn _detect_5plus(path, n) {
     if (n >= 9) {
         if (memeq(path + n - 9, ".markdown", 9) == 1) { return "markdown"; }
     }
+    if (n >= 11) {
+        if (memeq(path + n - 11, ".properties", 11) == 1) { return "ini"; }
+    }
     return 0;
 }
 
+# A grammar `filenames` entry `name` matches a path that ENDS in it
+# (`Dockerfile`, `ci/app.Dockerfile` — the pre-2.6.2 rule, kept), or
+# whose basename is `name.` + anything (`Dockerfile.dev`,
+# `Makefile.am`, `Makefile.in`; new in 2.6.2). Only reached when no
+# extension matched, so `Makefile.py` is still python.
+fn _detect_fname(path, n, name) {
+    var nl = strlen(name);
+    if (n >= nl) {
+        if (memeq(path + n - nl, name, nl) == 1) { return 1; }
+    }
+    var b = n;
+    var looking = 1;
+    while ((b > 0) && (looking == 1)) {
+        if (load8(path + b - 1) == 47) { looking = 0; }   # '/'
+        if (looking == 1) { b = b - 1; }
+    }
+    if (b + nl + 1 >= n) { return 0; }
+    if (memeq(path + b, name, nl) == 0) { return 0; }
+    if (load8(path + b + nl) != 46) { return 0; }         # '.'
+    return 1;
+}
+
 fn _detect_basename(path, n) {
-    if (n >= 10) {
-        if (memeq(path + n - 10, "Dockerfile", 10) == 1) { return "dockerfile"; }
-    }
-    if (n >= 13) {
-        if (memeq(path + n - 13, "Containerfile", 13) == 1) { return "dockerfile"; }
-    }
-    if (n >= 8) {
-        if (memeq(path + n - 8, "Makefile", 8) == 1) { return "makefile"; }
-        if (memeq(path + n - 8, "makefile", 8) == 1) { return "makefile"; }
-    }
-    if (n >= 11) {
-        if (memeq(path + n - 11, "GNUmakefile", 11) == 1) { return "makefile"; }
-    }
+    if (_detect_fname(path, n, "Dockerfile") == 1) { return "dockerfile"; }
+    if (_detect_fname(path, n, "Containerfile") == 1) { return "dockerfile"; }
+    if (_detect_fname(path, n, "Makefile") == 1) { return "makefile"; }
+    if (_detect_fname(path, n, "makefile") == 1) { return "makefile"; }
+    if (_detect_fname(path, n, "GNUmakefile") == 1) { return "makefile"; }
     return 0;
 }
 
@@ -309,9 +345,11 @@ fn _detect_shebang(src, src_len) {
 
     # Match the interpreter name. Dispatch on its first byte so only
     # the patterns that can match are tried — every pattern's first
-    # byte is distinct except `python` / `php`, which keep their
-    # order. Every pattern needs `wlen >= 2`, which also keeps the
-    # first-byte read inside the word.
+    # byte is distinct except the `p` group (`python`, `php`, `pwsh`,
+    # `powershell`; none is a prefix of another, so order only
+    # matters for speed — python first). Every pattern needs
+    # `wlen >= 2`, which also keeps the first-byte read inside the
+    # word. Each name is a grammar's `shebangs` entry (ADR 0025).
     if (wlen < 2) { return 0; }
     var c0 = load8(src + word_start);
     if (c0 == 98) {                                    # b
@@ -337,6 +375,14 @@ fn _detect_shebang(src, src_len) {
     if (c0 == 112) {                                   # p
         if ((wlen >= 6) && (memeq(src + word_start, "python", 6) == 1)) { return "python"; }
         if ((wlen >= 3) && (memeq(src + word_start, "php", 3) == 1)) { return "php"; }
+        # PowerShell on Unix — `#!/usr/bin/env pwsh`. Declared in
+        # powershell.cyml since M3 but never routed until 2.6.2.
+        if ((wlen >= 4) && (memeq(src + word_start, "pwsh", 4) == 1)) { return "powershell"; }
+        if ((wlen >= 10) && (memeq(src + word_start, "powershell", 10) == 1)) { return "powershell"; }
+        return 0;
+    }
+    if (c0 == 106) {                                   # j
+        if ((wlen >= 5) && (memeq(src + word_start, "julia", 5) == 1)) { return "julia"; }
         return 0;
     }
     if (c0 == 110) {                                   # n

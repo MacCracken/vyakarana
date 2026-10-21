@@ -13,7 +13,7 @@
 
 [grammar]
 name = "shell"
-extensions = [".sh", ".bash"]
+extensions = [".sh", ".bash", ".zsh"]
 shebangs = ["sh", "bash", "zsh", "dash"]
 
 [defaults]
