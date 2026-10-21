@@ -43,6 +43,9 @@ all 38 grammars." It didn't.
 generated module that lives in the dist bundle.**
 
 - `scripts/embed-grammars.sh` reads every `grammars/*.cyml`,
+  *(amended 2.9.0: compacts it first — comments and blanks outside
+  strings dropped, proven per grammar by a record comparison; and the
+  script is POSIX now — [ADR 0029](0029-compacted-blobs-posix-generator-size-budget.md))*
   escapes content (`\\`, `\"`, `\n`, `\t`, `\r`), and writes
   `src/grammar_blobs.cyr` containing one
   `fn _grammar_blob_<name>()` per grammar plus a
@@ -114,7 +117,9 @@ true.
 
 - A bundle-size budget gets formalised (e.g., a 200KB cap for
   the dist bundle). Then we'd need to compress blobs or move
-  to a binary-encoded grammar table.
+  to a binary-encoded grammar table. *(2.9.0: formalised for the
+  shipped binary, 300 KiB, and met by compacting the blobs rather
+  than compressing them — ADR 0029.)*
 - A grammar requires a literal NUL byte or some other control
   byte the encoder doesn't handle. The script aborts in that
   case; the fix is either to escape that byte explicitly or

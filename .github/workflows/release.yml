@@ -104,6 +104,10 @@ jobs:
           mkdir -p build
           cyrius build src/main.cyr build/vyk
 
+      # The binary being packaged, against its budget (ADR 0029).
+      - name: Size budget
+        run: sh scripts/check-size.sh build/vyk
+
       - name: Package release artifact
         run: |
           PKG="vyakarana-${VERSION}-${{ matrix.target }}"

@@ -5,9 +5,12 @@ future agents can spot regressions. Numbers are platform-
 specific; treat the *trend* across releases as load-bearing, not
 the absolute values.
 
-> **How to refresh:** `cyrius bench tests/bcyr/vyakarana.bcyr`
-> after a clean rebuild. Replace the table for the current
-> release; keep prior releases under §History.
+> **How to refresh:** `sh scripts/bench-paired.sh <last tag>` —
+> the paired protocol below, scripted in 2.9.0: both trees built
+> fresh, the same short bench alternated for ten rounds, median
+> per-round ratios. Ratios hold on a loaded host; replace the
+> absolute table only from a quiet one (load near 1). Keep prior
+> releases under §History.
 
 Hardware on which the baseline below was captured: Linux x86_64
 (7.1.5-arch1-1). Local dev machine, not a controlled benchmark
@@ -19,11 +22,22 @@ host — variance ~±10% between runs.
 
 | Artifact                    | Size (bytes) | Size (KB) | Notes                                         |
 |-----------------------------|-------------:|----------:|-----------------------------------------------|
-| `build/vyk` (CLI binary)    |      498,792 |     487.1 | Includes 46 inlined grammars (~236 KB of text) |
-| `build/vyk`, `CYRIUS_DCE=1` |      408,680 |     399.1 | Same tree, dead fns compacted out — **what releases ship** |
-| `dist/vyakarana.cyr`        |      503,205 |     491.4 | Single-file bundle for `cyrius deps` (6,671 lines by `wc -l`) |
+| `build/vyk` (CLI binary)    |      342,336 |     334.3 | Includes 46 compacted grammars (55.5 KB of data) |
+| `build/vyk`, `CYRIUS_DCE=1` |      252,224 |     246.3 | Same tree, dead fns compacted out — **what releases ship**; budget 300 KiB |
+| `dist/vyakarana.cyr`        |      342,875 |     334.8 | Single-file bundle for `cyrius deps` (6,673 lines by `wc -l`) |
 
-**Re-captured 2026-10-20 at `2.8.0`, 6.7.15 toolchain.** 2.7.1 →
+**Re-captured 2026-10-21 at `2.9.0`, 6.7.15 toolchain.** 2.8.0 →
+2.9.0: 498,792 → 342,336 (−156,456; DCE 408,680 → 252,224) — the
+grammar blobs are compacted (ADR 0029): comments, blank lines and
+blanks outside strings dropped, 211,991 bytes of `.cyml` → 55,534
+bytes of blob data. Output is byte-identical on 4,500 real files. The
+shipped (DCE) binary is under the design spec's 300 KB target, with
+55 KB to spare, and `scripts/check-size.sh` now holds it to
+307,200 bytes in CI (it fails on 2.8.0's binary by 101,480). DEFLATE
+would take the blobs to 9,717 bytes — about 46 KB more — at the cost
+of an inflater in every binary; ADR 0029 defers it.
+
+**`2.8.0` capture (2026-10-20).** 2.7.1 →
 2.8.0: 490,560 → 498,792 (+8,232; DCE 400,448 → 408,680) — all code,
 the grammar blobs are byte-identical: the scanner's compose holds and
 group list, the heredoc line index (which replaced the search budget and
@@ -265,6 +279,31 @@ microsecond-scale row by ~1.3 µs and can masquerade as a real
 win. The `2.3.0` table was captured on 6.5.4, which does subtract
 it. Table not refreshed: the documented cadence is minor-release
 boundaries, and this is a patch.
+
+## Bench note (2.9.0, 2026-10-21) — compacted blobs, A/B'd
+
+`sh scripts/bench-paired.sh 2.8.0` — the protocol below, now one
+command — at host load 12.8 → 7.8 (other builds on the host):
+
+| Benchmark                  | Median 2.9.0 / 2.8.0 | IQR             |
+|----------------------------|---------------------:|-----------------|
+| blob/grammar-load-shell    |              −15.0 % | −24.6 … −14.2 % |
+| detect/combined-asm-arm    |               −4.3 % | −9.9 … −0.8 %   |
+| detect/path-shell          |               −3.9 % | −5.6 … −2.1 %   |
+| tokenize/shell-small       |               −2.9 % | −6.5 … +5.3 %   |
+| detect/content-python      |               −2.3 % | −8.9 … +5.3 %   |
+| tokenize/html-compose      |               −1.6 % | −4.9 … −0.3 %   |
+| tokenize/rust-small        |               −0.7 % | −5.1 … +3.6 %   |
+| tokenize/json-small        |               +0.6 % | −2.4 … +4.8 %   |
+
+Loading a grammar is 15 % faster: the loader no longer skips 156 KB of
+comments and blanks across the 46 blobs (an earlier run, which
+overlapped a gate run on the same host and spread ±20 % on every other
+row, agreed at −15.6 %). Every tokenize and detect row is within noise, as it should
+be — the parsed grammars are identical (the 2.9.0 test group compares
+them field by field), so the scanner runs the same code on the same
+records. The absolute table is again not refreshed (load 8–13); the
+2.7.0 table stays the baseline until a quiet-host run.
 
 ## Bench note (2.8.0, 2026-10-20) — streaming engine, A/B'd
 

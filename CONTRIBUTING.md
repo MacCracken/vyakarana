@@ -29,8 +29,9 @@ Thanks for wanting to help vyakarana see more grammar.
    `cyrius deps` laid down at 2.2.2 (pin 6.0.3) survived the next
    bump untouched, and nothing caught it until 2.3.0.
 4. `sh scripts/embed-grammars.sh` — generates the gitignored
-   `src/grammar_blobs.cyr`; a fresh checkout will not build
-   without it (ADR 0014)
+   `src/grammar_blobs.cyr`, each grammar compacted (comments and
+   blanks dropped); a fresh checkout will not build without it
+   (ADRs 0014, 0029)
 5. Branch from `main`
 6. Make your change
 7. Run every gate below before opening a PR — CI runs the same
@@ -84,9 +85,9 @@ pattern this script follows.
 
 ## Gates
 
-CLAUDE.md's five gates — unrolled, since one of them chains
+CLAUDE.md's gates — unrolled, since one of them chains
 `cyrius deps && cyrius build` — plus `cyrius fuzz`, in the order
-CI runs them. All seven must be green before a PR merges:
+CI runs them. All eight must be green before a PR merges:
 
 ```sh
 cyrius deps                             # vendors stdlib into lib/
@@ -95,15 +96,24 @@ cyrius build src/main.cyr build/vyk
 sh scripts/lint-fmt.sh                  # lint + fmt --check, all src/*
 cyrius test tests/vyakarana.tcyr
 sh scripts/smoke.sh build/vyk
-cyrius fuzz                             # the 4 harnesses in fuzz/*.fcyr
+sh scripts/check-size.sh                # the shipped (DCE) binary <= 300 KiB
+cyrius fuzz                             # the 5 harnesses in fuzz/*.fcyr
 ```
 
 Lint and fmt are not optional — CI gates both, and either one
-failing blocks the tag. `lint-fmt.sh` skips only
+failing blocks the tag. `lint-fmt.sh` covers `src/` and the audit
+harness in `scripts/audit/`, and skips only
 `src/grammar_blobs.cyr`, whose long string-literal lines are
 generated on purpose.
 
-CI adds one step this list doesn't: after `cyrius fuzz` it
+`check-size.sh` builds the `CYRIUS_DCE=1` binary that releases
+ship and fails above 307,200 bytes (ADR 0029). A grammar or a
+feature that needs more is a decision for an ADR, not a quiet
+bump of the number.
+
+CI adds two steps this list doesn't. It builds the audit harness
+and syntax-checks the audit scripts (`scripts/audit/`, run by hand
+at audits — see its README). And after `cyrius fuzz` it
 re-runs `cyrius distlib` and diffs the result against the
 committed `dist/vyakarana.cyr`. If your change touches a module
 named in `cyrius.cyml`'s `[lib]` block, run
@@ -111,7 +121,7 @@ named in `cyrius.cyml`'s `[lib]` block, run
 regenerated bundle — otherwise every gate above passes locally
 and the PR still fails.
 
-At 2.3.0 green means 840/840 test assertions and 4/4 fuzz
+At 2.9.0 green means 1074/1074 test assertions and 5/5 fuzz
 harnesses. Run the gates yourself rather than trusting a doc that
 says "green" — 2.2.3 shipped with a test suite that did not
 compile, and nobody noticed because nobody re-ran it.

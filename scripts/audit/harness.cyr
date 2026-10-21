@@ -1,0 +1,545 @@
+# vyakarana audit harness — streaming invariance, coverage and mutation
+# fuzz over one input file (2.9.0). Folds the 2.6.x audit's streaming
+# harness and the 2.8.0 every-offset split tool into the repo, so an
+# audit reruns them instead of rebuilding them (ADR 0028 is what they
+# check). The scripts beside this file build it on demand.
+#
+# Build: cyrius build scripts/audit/harness.cyr build/vyk-audit
+# Usage: vyk-audit LANG FILE MODE [ARGS...]
+#   LANG  a grammar name, or `auto` to detect it from FILE as vyk does
+#   MODE
+#     every                 feed [0,k) then [k,n), for every k
+#     pairs                 three feeds, at every pair of cut points
+#                           (quadratic; for small shapes)
+#     chunks MAX            fixed chunk sizes 1..MAX
+#     rand SEED ITERS MAXC  random chunk sizes in 1..MAXC, 0-2 drains each
+#     cutfirst K C          a K-byte feed, then C-byte feeds: coverage,
+#                           largest live buffer, feed errors
+#     mutate SEED ITERS [OUT]
+#                           ITERS mutants of FILE (bytes flipped, markers
+#                           inserted, ranges deleted or duplicated); each
+#                           must tile its bytes and match one feed under
+#                           random chunking and a random two-feed split.
+#                           A failing mutant is written to OUT-<iter>.
+# Every run's tokens must tile the input (the coverage invariant) and
+# equal a single feed of the same bytes, token by token (kind, start,
+# len). Prints up to 50 FAIL lines, then one `summary` line.
+# Exit: 0 clean, 1 failures, 2 usage, 3 read error, 4 no grammar.
+
+include "src/token.cyr"
+include "src/grammar.cyr"
+include "src/tokenize.cyr"
+include "src/detect.cyr"
+
+var H_CAP = 33554432;       # input cap, 32 MiB
+var H_MAXF = 50;            # FAIL lines printed
+
+var _h_printed = 0;
+var _h_feed_err = 0;
+var _h_seed = 12345;
+
+fn _ps(s) { print(s, strlen(s)); return 0; }
+
+fn _atoi(p) {
+    if (p == 0) { return 0; }
+    var v = 0;
+    var i = 0;
+    while ((load8(p + i) >= 48) && (load8(p + i) <= 57)) {
+        v = v * 10 + (load8(p + i) - 48);
+        i = i + 1;
+    }
+    return v;
+}
+
+fn _rnd() {
+    _h_seed = (_h_seed * 6364136223846793005 + 1442695040888963407);
+    return (_h_seed >> 33) & 0x7FFFFFFF;
+}
+
+# ── Runs ────────────────────────────────────
+# Each run tokenizes `n` bytes at `src` into `tb` (reset first).
+
+fn _run_whole(lang, src, n, tb) {
+    _tokenbuf_reset(tb);
+    var s = tokenize_stream_new(lang);
+    if (s == 0) { return 0; }
+    tokenize_stream_feed(s, src, n);
+    tokenize_stream_finish(s, tb);
+    tokenize_stream_free(s);
+    return 1;
+}
+
+# Feeds ending at each of `ncuts` offsets in `cuts`, then the rest;
+# `nd` drains after each feed.
+fn _run_cuts(lang, src, n, cuts, ncuts, nd, tb) {
+    _tokenbuf_reset(tb);
+    var s = tokenize_stream_new(lang);
+    if (s == 0) { return 0; }
+    var off = 0;
+    var ci = 0;
+    while (ci <= ncuts) {
+        var e = n;
+        if (ci < ncuts) { e = load64(cuts + ci * 8); }
+        if (e > n) { e = n; }
+        if (e > off) {
+            if (tokenize_stream_feed(s, src + off, e - off) != 0) { _h_feed_err = _h_feed_err + 1; }
+            off = e;
+        }
+        var d = 0;
+        while (d < nd) {
+            tokenize_stream_drain(s, tb);
+            d = d + 1;
+        }
+        ci = ci + 1;
+    }
+    tokenize_stream_finish(s, tb);
+    tokenize_stream_free(s);
+    return 1;
+}
+
+fn _run_chunk(lang, src, n, chunk, tb) {
+    _tokenbuf_reset(tb);
+    var s = tokenize_stream_new(lang);
+    if (s == 0) { return 0; }
+    var off = 0;
+    while (off < n) {
+        var take = chunk;
+        if (off + take > n) { take = n - off; }
+        if (tokenize_stream_feed(s, src + off, take) != 0) { _h_feed_err = _h_feed_err + 1; }
+        tokenize_stream_drain(s, tb);
+        off = off + take;
+    }
+    tokenize_stream_finish(s, tb);
+    tokenize_stream_free(s);
+    return 1;
+}
+
+fn _run_rand(lang, src, n, maxc, tb) {
+    _tokenbuf_reset(tb);
+    var s = tokenize_stream_new(lang);
+    if (s == 0) { return 0; }
+    var off = 0;
+    while (off < n) {
+        var take = (_rnd() % maxc) + 1;
+        if (off + take > n) { take = n - off; }
+        if (tokenize_stream_feed(s, src + off, take) != 0) { _h_feed_err = _h_feed_err + 1; }
+        var nd = _rnd() % 3;
+        var d = 0;
+        while (d < nd) {
+            tokenize_stream_drain(s, tb);
+            d = d + 1;
+        }
+        off = off + take;
+    }
+    tokenize_stream_finish(s, tb);
+    tokenize_stream_free(s);
+    return 1;
+}
+
+# ── Checks ──────────────────────────────────
+
+# Index of the first token that differs, or -1.
+fn _cmp(a, b) {
+    var na = tokenbuf_count(a);
+    var nb = tokenbuf_count(b);
+    var m = na;
+    if (nb < m) { m = nb; }
+    var i = 0;
+    while (i < m) {
+        if (tokenbuf_kind(a, i) != tokenbuf_kind(b, i)) { return i; }
+        if (tokenbuf_start(a, i) != tokenbuf_start(b, i)) { return i; }
+        if (tokenbuf_len(a, i) != tokenbuf_len(b, i)) { return i; }
+        i = i + 1;
+    }
+    if (na != nb) { return m; }
+    return 0 - 1;
+}
+
+# 1 if the tokens tile [0, n): each starts where the last ended, none
+# is empty, and the last ends at n.
+fn _cov(tb, n) {
+    var c = tokenbuf_count(tb);
+    var pos = 0;
+    var i = 0;
+    while (i < c) {
+        if (tokenbuf_start(tb, i) != pos) { return 0; }
+        if (tokenbuf_len(tb, i) <= 0) { return 0; }
+        pos = pos + tokenbuf_len(tb, i);
+        i = i + 1;
+    }
+    if (pos != n) { return 0; }
+    return 1;
+}
+
+fn _ptok(tb, i) {
+    if ((i < 0) || (i >= tokenbuf_count(tb))) {
+        _ps("<none>");
+        return 0;
+    }
+    _ps("(");
+    fmt_int(tokenbuf_kind(tb, i));
+    _ps(",");
+    fmt_int(tokenbuf_start(tb, i));
+    _ps(",");
+    fmt_int(tokenbuf_len(tb, i));
+    _ps(")");
+    return 0;
+}
+
+# 0 if `got` tiles n bytes and equals `ref`; otherwise prints a FAIL
+# line (while under H_MAXF) and returns 1.
+fn _check(tag, k, ref, got, n) {
+    var bad = _cmp(ref, got);
+    var cv = _cov(got, n);
+    if ((bad < 0) && (cv == 1)) { return 0; }
+    if (_h_printed < H_MAXF) {
+        _h_printed = _h_printed + 1;
+        _ps("FAIL ");
+        _ps(tag);
+        _ps(" k=");
+        fmt_int(k);
+        _ps(" cov=");
+        fmt_int(cv);
+        _ps(" n_ref=");
+        fmt_int(tokenbuf_count(ref));
+        _ps(" n_got=");
+        fmt_int(tokenbuf_count(got));
+        if (bad >= 0) {
+            _ps(" idx=");
+            fmt_int(bad);
+            _ps(" exp=");
+            _ptok(ref, bad);
+            _ps(" got=");
+            _ptok(got, bad);
+        }
+        _ps("\n");
+    }
+    return 1;
+}
+
+# ── Mutation ────────────────────────────────
+# Markers inserted by `mutate`: the openers and closers the scanner's
+# holds, watches and groups key on (ADR 0028), quotes and escapes,
+# line breaks, prefixes, number shapes.
+var _h_atoms = 0;
+
+fn _h_atoms_init() {
+    var v = vec_new();
+    vec_push(v, "\"");
+    vec_push(v, "'");
+    vec_push(v, "`");
+    vec_push(v, "```");
+    vec_push(v, "\"\"\"");
+    vec_push(v, "/*");
+    vec_push(v, "*/");
+    vec_push(v, "//");
+    vec_push(v, "#");
+    vec_push(v, "--");
+    vec_push(v, "<!--");
+    vec_push(v, "-->");
+    vec_push(v, "<style>");
+    vec_push(v, "</style>");
+    vec_push(v, "<script>");
+    vec_push(v, "</script>");
+    vec_push(v, "<<EOF\n");
+    vec_push(v, "\nEOF\n");
+    vec_push(v, "<<-'X'\n");
+    vec_push(v, "${");
+    vec_push(v, "}");
+    vec_push(v, "\\");
+    vec_push(v, "\n");
+    vec_push(v, "\r\n");
+    vec_push(v, "\t");
+    vec_push(v, "\n---\n");
+    vec_push(v, "\n[[");
+    vec_push(v, "f\"");
+    vec_push(v, "r\"");
+    vec_push(v, "b'");
+    vec_push(v, "0x");
+    vec_push(v, "1.5e");
+    vec_push(v, "1_");
+    vec_push(v, "\xc3");
+    vec_push(v, "\xe2\x80");
+    _h_atoms = v;
+    return 0;
+}
+
+# One mutation of `w` (length `wn`, capacity `cap`) into `out`; returns
+# the new length.
+fn _h_mutate_once(w, wn, cap, out) {
+    var op = _rnd() % 5;
+    var p = 0;
+    if (wn > 0) { p = _rnd() % (wn + 1); }
+    if ((op == 0) && (wn > 0)) {
+        # overwrite one byte with any byte, NUL and 0xFF included
+        memcpy(out, w, wn);
+        if (p >= wn) { p = wn - 1; }
+        store8(out + p, _rnd() % 256);
+        return wn;
+    }
+    if (op == 1) {
+        var atom = vec_get(_h_atoms, _rnd() % vec_len(_h_atoms));
+        var al = strlen(atom);
+        if (wn + al < cap) {
+            memcpy(out, w, p);
+            memcpy(out + p, atom, al);
+            memcpy(out + p + al, w + p, wn - p);
+            return wn + al;
+        }
+    }
+    if ((op == 2) && (wn > 0)) {
+        var dl = (_rnd() % 32) + 1;
+        if (p + dl > wn) { dl = wn - p; }
+        memcpy(out, w, p);
+        memcpy(out + p, w + p + dl, wn - p - dl);
+        return wn - dl;
+    }
+    if ((op == 3) && (wn > 0)) {
+        # duplicate [q, q+cl) at p
+        var q = _rnd() % wn;
+        var cl = (_rnd() % 64) + 1;
+        if (q + cl > wn) { cl = wn - q; }
+        if (wn + cl < cap) {
+            memcpy(out, w, p);
+            memcpy(out + p, w + q, cl);
+            memcpy(out + p + cl, w + p, wn - p);
+            return wn + cl;
+        }
+    }
+    if ((op == 4) && (wn > 0) && ((_rnd() % 8) == 0)) {
+        memcpy(out, w, p);
+        return p;
+    }
+    memcpy(out, w, wn);
+    return wn;
+}
+
+fn _h_write_mutant(prefix, it, buf, n) {
+    if (prefix == 0) { return 0; }
+    var path = alloc(strlen(prefix) + 24);
+    var pl = strlen(prefix);
+    memcpy(path, prefix, pl);
+    store8(path + pl, 45);       # `-`
+    var digits = alloc(24);
+    var dn = 0;
+    var v = it;
+    if (v == 0) {
+        store8(digits, 48);
+        dn = 1;
+    }
+    while (v > 0) {
+        store8(digits + dn, 48 + (v % 10));
+        dn = dn + 1;
+        v = v / 10;
+    }
+    var j = 0;
+    while (j < dn) {
+        store8(path + pl + 1 + j, load8(digits + dn - 1 - j));
+        j = j + 1;
+    }
+    store8(path + pl + 1 + dn, 0);
+    file_write_all(path, buf, n);
+    _ps("  mutant written: ");
+    _ps(path);
+    _ps("\n");
+    return 0;
+}
+
+fn _h_mutate(lang, src, n, seed, iters, prefix, ref, got) {
+    _h_atoms_init();
+    var cap = n + 4096;
+    var w = alloc(cap);
+    var x = alloc(cap);
+    var cut = alloc(8);
+    var fails = 0;
+    var it = 0;
+    while (it < iters) {
+        # One seed per iteration, so iteration `it` replays alone.
+        _h_seed = seed * 1000003 + it;
+        memcpy(w, src, n);
+        var wn = n;
+        var nops = (_rnd() % 4) + 1;
+        var oi = 0;
+        while (oi < nops) {
+            var mn = _h_mutate_once(w, wn, cap, x);
+            memcpy(w, x, mn);
+            wn = mn;
+            oi = oi + 1;
+        }
+        var f = 0;
+        _run_whole(lang, w, wn, ref);
+        if (_cov(ref, wn) == 0) {
+            f = 1;
+            if (_h_printed < H_MAXF) {
+                _h_printed = _h_printed + 1;
+                _ps("FAIL mutate-single k=");
+                fmt_int(it);
+                _ps(" cov=0\n");
+            }
+        }
+        _run_rand(lang, w, wn, (_rnd() % 512) + 1, got);
+        f = f + _check("mutate-rand", it, ref, got, wn);
+        store64(cut, 0);
+        if (wn > 0) { store64(cut, _rnd() % wn); }
+        _run_cuts(lang, w, wn, cut, 1, 1, got);
+        f = f + _check("mutate-split", it, ref, got, wn);
+        if (f > 0) {
+            fails = fails + 1;
+            _h_write_mutant(prefix, it, w, wn);
+        }
+        it = it + 1;
+    }
+    return fails;
+}
+
+# ── Main ────────────────────────────────────
+
+fn _usage() {
+    _ps("usage: vyk-audit LANG FILE MODE [ARGS...]\n");
+    _ps("  MODE: every | pairs | chunks MAX | rand SEED ITERS MAXC |\n");
+    _ps("        cutfirst K C | mutate SEED ITERS [OUT]\n");
+    return 2;
+}
+
+fn _main() {
+    args_init();
+    var ac = argc();
+    if (ac < 4) { return _usage(); }
+    var lang = argv(1);
+    var path = argv(2);
+    var mode = argv(3);
+    var p1 = 0;
+    var p2 = 0;
+    var p3 = 0;
+    if (ac > 4) { p1 = argv(4); }
+    if (ac > 5) { p2 = argv(5); }
+    if (ac > 6) { p3 = argv(6); }
+    bootstrap_grammars();
+    var src = alloc(H_CAP);
+    var n = file_read_all(path, src, H_CAP - 1);
+    if (n < 0) {
+        _ps("read fail\n");
+        return 3;
+    }
+    if (n >= H_CAP - 1) {
+        _ps("file over the 32 MiB cap\n");
+        return 3;
+    }
+    store8(src + n, 0);
+    if (streq(lang, "auto") == 1) { lang = detect_language_combined(path, src, n); }
+    if (lang == 0) {
+        _ps("no grammar\n");
+        return 4;
+    }
+    if (has_grammar(lang) == 0) {
+        _ps("no grammar\n");
+        return 4;
+    }
+    var ref = tokenbuf_new();
+    var got = tokenbuf_new();
+    var cuts = alloc(16);
+    var fails = 0;
+    var known = 0;
+    _run_whole(lang, src, n, ref);
+    if (_cov(ref, n) == 0) {
+        _ps("FAIL single feed does not tile the input\n");
+        fails = fails + 1;
+    }
+    if (streq(mode, "every") == 1) {
+        known = 1;
+        var k = 1;
+        while (k < n) {
+            store64(cuts, k);
+            _run_cuts(lang, src, n, cuts, 1, 1, got);
+            fails = fails + _check("every", k, ref, got, n);
+            k = k + 1;
+        }
+    }
+    if (streq(mode, "pairs") == 1) {
+        known = 1;
+        var a = 1;
+        while (a < n) {
+            var b = a + 1;
+            while (b < n) {
+                store64(cuts, a);
+                store64(cuts + 8, b);
+                _run_cuts(lang, src, n, cuts, 2, 1, got);
+                fails = fails + _check("pairs", a * 100000 + b, ref, got, n);
+                b = b + 1;
+            }
+            a = a + 1;
+        }
+    }
+    if (streq(mode, "chunks") == 1) {
+        known = 1;
+        var cmax = _atoi(p1);
+        var cs = 1;
+        while (cs <= cmax) {
+            _run_chunk(lang, src, n, cs, got);
+            fails = fails + _check("chunks", cs, ref, got, n);
+            cs = cs + 1;
+        }
+    }
+    if (streq(mode, "rand") == 1) {
+        known = 1;
+        _h_seed = _atoi(p1);
+        var iters = _atoi(p2);
+        var maxc = _atoi(p3);
+        if (maxc < 1) { maxc = 1; }
+        var it = 0;
+        while (it < iters) {
+            _run_rand(lang, src, n, maxc, got);
+            fails = fails + _check("rand", it, ref, got, n);
+            it = it + 1;
+        }
+    }
+    if (streq(mode, "cutfirst") == 1) {
+        known = 1;
+        var kf = _atoi(p1);
+        var cf = _atoi(p2);
+        if (kf < 1) { kf = 1; }
+        if (cf < 1) { cf = 1; }
+        _tokenbuf_reset(got);
+        var sf = tokenize_stream_new(lang);
+        var off = 0;
+        var maxlive = 0;
+        while (off < n) {
+            var take = cf;
+            if (off == 0) { take = kf; }
+            if (off + take > n) { take = n - off; }
+            if (tokenize_stream_feed(sf, src + off, take) != 0) { _h_feed_err = _h_feed_err + 1; }
+            tokenize_stream_drain(sf, got);
+            if (load64(sf + 8) > maxlive) { maxlive = load64(sf + 8); }
+            off = off + take;
+        }
+        tokenize_stream_finish(sf, got);
+        tokenize_stream_free(sf);
+        fails = fails + _check("cutfirst", kf, ref, got, n);
+        _ps("cutfirst max_live_buf=");
+        fmt_int(maxlive);
+        _ps("\n");
+    }
+    if (streq(mode, "mutate") == 1) {
+        known = 1;
+        fails = fails + _h_mutate(lang, src, n, _atoi(p1), _atoi(p2), p3, ref, got);
+    }
+    if (known == 0) { return _usage(); }
+    _ps("summary lang=");
+    _ps(lang);
+    _ps(" mode=");
+    _ps(mode);
+    _ps(" n=");
+    fmt_int(n);
+    _ps(" toks=");
+    fmt_int(tokenbuf_count(ref));
+    _ps(" fails=");
+    fmt_int(fails);
+    _ps(" feed_errs=");
+    fmt_int(_h_feed_err);
+    _ps("\n");
+    if ((fails > 0) || (_h_feed_err > 0)) { return 1; }
+    return 0;
+}
+
+var _rc = _main();
+syscall(60, _rc);

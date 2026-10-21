@@ -149,6 +149,111 @@ fn _t_route_ok(what, got, nm) {
     return 0;
 }
 
+# ── Grammar-record comparison (2.9.0, ADR 0029) ──
+# `_t_rec_eq(a, b, spec)` compares two records field by field. A spec
+# is one byte per 8-byte field: `i` a scalar, `s` a cstr (or 0), `t` a
+# 256-byte class table (or 0), `v` a Vec of cstrs, `-` runtime state
+# that is not compared (the compose watermarks), and an upper-case
+# letter a Vec of sub-records whose spec `_t_sub_spec` gives. The specs
+# mirror the layout tables in src/grammar.cyr; the 2.9.0 test group
+# holds each spec's length to its record's `*_SIZE`, so a field added
+# without a spec entry fails there.
+var _t_diff_off = 0;    # top-level offset of the last mismatch found
+
+fn _t_grammar_spec() { return "svviittiiiiivvLPWiiiCFRHviiitvv"; }
+
+fn _t_sub_spec(code) {
+    if (code == 76) { return "isstt"; }   # L  LineRule
+    if (code == 80) { return "issi"; }    # P  PairRule
+    if (code == 87) { return "iv"; }      # W  WordsRule
+    if (code == 67) { return "sss--"; }   # C  ComposeRule
+    if (code == 70) { return "ss--"; }    # F  ComposeFencedRule
+    if (code == 82) { return "sss"; }     # R  ComposeRegionRule
+    if (code == 72) { return "iss"; }     # H  HeredocRule
+    return 0;
+}
+
+fn _t_cs_eq(a, b) {
+    if ((a == 0) || (b == 0)) {
+        if (a == b) { return 1; }
+        return 0;
+    }
+    return streq(a, b);
+}
+
+fn _t_tbl_eq(a, b) {
+    if ((a == 0) || (b == 0)) {
+        if (a == b) { return 1; }
+        return 0;
+    }
+    return memeq(a, b, 256);
+}
+
+# Vecs of cstrs (`code` 0) or of sub-records (`code` a spec letter).
+fn _t_vec_eq(a, b, code) {
+    if ((a == 0) || (b == 0)) {
+        if (a == b) { return 1; }
+        return 0;
+    }
+    if (vec_len(a) != vec_len(b)) { return 0; }
+    var sub = 0;
+    if (code != 0) { sub = _t_sub_spec(code); }
+    var i = 0;
+    while (i < vec_len(a)) {
+        var same = 0;
+        if (sub == 0) { same = _t_cs_eq(vec_get(a, i), vec_get(b, i)); }
+        if (sub != 0) { same = _t_rec_eq(vec_get(a, i), vec_get(b, i), sub); }
+        if (same == 0) { return 0; }
+        i = i + 1;
+    }
+    return 1;
+}
+
+fn _t_rec_eq(a, b, spec) {
+    var n = strlen(spec);
+    var i = 0;
+    while (i < n) {
+        var c = load8(spec + i);
+        var x = load64(a + i * 8);
+        var y = load64(b + i * 8);
+        var same = 1;
+        if (c == 105) {                                  # i
+            if (x != y) { same = 0; }
+        }
+        if (c == 115) { same = _t_cs_eq(x, y); }        # s
+        if (c == 116) { same = _t_tbl_eq(x, y); }       # t
+        if (c == 118) { same = _t_vec_eq(x, y, 0); }    # v
+        if ((c >= 65) && (c <= 90)) { same = _t_vec_eq(x, y, c); }
+        if (same == 0) {
+            _t_diff_off = i * 8;
+            return 0;
+        }
+        i = i + 1;
+    }
+    return 1;
+}
+
+# `a` + `b` + `c` into a fresh buffer of exactly their length (2.9.0).
+fn _t_cat3_alloc(a, b, c) {
+    var la = strlen(a);
+    var lb = strlen(b);
+    var lc = strlen(c);
+    var buf = alloc(la + lb + lc + 1);
+    memcpy(buf, a, la);
+    memcpy(buf + la, b, lb);
+    memcpy(buf + la + lb, c, lc);
+    store8(buf + la + lb + lc, 0);
+    return buf;
+}
+
+# 1 if the grammar texts `x` and `y` both load and compare equal.
+fn _t_gtext_eq(x, y) {
+    var gx = _gp_parse(x, strlen(x));
+    var gy = _gp_parse(y, strlen(y));
+    if ((gx == 0) || (gy == 0)) { return 0 - 1; }
+    return _t_rec_eq(gx, gy, _t_grammar_spec());
+}
+
 fn main() {
     alloc_init();
 
@@ -4081,6 +4186,75 @@ fn main() {
         gp7_gi = gp7_gi + 1;
     }
     assert_eq(gp7_dups, 0, "no grammar repeats an operator, punctuation or keyword entry");
+
+    test_group("2.9.0 compacted grammar blobs (ADR 0029)");
+    # scripts/embed-grammars.sh drops comments and every blank outside a
+    # string from each blob. Each blob must parse to the same grammar
+    # record as its source file — every field, every rule, every class
+    # table. This also fails on a stale blob (a grammar edited without
+    # re-running the script).
+    var cb9_spec = _t_grammar_spec();
+    assert_eq(strlen(cb9_spec) * 8, GRAMMAR_SIZE, "the comparison spec covers the whole grammar record");
+    assert_eq(strlen(_t_sub_spec(76)) * 8, LINE_RULE_SIZE, "  ... and the line rule");
+    assert_eq(strlen(_t_sub_spec(80)) * 8, PAIR_RULE_SIZE, "  ... the pair rule");
+    assert_eq(strlen(_t_sub_spec(87)) * 8, WORDS_RULE_SIZE, "  ... the words rule");
+    assert_eq(strlen(_t_sub_spec(67)) * 8, COMPOSE_RULE_SIZE, "  ... the compose rule");
+    assert_eq(strlen(_t_sub_spec(70)) * 8, COMPOSE_FENCED_RULE_SIZE, "  ... the compose-fenced rule");
+    assert_eq(strlen(_t_sub_spec(82)) * 8, COMPOSE_REGION_RULE_SIZE, "  ... the compose-region rule");
+    assert_eq(strlen(_t_sub_spec(72)) * 8, HEREDOC_RULE_SIZE, "  ... the heredoc rule");
+    # The comparison must be able to fail: one-field changes deep in a
+    # rule are told apart, comments and blanks are not.
+    var cb9_a = "[grammar]\nname = \"cmp\"\nextensions = [\".cmp\"]\n[defaults]\nident_start = \"a-z\"\nident_cont = \"a-z0-9\"\noperators = [\"==\", \"=\"]\n";
+    var cb9_c = "[[rules]]\nkind = \"keyword\"\nmatch = \"words\"\nwords = [\"if\", \"else\"]\n[[rules]]\nkind = \"string\"\nmatch = \"heredoc\"\nstart = \"<<\"\nindent = \"-\"\n";
+    var cb9_line = "[[rules]]\nkind = \"comment\"\nmatch = \"line\"\nstart = \"#\"\nnot_followed_by = \"[\"\n[[rules]]\nkind = \"string\"\nmatch = \"pair\"\nstart = \"\\\"\"\nend = \"\\\"\"\nescape = \"\\\\\"\n";
+    var cb9_base = _t_cat3_alloc(cb9_a, cb9_line, cb9_c);
+    var cb9_cmt = "# a comment\n[grammar]   # trailing \"quote\n\nname=\"cmp\"\n  extensions = [ \".cmp\" ,]\n[defaults]\n\tident_start = \"a-z\"\nident_cont=\"a-z0-9\"\noperators = [\n  \"==\",   # eq\n  \"=\",\n]\n";
+    assert_eq(_t_gtext_eq(cb9_base, cb9_base), 1, "a grammar compares equal to itself");
+    assert_eq(_t_gtext_eq(cb9_base, _t_cat3_alloc(cb9_cmt, cb9_line, cb9_c)), 1, "comments and blanks do not change the record");
+    var cb9_l2 = "[[rules]]\nkind = \"comment\"\nmatch = \"line\"\nstart = \"#\"\nnot_followed_by = \"{\"\n[[rules]]\nkind = \"string\"\nmatch = \"pair\"\nstart = \"\\\"\"\nend = \"\\\"\"\nescape = \"\\\\\"\n";
+    assert_eq(_t_gtext_eq(cb9_base, _t_cat3_alloc(cb9_a, cb9_l2, cb9_c)), 0, "a line rule's not_followed_by class is compared");
+    var cb9_l3 = "[[rules]]\nkind = \"comment\"\nmatch = \"line\"\nstart = \"#\"\nnot_followed_by = \"[\"\n[[rules]]\nkind = \"string\"\nmatch = \"pair\"\nstart = \"\\\"\"\nend = \"\\\"\"\nescape = \"`\"\n";
+    assert_eq(_t_gtext_eq(cb9_base, _t_cat3_alloc(cb9_a, cb9_l3, cb9_c)), 0, "a pair rule's escape byte is compared");
+    var cb9_c2 = "[[rules]]\nkind = \"keyword\"\nmatch = \"words\"\nwords = [\"if\", \"elsif\"]\n[[rules]]\nkind = \"string\"\nmatch = \"heredoc\"\nstart = \"<<\"\nindent = \"-\"\n";
+    assert_eq(_t_gtext_eq(cb9_base, _t_cat3_alloc(cb9_a, cb9_line, cb9_c2)), 0, "a words rule's entries are compared");
+    var cb9_c3 = "[[rules]]\nkind = \"keyword\"\nmatch = \"words\"\nwords = [\"if\", \"else\"]\n[[rules]]\nkind = \"string\"\nmatch = \"heredoc\"\nstart = \"<<\"\nindent = \"~\"\n";
+    assert_eq(_t_gtext_eq(cb9_base, _t_cat3_alloc(cb9_a, cb9_line, cb9_c3)), 0, "a heredoc rule's indent is compared");
+    var cb9_a2 = "[grammar]\nname = \"cmp\"\nextensions = [\".cmp\"]\n[defaults]\nident_start = \"a-z\"\nident_cont = \"a-z0-9\"\noperators = [\"=\", \"==\"]\n";
+    assert_eq(_t_gtext_eq(cb9_base, _t_cat3_alloc(cb9_a2, cb9_line, cb9_c)), 0, "operator order is compared");
+    # Every bundled grammar: blob against grammars/<name>.cyml.
+    var cb9_names = vec_new();
+    list_languages_into(cb9_names);
+    var cb9_path = alloc(256);
+    var cb9_buf = alloc(GRAMMAR_FILE_CAP);
+    var cb9_bad = 0;
+    var cb9_src = 0;
+    var cb9_blobs = 0;
+    var cb9_gi = 0;
+    while (cb9_gi < vec_len(cb9_names)) {
+        var cb9_nm = vec_get(cb9_names, cb9_gi);
+        _t_cat3(cb9_path, "grammars/", cb9_nm, ".cyml");
+        var cb9_blob = _grammar_blob_data(cb9_path);
+        var cb9_n = file_read_all(cb9_path, cb9_buf, GRAMMAR_FILE_CAP - 1);
+        var cb9_ok = 0;
+        _t_diff_off = 0 - 1;
+        if ((cb9_blob != 0) && (cb9_n > 0)) {
+            store8(cb9_buf + cb9_n, 0);
+            var cb9_gf = _gp_parse(cb9_buf, cb9_n);
+            var cb9_gb = _gp_parse(cb9_blob, strlen(cb9_blob));
+            if ((cb9_gf != 0) && (cb9_gb != 0)) { cb9_ok = _t_rec_eq(cb9_gf, cb9_gb, cb9_spec); }
+            cb9_src = cb9_src + cb9_n;
+            cb9_blobs = cb9_blobs + strlen(cb9_blob);
+        }
+        if (cb9_ok == 0) {
+            cb9_bad = cb9_bad + 1;
+            print("    blob differs from its source: ", 34); print(cb9_nm, strlen(cb9_nm));
+            print(" (field +", 9); print_num(_t_diff_off); print(")\n", 2);
+        }
+        cb9_gi = cb9_gi + 1;
+    }
+    assert_eq(cb9_bad, 0, "every bundled grammar's blob parses to its source file's record");
+    assert_eq(vec_len(cb9_names), _grammar_blob_count(), "every blob belongs to a loaded grammar");
+    assert(cb9_blobs * 2 < cb9_src, "the blobs are under half their sources (comments stripped)");
 
     return assert_summary();
 }

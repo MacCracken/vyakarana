@@ -69,6 +69,21 @@ jobs:
       - name: Smoke test
         run: sh scripts/smoke.sh build/vyk
 
+      # The shipped (CYRIUS_DCE=1) binary against its 300 KiB budget
+      # (ADR 0029). Builds its own DCE binary; build/vyk above is the
+      # default build.
+      - name: Size budget
+        run: sh scripts/check-size.sh
+
+      # The audit tools (scripts/audit/, 2.9.0) are not gates, but they
+      # must still work when an audit reaches for them: build the
+      # harness, run it once, and syntax-check every audit script.
+      - name: Audit tools
+        run: |
+          cyrius build scripts/audit/harness.cyr build/vyk-audit
+          build/vyk-audit auto tests/corpus/openqasm.qasm every
+          for f in scripts/audit/*.sh scripts/bench-paired.sh; do sh -n "$f"; done
+
       # Fuzz harnesses. Random / adversarial inputs through the
       # streaming API, the three detect_language* entries, and the
       # CYML grammar parser, all holding the documented invariants

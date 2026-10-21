@@ -26,9 +26,10 @@ cyrius deps && cyrius build src/main.cyr build/vyk
 cyrius test tests/vyakarana.tcyr
 sh scripts/smoke.sh build/vyk
 sh scripts/lint-fmt.sh                 # lint + fmt --check, all src/*
+sh scripts/check-size.sh               # shipped (DCE) binary <= 300 KiB
 ```
 
-Run all five on session entry. Don't take
+Run all six on session entry. Don't take
 `docs/development/state.md` / `README.md` claims of "green" at
 face value until you've seen the commands pass. Use `cyrius build`,
 never raw `cc3`/`cc5`.
@@ -66,7 +67,8 @@ local and CI are compiling different snapshots.
 
 **Lint + fmt are mandatory pre-release.** CI runs them; failing
 either blocks the tag. The wrapper at `scripts/lint-fmt.sh`
-iterates every `src/*.cyr` and `src/grammars/*.cyr` (skipping
+iterates every `src/*.cyr`, `src/grammars/*.cyr` and
+`scripts/audit/*.cyr` (skipping
 `src/grammar_blobs.cyr` — generated, long string-literal lines
 are intentional). One stop for both checks; non-zero exit on any
 warning or formatting drift.
@@ -75,9 +77,12 @@ warning or formatting drift.
 (gitignored — every fresh checkout needs this step before the
 first build). Inlines `grammars/*.cyml` into Cyrius string
 literals so `dist/vyakarana.cyr` is self-contained for `cyrius
-deps` consumers. **Required before `cyrius distlib`** — since
+deps` consumers — compacted since 2.9.0 (comments and blanks
+outside strings dropped; a test proves each blob parses to its
+source file's grammar record, so a stale blob fails `cyrius
+test`). **Required before `cyrius distlib`** — since
 6.2.52 distlib exits 1 on a missing `[lib] modules` entry rather
-than quietly emitting a truncated bundle. See ADR 0014.
+than quietly emitting a truncated bundle. See ADRs 0014 and 0029.
 
 ## Work loop (continuous)
 
@@ -107,7 +112,9 @@ catch drift before it compounds.
 2. Cleanliness check: `cyrius build`, `cyrius lint src/*.cyr`,
    `cyrius test`, `sh scripts/smoke.sh build/vyk` — all green.
 3. Benchmark baseline:
-   `cyrius bench tests/bcyr/vyakarana.bcyr`. Compare against
+   `sh scripts/bench-paired.sh <last tag>` (the paired protocol —
+   ratios hold on a loaded host; absolute numbers only from a
+   quiet one). Compare against
    the table in `docs/development/performance.md`; refresh the
    doc at each minor-release boundary (1.13.0+ has the
    baseline). Watch for >20% regressions on the tokenize and
@@ -127,7 +134,10 @@ catch drift before it compounds.
    library over arbitrary input — the coverage invariant is the
    correctness contract, but boundary checks on buffer allocation
    still matter. File findings in `docs/audit/YYYY-MM-DD-audit.md`
-   (create the directory when the first audit lands).
+   (create the directory when the first audit lands). The empirical
+   sweeps are scripted in `scripts/audit/` (its README): real-file
+   coverage, poison A/B, streaming invariance, mutation fuzz over
+   vidya — rerun them; don't rebuild them.
 7. Additional tests / corpus entries from findings — any new shape
    worth locking with an assertion or a stand-in probe.
 8. Post-review gate run — prove the hardening didn't regress

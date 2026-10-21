@@ -4,6 +4,76 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.9.0] — 2026-10-21
+
+**Size and tooling** ([ADR 0029](docs/adr/0029-compacted-blobs-posix-generator-size-budget.md)).
+The binary releases ship (the `CYRIUS_DCE=1` build) goes from 408,680 to 252,224
+bytes — under the design spec's 300 KB target, now checked in CI — by compacting
+the embedded grammars. Output is byte-identical to 2.8.0: 4,500 real files and
+the 49 corpora, stdout, stderr and exit code. The audits' sweeps are in the repo
+now (`scripts/audit/`), and so is the paired latency protocol
+(`scripts/bench-paired.sh`). No token, API or grammar change. 1074/1074 tests,
+smoke OK, lint+fmt exit 0, fuzz 5/5, size budget OK.
+
+### Changed
+
+- **Embedded grammars are compacted.** `scripts/embed-grammars.sh` drops
+  comments, blank lines and every space, tab and CR outside a string before
+  inlining a grammar: 211,991 bytes of `.cyml` become 55,534 bytes of blob data.
+  It follows the loader's lexical rules exactly, refuses a string that runs past
+  its line, and a new test group proves the result per grammar (below).
+
+  | Artifact | 2.8.0 | 2.9.0 |
+  |---|---:|---:|
+  | `vyk` | 498,792 | 342,336 |
+  | `vyk`, `CYRIUS_DCE=1` (released) | 408,680 | 252,224 |
+  | `dist/vyakarana.cyr` | 503,205 | 342,875 |
+
+  Every consumer's binary sheds the same ~156 KB: each one carries every blob
+  (cyim, vidya and owl, rebuilt against the bundle: −156,456 to −156,464
+  bytes). Loading a grammar is 15 % faster, with less text to skip;
+  tokenizing and detection are unchanged (paired bench against 2.8.0,
+  `docs/development/performance.md`).
+- **`scripts/embed-grammars.sh` is POSIX** — sh, awk and `tr`, identical output
+  under gawk, `gawk --posix`, `gawk --traditional`, bash, `bash --posix` and
+  `zsh --emulate sh`. It writes to a temporary file and renames it, so a refusal
+  leaves the previous blobs in place.
+- `scripts/lint-fmt.sh` also covers `scripts/audit/*.cyr`.
+
+### Fixed
+
+- **The embed script needed GNU awk.** Its `gsub()` doubling of backslashes is
+  a no-op under POSIX awk rules: every `\` in a grammar reached the Cyrius
+  literal undoubled, and the build failed (`unknown string escape`) — shown by
+  running the 2.8.0 script under `gawk --posix`. Each byte is now escaped on its
+  own, with no `gsub()`.
+- **Its control-byte check passed without GNU grep** (`grep -P`). It is `tr -d`
+  with octal ranges now.
+
+### Added
+
+- **A size budget.** `scripts/check-size.sh` builds the DCE binary (or checks
+  one it is given) and fails above 307,200 bytes; CI and `release.yml` run it. It
+  fails on 2.8.0's binary by 101,480 bytes.
+- **Blob-against-source test** (`tests/vyakarana.tcyr`, 18 assertions): every
+  bundled grammar's blob must parse to the same grammar record as its
+  `grammars/<name>.cyml` — every field, rule and class table, from comparison
+  specs held to each record's `*_SIZE`. It fails on a one-field change inside a
+  rule and on a stale blob (a grammar edited without re-running the script).
+- **`scripts/audit/`** — the closeout audits' sweeps, kept: `coverage-sweep.sh`
+  (vyk over real files, the coverage invariant on every output),
+  `poison-ab.sh` (two poisoned-allocator builds must agree byte for byte),
+  `stream-sweep.sh` (every-offset splits over the corpora and 45 heredoc shapes,
+  generated stress inputs under a time limit, chunked runs over real files),
+  `mutate-fuzz.sh` (mutants of vidya's samples must tile and stream like one
+  feed), and `harness.cyr` behind them. Its README has 2.9.0's clean numbers —
+  48,800 mutants, 4,500 files, 0 failures — and what each finds on 2.7.1. The
+  Python sweep they replace skipped its checks whenever vyk exited 1. CI builds
+  the harness and syntax-checks the scripts.
+- **`scripts/bench-paired.sh OLD [NEW]`** — the paired protocol from
+  `performance.md`: two fresh trees, the same short bench alternated, median
+  per-round ratios with their spread.
+
 ## [2.8.0] — 2026-10-20
 
 **Streaming engine** ([ADR 0028](docs/adr/0028-streaming-holds-watches-groups.md)).

@@ -1,6 +1,7 @@
 #!/bin/sh
 # lint-fmt.sh — run cyrius lint and cyrius fmt --check across every
-# hand-edited Cyrius source file in src/. Mandatory pre-release
+# hand-edited Cyrius source file in src/ and the audit harness in
+# scripts/audit/ (2.9.0). Mandatory pre-release
 # step (CLAUDE.md §Gates, §Closeout pass). CI runs the same set;
 # either step failing blocks the release.
 #
@@ -23,7 +24,7 @@ cd "$(dirname "$0")/.."
 
 rc=0
 
-for f in src/*.cyr src/grammars/*.cyr; do
+for f in src/*.cyr src/grammars/*.cyr scripts/audit/*.cyr; do
     case "$f" in
         src/grammar_blobs.cyr) continue ;;
     esac
@@ -35,7 +36,7 @@ if [ "$rc" -ne 0 ]; then
     exit "$rc"
 fi
 
-for f in src/*.cyr src/grammars/*.cyr; do
+for f in src/*.cyr src/grammars/*.cyr scripts/audit/*.cyr; do
     case "$f" in
         src/grammar_blobs.cyr) continue ;;
     esac
@@ -46,7 +47,7 @@ for f in src/*.cyr src/grammars/*.cyr; do
 done
 
 if [ "$rc" -eq 0 ]; then
-    echo "lint-fmt: OK — all src/*.cyr lint-clean and formatted"
+    echo "lint-fmt: OK — src/ and scripts/audit/ lint-clean and formatted"
 fi
 
 exit "$rc"

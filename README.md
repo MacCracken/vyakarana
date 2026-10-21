@@ -139,13 +139,21 @@ was removed in 2.0.0 (ADR 0017).
 
 ## Status
 
+**2.9.0** (2026-10-21) — size and tooling
+([ADR 0029](docs/adr/0029-compacted-blobs-posix-generator-size-budget.md)):
+the released `vyk` is 252 KB, down from 409 KB, because the embedded
+grammars no longer carry their comments — and a CI check now keeps it
+under 300 KB. Every consumer's binary drops the same ~156 KB. Output is
+unchanged. The audit sweeps live in [`scripts/audit/`](scripts/audit/README.md).
+Next on the [roadmap](docs/development/roadmap.md): the 2.9.1 closeout
+audit.
+
 **2.8.0** (2026-10-20) — streaming engine
 ([ADR 0028](docs/adr/0028-streaming-holds-watches-groups.md)): a chunked
 stream now matches a single feed for every grammar, markdown / html /
 vue / svelte / cyml included, and feeding long tokens or blocks in
 small chunks is linear (a 550 KB fenced block in 4 KB chunks: > 300 s →
-0.26 s). Single-feed output is unchanged. Next on the
-[roadmap](docs/development/roadmap.md): 2.9.0 size and tooling.
+0.26 s). Single-feed output is unchanged.
 
 **2.7.1** (2026-10-20) — grammar polish
 ([ADR 0027](docs/adr/0027-prefixes-lead-bytes-next-byte-rules.md)):

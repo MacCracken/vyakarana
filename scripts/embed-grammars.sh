@@ -2,12 +2,11 @@
 # embed-grammars.sh — generate src/grammar_blobs.cyr from grammars/*.cyml
 #
 # vyakarana ships dist/vyakarana.cyr as a self-contained bundle. The
-# bundle's bootstrap_grammars() loads every bundled grammar (46 as of
-# 2.5.2); without this step
-# it would call file_read_all("grammars/<name>.cyml") at runtime,
-# but cyrius deps doesn't vendor grammars/ — only the bundle. Inlining
-# the .cyml files as Cyrius string literals makes the bundle truly
-# self-contained.
+# bundle's bootstrap_grammars() loads every bundled grammar; without
+# this step it would call file_read_all("grammars/<name>.cyml") at
+# runtime, but cyrius deps doesn't vendor grammars/ — only the bundle.
+# Inlining the .cyml files as Cyrius string literals makes the bundle
+# self-contained (ADR 0014).
 #
 # Output: src/grammar_blobs.cyr — gitignored. Always regenerated; never
 # hand-edited. Run before cyrius build / cyrius test / cyrius distlib.
@@ -16,26 +15,126 @@
 # _grammar_blob_data(path) first; if non-zero, parses from memory; else
 # falls back to file_read_all for paths that are not bundled. A bundled
 # path ALWAYS resolves to its blob, so after editing grammars/foo.cyml
-# re-run this script before building — the file is not re-read. (This
-# comment used to say the opposite; corrected 2.5.2.)
+# re-run this script before building — the file is not re-read.
+#
+# Each blob is the grammar COMPACTED (ADR 0029): comments, blank lines
+# and every space / tab / CR outside a string are dropped, so the blob
+# carries only what the loader reads. Two thirds of the .cyml text is
+# comment, and it went into every binary until 2.9.0. The compactor
+# follows the loader's lexical rules exactly (src/grammar.cyr: a string
+# is "..." with `\` escaping the next byte; `#` outside a string runs
+# to the end of the line; a value is a string, a string array or a
+# bool), and tests/vyakarana.tcyr proves it per grammar: each blob
+# must parse to the same grammar record as its source file.
+#
+# POSIX sh + POSIX awk + tr. Through 2.8.0 the escaping used gsub(),
+# whose backslash doubling is a no-op under POSIX awk (gawk --posix,
+# mawk, busybox): `\\` reached the blob as `\`. Every byte is now
+# examined and escaped one at a time, which no awk reads differently.
 
-set -e
+set -eu
 
 cd "$(dirname "$0")/.."
 
-OUT="src/grammar_blobs.cyr"
-GRAMMARS=$(ls grammars/*.cyml | sort)
-COUNT=$(echo "$GRAMMARS" | wc -l)
+# Bytes, not characters, in awk and tr; a byte-order glob.
+LC_ALL=C
+export LC_ALL
 
-# Header
-cat > "$OUT" <<EOF
+OUT="src/grammar_blobs.cyr"
+TMP="$OUT.tmp.$$"
+trap 'rm -f "$TMP"' EXIT INT TERM
+
+COUNT=0
+SRC_BYTES=0
+for f in grammars/*.cyml; do
+    [ -f "$f" ] || continue
+    COUNT=$((COUNT + 1))
+    SRC_BYTES=$((SRC_BYTES + $(wc -c < "$f")))
+done
+if [ "$COUNT" -eq 0 ]; then
+    echo "embed-grammars.sh: no grammars/*.cyml found" >&2
+    exit 1
+fi
+
+# Refuse any file with a NUL or other control byte besides TAB, LF and
+# CR (or DEL). .cyml files are text — anything else means something is
+# wrong upstream. `tr -d` with octal ranges is POSIX; through 2.8.0
+# this used `grep -P`, a GNU extension, so elsewhere the check quietly
+# passed.
+for f in grammars/*.cyml; do
+    all=$(wc -c < "$f")
+    txt=$(tr -d '\000-\010\013\014\016-\037\177' < "$f" | wc -c)
+    if [ "$all" -ne "$txt" ]; then
+        echo "embed-grammars.sh: $f contains unexpected control bytes; refusing to embed" >&2
+        exit 1
+    fi
+done
+
+# Compact one grammar and escape it as the body of one Cyrius string
+# literal (`\\`, `\"`, `\t`, `\n`; CR never survives compaction, and
+# is escaped as `\r` should one sit inside a string). Exits 2 on a
+# string that runs past the end of its line: the loader would continue
+# it onto the next one, no grammar does that, and the compactor would
+# have to keep that line's blanks — refusing is simpler and loud.
+compact_one() {
+    awk '
+    function esc(c) {
+        if (c == "\\") return "\\\\"
+        if (c == "\"") return "\\\""
+        if (c == "\t") return "\\t"
+        if (c == "\r") return "\\r"
+        return c
+    }
+    {
+        out = ""
+        in_str = 0
+        n = length($0)
+        i = 1
+        while (i <= n) {
+            c = substr($0, i, 1)
+            if (in_str) {
+                if (c == "\\" && i < n) {
+                    out = out esc(c) esc(substr($0, i + 1, 1))
+                    i += 2
+                    continue
+                }
+                if (c == "\\") break
+                if (c == "\"") in_str = 0
+                out = out esc(c)
+                i++
+                continue
+            }
+            if (c == "#") break
+            if (c == " " || c == "\t" || c == "\r") { i++; continue }
+            if (c == "\"") in_str = 1
+            out = out esc(c)
+            i++
+        }
+        if (in_str) {
+            printf "embed-grammars.sh: %s:%d: string runs past the end of its line\n", FILENAME, FNR > "/dev/stderr"
+            exit 2
+        }
+        if (out != "") printf "%s\\n", out
+    }
+    ' "$1"
+}
+
+# A Cyrius identifier for a grammar name: any non-alnum becomes `_`.
+sym_of() {
+    printf '%s' "$1" | tr -c 'A-Za-z0-9_' '_' | tr -s '_'
+}
+
+{
+    cat <<EOF
 # vyakarana — embedded grammar blobs (auto-generated)
 #
 # AUTO-GENERATED by scripts/embed-grammars.sh — do not edit.
 # Regenerate after editing any grammars/*.cyml file.
 # Gitignored; produced fresh on each build / distlib step.
 #
-# Source: $COUNT grammars in grammars/*.cyml.
+# Source: $COUNT grammars in grammars/*.cyml, compacted (ADR 0029) —
+# comments and blanks outside strings removed; grammars/ is the
+# readable copy.
 # Used by src/grammar.cyr's grammar_load() — checks blob lookup first,
 # falls back to file_read_all() if no blob matches the path. Lets
 # dist/vyakarana.cyr be a single self-contained bundle (cyrius deps
@@ -46,62 +145,27 @@ cat > "$OUT" <<EOF
 
 EOF
 
-# Per-grammar blob function. Body is the .cyml content as one Cyrius
-# string literal — escape "\\", '"', NL, TAB, CR. Other control bytes
-# don't appear in any current .cyml file (verified at script start);
-# bail loudly if they ever do so we can revisit the encoding.
-escape_one() {
-    awk '
-    {
-        line = $0
-        gsub(/\\/, "\\\\", line)
-        gsub(/"/, "\\\"", line)
-        gsub(/\t/, "\\t", line)
-        gsub(/\r/, "\\r", line)
-        printf "%s\\n", line
-    }
-    '
-}
-
-# Sanity: refuse to embed any file with a NUL or other unexpected
-# control byte. .cyml files are text — anything else means something
-# is wrong upstream.
-for f in $GRAMMARS; do
-    if LC_ALL=C grep -lP '[\x00-\x08\x0b\x0c\x0e-\x1f]' "$f" > /dev/null 2>&1; then
-        echo "embed-grammars.sh: $f contains unexpected control bytes; refusing to embed" >&2
-        exit 1
-    fi
-done
-
-# Emit one fn per grammar. Path key matches what bootstrap_grammars
-# passes to grammar_load(): "grammars/<name>.cyml".
-i=0
-for f in $GRAMMARS; do
-    name=$(basename "$f" .cyml)
-    # Cyrius idents — replace any non-alnum with _
-    sym=$(printf '%s' "$name" | tr -c 'A-Za-z0-9_' '_' | tr -s '_')
-    {
-        printf 'fn _grammar_blob_%s() {\n' "$sym"
+    # One fn per grammar. Path key matches what bootstrap_grammars
+    # passes to grammar_load(): "grammars/<name>.cyml".
+    for f in grammars/*.cyml; do
+        name=$(basename "$f" .cyml)
+        printf 'fn _grammar_blob_%s() {\n' "$(sym_of "$name")"
         printf '    return "'
-        escape_one < "$f"
+        compact_one "$f"
         printf '";\n'
         printf '}\n\n'
-    } >> "$OUT"
-    i=$((i + 1))
-done
+    done
 
-# Lookup: linear scan, one strcmp per bundled grammar, init-only — fine.
-{
+    # Lookup: linear scan, one streq per bundled grammar, init-only.
     cat <<'EOF'
 # Returns pointer to the blob's content (cstr) for the given path, or
 # 0 if no blob matches. Path is the same string bootstrap_grammars
 # passes to grammar_load() — "grammars/<name>.cyml".
 fn _grammar_blob_data(path) {
 EOF
-    for f in $GRAMMARS; do
+    for f in grammars/*.cyml; do
         name=$(basename "$f" .cyml)
-        sym=$(printf '%s' "$name" | tr -c 'A-Za-z0-9_' '_' | tr -s '_')
-        printf '    if (streq(path, "grammars/%s.cyml")) { return _grammar_blob_%s(); }\n' "$name" "$sym"
+        printf '    if (streq(path, "grammars/%s.cyml")) { return _grammar_blob_%s(); }\n' "$name" "$(sym_of "$name")"
     done
     cat <<'EOF'
     return 0;
@@ -115,6 +179,9 @@ EOF
     cat <<'EOF'
 }
 EOF
-} >> "$OUT"
+} > "$TMP"
 
-echo "embed-grammars: wrote $OUT ($COUNT grammars, $(wc -c < "$OUT") bytes)"
+mv "$TMP" "$OUT"
+trap - EXIT INT TERM
+
+echo "embed-grammars: wrote $OUT ($COUNT grammars, $SRC_BYTES source bytes -> $(wc -c < "$OUT" | tr -d ' ') bytes)"

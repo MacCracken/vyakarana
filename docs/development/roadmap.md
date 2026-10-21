@@ -18,10 +18,9 @@ from this file.
   source.
 - **Versioning.** A minor when token boundaries change for some input
   (a consumer can see the difference) or a feature lands; a patch
-  otherwise. The CLAUDE.md hardening step runs as a closeout patch —
-  but not after every minor for now: the remaining pinned work (2.9.0)
-  ships first, and **one closeout audit, 2.9.1, covers 2.7.x
-  – 2.9.x** (decided 2026-10-20).
+  otherwise. The CLAUDE.md hardening step runs as a closeout patch;
+  **one closeout audit, 2.9.1, covers 2.7.x – 2.9.x** (decided
+  2026-10-20).
 - **Toolchain catch-ups** are user-directed patch releases at any point
   in the train (pin → re-vendor → gates → byte-identical output A/B).
   They never carry other work.
@@ -35,30 +34,19 @@ from this file.
 
 ## Pinned releases
 
-### 2.9.0 — Size and tooling *(minor)*
-
-- **Binary size.** The default `vyk` is ~490 KB and the DCE build
-  (what releases ship) ~400 KB, against 1.13.0's 300 KB soft cap. The
-  cheapest lever: strip comments when embedding — the blobs carry each
-  `.cyml` verbatim and most of their ~232 KB is comment text. Then
-  revisit the cap or the blob encoding (ADR 0014).
-- Replace `scripts/embed-grammars.sh` — its escaping is gawk-only
-  (`gsub` backslash doubling is a no-op under POSIX awk) — with
-  cyrius's `[embed]` manifest section (6.6.19) or a POSIX rewrite.
-- Real-corpus mutation fuzz over vidya snapshots; fold the audits'
-  sweep scripts (real-file coverage sweep, poison A/B, every-offset
-  split, the 2.6.x heredoc harness) into `scripts/` so the next audit
-  reruns them instead of rebuilding them.
-- Script the loaded-host latency protocol (short runs, alternating
-  versions, paired ratios — `performance.md`) so every refresh uses it.
-
 ### 2.9.1 — Closeout audit *(patch)*
 
 - The CLAUDE.md hardening step over everything 2.7.0 – 2.9.0 changed
-  (number literals, grammar polish, the streaming engine, size and
-  tooling), with the empirical sweeps re-run over the whole library —
-  by then from `scripts/`, not rebuilt by hand. No 2.7.x or 2.8.x
-  closeout before it.
+  (number literals, grammar polish, the streaming engine, compacted
+  blobs and the size budget), with the empirical sweeps re-run over
+  the whole library from `scripts/audit/` (its README has 2.9.0's
+  clean numbers to compare against). No 2.7.x or 2.8.x closeout before
+  it.
+- Open input from 2.9.0's sweep run: `Dockerfile.5.gz` (a gzip man
+  page) routes to the dockerfile grammar — 2.6.2's filename rule
+  (`src/detect.cyr` `_detect_fname`) takes `name.` plus any suffix no
+  extension claims, and `.gz` is claimed by none. `Makefile.*` has the
+  same reach. Decide which suffixes the rule should take.
 
 ---
 

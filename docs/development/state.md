@@ -8,14 +8,14 @@
 > 2.6.2 it carried a "What X changed" block for every release back to
 > 1.13.0 — trimmed in 2.7.0; the CHANGELOG has all of it.)
 >
-> **Last refresh:** 2026-10-20, at 2.8.0. Read this first, then run the
+> **Last refresh:** 2026-10-21, at 2.9.0. Read this first, then run the
 > gates (CLAUDE.md §Gates) — do not take the "green" below on trust.
 
 ---
 
 ## Current status
 
-- **Version:** `2.8.0` — `VERSION`, `src/version_str.cyr`,
+- **Version:** `2.9.0` — `VERSION`, `src/version_str.cyr`,
   `dist/vyakarana.cyr`, the CHANGELOG header and `docs/man/vyk.1`
   agree.
 - **Toolchain pin:** `cyrius = "6.7.15"` in `cyrius.cyml`, the single
@@ -32,20 +32,27 @@
   fresh, so a stale local copy means local and CI differ.
 - **Bundle:** `dist/vyakarana.cyr` from `cyrius distlib`, which needs
   `scripts/embed-grammars.sh` first (ADR 0014), plus a `.deps` sidecar
-  of four stdlib leaves (alloc, string, vec, io).
-- **Next release:** 2.9.0 — size and tooling. No closeout audit until
-  2.9.1, which covers 2.7.x – 2.9.x ([roadmap](./roadmap.md)).
+  of four stdlib leaves (alloc, string, vec, io). The embedded grammars
+  are compacted — comments and blanks outside strings dropped — by a
+  POSIX sh + awk generator (ADR 0029); `grammars/` is the readable copy.
+- **Size:** the shipped (`CYRIUS_DCE=1`) `vyk` is 252,224 bytes against a
+  307,200-byte budget that `scripts/check-size.sh` enforces in CI and at
+  release (ADR 0029); the default build is 342,336.
+- **Next release:** 2.9.1 — the closeout audit over 2.7.x – 2.9.x
+  ([roadmap](./roadmap.md)). Nothing else is pinned; the backlog is
+  consumer-driven.
 
-## Gates (green at 2.8.0, 2026-10-20)
+## Gates (green at 2.9.0, 2026-10-21)
 
-- `cyrius build` OK, 0 warnings · `cyrius test` **1056/1056** · smoke
+- `cyrius build` OK, 0 warnings · `cyrius test` **1074/1074** · smoke
   OK (it runs `scripts/check-detect.sh`) · `scripts/lint-fmt.sh`
-  exit 0 (a lint warning fails it) · `cyrius fuzz` **5/5**, also clean
-  under `--poison=ab` and `--bounds`.
-- Closeout audits also run an every-offset two-feed split over the
-  non-compose corpora, a real-file coverage sweep and a poison A/B
-  over real files. Those scripts still live in the auditor's scratch
-  space; moving them into `scripts/` is 2.9.0.
+  exit 0 (a lint warning fails it; covers `src/` and
+  `scripts/audit/`) · `scripts/check-size.sh` OK · `cyrius fuzz`
+  **5/5**, also clean under `--poison=ab` and `--bounds`.
+- The audit sweeps are in `scripts/audit/` — real-file coverage,
+  poison A/B, streaming invariance, mutation fuzz over vidya — with
+  2.9.0's clean numbers in its README. Not gates (minutes, real files);
+  CI builds the harness and syntax-checks the scripts.
 
 ## Surface
 
@@ -108,8 +115,6 @@
 - **Streaming latency inside compose regions:** a long, still-open
   `<style>` / fence / cyml body is held whole until it closes (ADR 0028;
   a resumable region is in the roadmap backlog).
-- **Size:** `vyk` ~490 KB, the DCE build ~400 KB, against 1.13.0's
-  300 KB soft cap (2.9.0).
 - **Out of scope:** Python INDENT / DEDENT and anything structural —
   vyakarana yields spans.
 
@@ -125,7 +130,8 @@ its corpus tokenizes with zero `error` tokens.
 
 - `owl` pins tag `2.4.2` (cyrius 6.6.2), `cyim` `2.4.0` (6.7.9), `vidya`
   `2.4.0` (6.6.2). All three build and pass their own tests against
-  the 2.7.0 bundle through a path dependency. Taking a newer tag is
+  the 2.9.0 bundle through a path dependency, each binary ~156 KB
+  smaller than on 2.8.0. Taking a newer tag is
   their call — it changes what they render (2.5.2's fixes, 2.6.x's
   shell, 2.7.0's numbers), not their API.
 - `vidya` is also the corpus supplier
@@ -135,9 +141,9 @@ its corpus tokenizes with zero `error` tokens.
 
 ## Working notes
 
-- **Benchmarks:** the host is often loaded — use the paired protocol in
-  `performance.md` (short runs, alternating versions, median per-round
-  ratio). `detect/content-python` moves ±13 % from code placement
+- **Benchmarks:** the host is often loaded — use
+  `scripts/bench-paired.sh <last tag>` (short runs, alternating
+  versions, median per-round ratio; `performance.md`). `detect/content-python` moves ±13 % from code placement
   alone (shown with a padding test in 2.6.2); suspect layout before
   work when that row moves.
 - **Process:** CLAUDE.md's work loop, hardening step and closeout pass.
