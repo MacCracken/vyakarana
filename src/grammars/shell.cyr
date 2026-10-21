@@ -273,16 +273,6 @@ fn _peek3_eq(src, src_len, i, c0, c1, c2) {
     return 1;
 }
 
-# ── Entry point ─────────────────────────────
-#
-# `src`      — source bytes (pointer; caller owns the buffer)
-# `src_len`  — byte length
-# `tb`       — tokenbuf to push into (created by caller via tokenbuf_new)
-#
-# Returns the number of tokens pushed.
-#
-# Coverage invariant: every byte of [0, src_len) is covered by exactly
-# one token. The main loop never advances zero bytes.
 # Bytes after which a `#` starts a comment: bash's metacharacters plus
 # CR. Same set as shell.cyml's comment-rule `start_after` (2.6.0).
 fn _sh_word_break(b) {
@@ -301,6 +291,16 @@ fn _sh_escapable(b) {
     return 0;
 }
 
+# ── Entry point ─────────────────────────────
+#
+# `src`      — source bytes (pointer; caller owns the buffer)
+# `src_len`  — byte length
+# `tb`       — tokenbuf to push into (created by caller via tokenbuf_new)
+#
+# Returns the number of tokens pushed.
+#
+# Coverage invariant: every byte of [0, src_len) is covered by exactly
+# one token. The main loop never advances zero bytes.
 fn tokenize_shell(src, src_len, tb) {
     var i = 0;
     while (i < src_len) {

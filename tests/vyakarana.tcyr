@@ -53,7 +53,7 @@ fn tb_error_count(tb) {
 
 # Test helper: tokenize a small source string with the streaming
 # API and return the populated tokenbuf. 2.0+ replaces the 1.x
-# `_t_tokenize(src, lang)` synchronous entry; this wrapper
+# `tokenize_source(src, lang)` synchronous entry; this wrapper
 # keeps the test bodies readable while exercising the new API.
 # Returns 0 if the grammar isn't loaded (same shape the old
 # tokenize_source used for unknown languages).

@@ -76,10 +76,11 @@ future agent editing a grammar must understand the contract.
 `_ds_try_exact_list` (used for `[defaults] operators` and
 `[defaults] punctuation`) has the same "first match wins, no
 longest-match resolution" semantics. Convention there is the same:
-**longest entries first** in the `operators = […]` array. Most of
-the bundled grammars already do this — see the comment "Operators
-in longest-match order" at the top of each grammar's operators
-block.
+**longest entries first** in the `operators = […]` array — see the
+comment "Operators in longest-match order" at the top of most
+grammars' operators block. Since 2.5.2 a `tests/vyakarana.tcyr`
+group ("no shadowed operator / punctuation") checks it for every
+bundled grammar; pair rules have no such check.
 
 The difference is that operators are usually reviewed as a list
 in one place, while pair rules are interleaved with other

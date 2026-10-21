@@ -4,6 +4,39 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+A documentation sweep and the roadmap rework, after the 2.9.1 tag. Token
+output is unchanged (byte-identical on the corpora and the heredoc
+shapes); 1123/1123 tests, fuzz 5/5, lint+fmt exit 0, size budget OK.
+
+### Changed
+
+- **The roadmap schedules the backlog as the 2.9.x arc** — 2.9.2 to
+  2.9.10, from literal data gaps (including block comments that rust,
+  javascript and typescript never declared — found by the sweep) to
+  incremental retokenization, and a closeout audit at 2.9.11.
+- **A documentation sweep** brought every living doc and code comment up
+  to date: the architecture notes (rule types, record sizes, the module
+  list, a corpus table whose counts had drifted), the consumer guide,
+  `distribution.md`, SECURITY.md's audit list, CONTRIBUTING, the man
+  page's detection note, the ADRs' statuses and amendments (0001–0029),
+  `performance.md` (current sections first, the rest under History),
+  `tests/corpus/README.md` (a re-sync check for all 15 vidya snapshots),
+  grammar headers, and stranded or stale comments across `src/`,
+  `fuzz/` and `scripts/`. `cyrius deps` has refreshed an existing `lib/`
+  since 6.6.20; CLAUDE.md, CONTRIBUTING, README and ADR 0018 no longer
+  say otherwise.
+
+### Fixed
+
+- **The release tarball lacked `dist/vyakarana.deps`**, the stdlib sidecar
+  `cyrius deps` reads beside the bundle (CHANGELOG 2.3.3).
+- `tokenize_stream_free` zeroes the three stream fields 2.9.1 added, as
+  its contract says it zeroes every field.
+- `fuzz/tokenize.fcyr` passed a case whose grammar did not load (2.9.1
+  fixed the same in `fuzz/streaming.fcyr`); 28 fuzz failure messages
+  printed the wrong byte count — an em dash is three bytes — and lost
+  their line break.
+
 ## [2.9.1] — 2026-10-21
 
 **Closeout audit** over 2.7.0 – 2.9.0 — number literals, grammar polish,

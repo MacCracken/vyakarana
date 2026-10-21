@@ -8,7 +8,8 @@
 > 2.6.2 it carried a "What X changed" block for every release back to
 > 1.13.0 — trimmed in 2.7.0; the CHANGELOG has all of it.)
 >
-> **Last refresh:** 2026-10-21, at 2.9.1. Read this first, then run the
+> **Last refresh:** 2026-10-21, at 2.9.1 plus the unreleased
+> documentation sweep (CHANGELOG `[Unreleased]`). Read this first, then run the
 > gates (CLAUDE.md §Gates) — do not take the "green" below on trust.
 
 ---
@@ -38,9 +39,11 @@
 - **Size:** the shipped (`CYRIUS_DCE=1`) `vyk` is 260,584 bytes against a
   307,200-byte budget that `scripts/check-size.sh` enforces in CI and at
   release (ADR 0029); the default build is 354,792.
-- **Next release:** none pinned. The 2.9.x closeout audit
-  ([report](../audit/2026-10-21-2.9.x-closeout-audit.md)) closed the
-  train; the [roadmap](./roadmap.md)'s backlog is consumer-driven.
+- **Next release:** 2.9.2, the first of the 2.9.x arc — the former
+  backlog scheduled as 2.9.2 – 2.9.10, from literal data gaps to
+  incremental retokenization, then a closeout audit at 2.9.11
+  ([roadmap](./roadmap.md)). The last audit's report:
+  [2.9.x](../audit/2026-10-21-2.9.x-closeout-audit.md).
 
 ## Gates (green at 2.9.1, 2026-10-21)
 
@@ -86,7 +89,7 @@
 - **Coverage:** tokens tile the input exactly, for every grammar and
   every input.
 - **Chunk invariance:** streaming output equals a single feed at every
-  split offset for all 49 corpus files — the compose grammars
+  split offset for all 49 corpus inputs — the compose grammars
   (markdown, html, vue, svelte, cyml) included since 2.8.0 — gated by
   `fuzz/chunk_invariance.fcyr` (8 chunk sizes, two-feed splits every
   37 bytes; 49 shapes at every split offset and in 1-, 2- and 3-byte
@@ -109,33 +112,45 @@
   (`Makefile.in`, not `Dockerfile.5.gz`). The content sniff is a shebang,
   `<?xml`, `<!DOCTYPE html>`, and the `.s` / `.S` asm vote (ADR 0015).
 
-## Known limits (coverage holds; no `error` tokens)
+## Known limits (coverage holds)
+
+Each names the 2.9.x arc release that takes it on ([roadmap](./roadmap.md)).
 
 - **Numbers:** a leading- or trailing-dot float (`.5`, `1.`), hex
-  floats and every suffix (`1.5f`, `2j`, `1u32`) split (ADR 0026).
-- **String prefixes** are identifier-shaped only (ADR 0027): C#'s
-  `@"…"` / `$"…"`, SQL `N'…'` and Julia string macros stay prefix +
-  string.
+  floats and every suffix (`1.5f`, `2j`, `1u32`) split (ADR 0026) —
+  2.9.6. Swift / HCL `t.0.1` reads `t . 0.1` — 2.9.2.
+- **String prefixes** are declared per grammar and identifier-shaped
+  (ADR 0027). Python 3.14's `t"…"`, SQL `N'…'` and Julia string macros
+  are not declared yet (data — 2.9.2); C#'s `@"…"` / `$"…"` need a
+  non-identifier prefix (2.9.5). Until then they are prefix + string.
 - **Variable-length delimiters beyond shell heredocs** — Rust
-  `r#"…"#`, C++ `R"d(…)d"`, Lua `[==[ … ]==]`, Ruby `<<~EOS`, PHP
-  `<<<EOT`, Swift `#"…"#` — have no rule yet; ADR 0023 says to extend
-  the heredoc rule rather than add a mechanism. Rust's nested
-  `/* /* */ */` is not nested. Not error-free: a `r#"…"#` whose body
-  holds quotes and backslashes surfaces `error` tokens after the first
-  inner quote (2 of 5,166 sampled real files at the 2.9.x audit).
+  `r#"…"#`, C++ `R"d(…)d"`, Lua `[==[ … ]==]`, Swift `#"…"#`, and Ruby
+  and PHP heredocs (neither grammar has a heredoc rule) — 2.9.4, by
+  extending the heredoc rule (ADR 0023). Not error-free: a `r#"…"#`
+  whose body holds quotes and backslashes surfaces `error` tokens after
+  the first inner quote (2 of 5,166 sampled real files at the 2.9.x
+  audit).
+- **No block comments in rust, javascript or typescript:** none of the
+  three declares `/* … */`, so a block comment comes back as operators
+  and identifiers (their corpora have none) — data, 2.9.2; Rust's
+  nest, which a pair rule cannot express.
 - **Markdown fences:** `~~~` and four-or-more-backtick fences and
   indented code blocks are not recognised (ADR 0016); a closer may be
   indented by any run of spaces, tabs and `>`, so a column-0 fence whose
   body holds an indented ```` ``` ```` line closes there.
 - **Streaming latency inside compose regions:** a long, still-open
   `<style>` / fence / cyml body is held whole until it closes (ADR 0028;
-  a resumable region is in the roadmap backlog).
+  a resumable region is 2.9.9).
+- **No incremental retokenization:** an edit means tokenizing the
+  buffer again (or streaming it); an edit API is 2.9.10.
 - **Out of scope:** Python INDENT / DEDENT and anything structural —
   vyakarana yields spans.
 
 ## Corpus
 
-`tests/corpus/` — 49 files: vidya snapshots where vidya ships a
+`tests/corpus/` — 48 corpus files and its README (49 inputs to
+`fuzz/chunk_invariance.fcyr`, which streams the README as markdown):
+vidya snapshots where vidya ships a
 sample (ADR 0001; last re-synced in 2.6.2 — at the 2.9.x audit all are
 current but `dependencies.cyml`, which vidya has grown from 10.6 to
 42.5 KB; the snapshot is kept, since the every-offset sweep over the new
@@ -150,7 +165,9 @@ its corpus tokenizes with zero `error` tokens.
   `2.4.0` (6.6.2). All three build and pass their own tests against
   the 2.9.1 bundle through a path dependency. Taking a newer tag is
   their call — it changes what they render (2.5.2's fixes, 2.6.x's
-  shell, 2.7.0's numbers), not their API.
+  shell, 2.7.0's numbers, 2.9.1's markdown fences), not their API.
+  cyim routes the 46 languages itself (`src/lang.cyr`) — 2.9.7's
+  `detect_language_registered` is meant to let it stop.
 - `vidya` is also the corpus supplier
   (`content/lexing_and_parsing/`).
 - `cyrius` is the toolchain: a compiler bug gets filed upstream, not
@@ -160,9 +177,11 @@ its corpus tokenizes with zero `error` tokens.
 
 - **Benchmarks:** the host is often loaded — use
   `scripts/bench-paired.sh <last tag>` (short runs, alternating
-  versions, median per-round ratio; `performance.md`). `detect/content-python` moves ±13 % from code placement
-  alone (shown with a padding test in 2.6.2); suspect layout before
-  work when that row moves.
+  versions, median per-round ratio; `performance.md`).
+  `detect/content-python` moves ±13 % from code placement alone (a
+  padding test in 2.6.2); `detect/path-shell` moved +9 % on unchanged
+  code in 2.9.1 and 3 % under a padding probe. Suspect layout before
+  work when those rows move.
 - **Process:** CLAUDE.md's work loop, hardening step and closeout pass.
   `roadmap.md` holds only future releases; when one ships, its entry
   is deleted.

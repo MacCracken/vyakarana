@@ -116,9 +116,11 @@ jobs:
           cp -r grammars "pkg/$PKG/"
           # Ship the bundled single-file library alongside the
           # binary so downloaders can consume vyakarana as a dep
-          # without git-cloning.
+          # without git-cloning — with its `.deps` stdlib sidecar,
+          # which `cyrius deps` reads (CHANGELOG 2.3.3; missing from
+          # the tarball until 2.9.2).
           mkdir -p "pkg/$PKG/dist"
-          cp dist/vyakarana.cyr "pkg/$PKG/dist/"
+          cp dist/vyakarana.cyr dist/vyakarana.deps "pkg/$PKG/dist/"
           cp README.md LICENSE CHANGELOG.md VERSION "pkg/$PKG/"
           mkdir -p out
           tar czf "out/${PKG}.tar.gz" -C pkg "$PKG"

@@ -161,6 +161,13 @@ Rule types (M2 set):
   instead of grammars. If a language needs lookahead, we add a
   domain-specific rule type for it.
 
+(Since M2 that is what happened: `compose`, `compose_fenced`,
+`compose_region` and `heredoc` joined the set, line rules gained
+previous- and next-byte conditions, and the `[defaults]` table holds the
+built-in stages — identifiers, numbers, operators, punctuation,
+whitespace. `docs/architecture/002-scanner-pipeline-priority.md` has the
+pipeline, `src/grammar.cyr` every key; still no regex.)
+
 ---
 
 ## 6. Streaming Tokenizer
@@ -177,7 +184,9 @@ for tok in tokens {
 }
 ```
 
-API shape solidifies in M1. The streaming guarantee is a non-functional
+API shape solidifies in M1. (2.0.0 removed `tokenize_source` for a
+push / drain streaming API — ADR 0017; the README shows it.) The
+streaming guarantee is a non-functional
 requirement: token production for line N must not depend on reading
 line N+k for any k > 0 (except when a token itself spans multiple
 lines, e.g. a multi-line string — and then production happens at the
@@ -230,6 +239,8 @@ vyk --language=<lang> <f>  # override detection
 vyk --stats <file>         # kind histogram, coverage check
 ```
 
+(`--stats` never shipped; `vyk --help` lists the options that did.)
+
 `vyk` is a diagnostic tool, not a pretty-printer — it exists so a
 grammar author can see what their grammar actually produces. Pretty
 rendering is owl's job.
@@ -258,8 +269,9 @@ rendering is owl's job.
 - **Binary size:** target under 300KB for `vyk` once the ten bundled
   grammars are embedded. Grammars are compact CYML; embedding all
   ten should be under 100KB of data. (Since 2.9.0 the shipped
-  `CYRIUS_DCE=1` build is held to 300 KiB in CI, and all 46 grammars
-  embed as 55.5 KB of compacted data — ADR 0029.)
+  `CYRIUS_DCE=1` build is held to 300 KiB in CI, and the grammars
+  embed compacted — ADR 0029; `docs/development/performance.md` has
+  the current sizes.)
 
 ---
 

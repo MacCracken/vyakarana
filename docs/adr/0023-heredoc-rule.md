@@ -1,6 +1,6 @@
 # 0023 — `heredoc` rule type for here-documents
 
-- **Status:** Accepted
+- **Status:** Accepted — terminator search budget superseded by [ADR 0028](0028-streaming-holds-watches-groups.md) (2.8.0)
 - **Date:** 2026-10-20
 - **Deciders:** 2.6.0 shell-correctness work (proposed) / user (accepted
   via the pinned 2.6.0 roadmap entry)
@@ -71,6 +71,11 @@ the held buffer (a 900 KB heredoc fed in 4 KB chunks: 48 s → 0.02 s).
 the input plus 64 KiB, and a failed search is cached per delimiter.
 Real files spend a fraction of it; N distinct unterminated openers
 would otherwise be O(N²) — past the budget they are code.
+*(Amended 2.9.2: replaced in 2.8.0. The budget scaled with the
+buffer, so a compacted stream gave up sooner than a single feed;
+terminators are now looked up in a per-scan line index — linear, no
+budget, the same verdict however the input is chunked (ADR 0028,
+point 5).)*
 
 **Scope.** Shell only in 2.6.0. The hand-coded oracle does not
 implement it (its identity check covers `tests/corpus/shell.sh`, which
@@ -97,7 +102,9 @@ has no heredocs) — the same standing as the backtick rule.
   streaming complexity lives here.
 - A heredoc body over 1 MiB split across feeds may tokenize as code
   where a single feed sees a heredoc (documented hold bound, like
-  compose's).
+  compose's). *(Amended 2.9.2: the bound is measured from the first
+  opener on the body's line, not from the body — `cat <<A <<B` with
+  a 1.0 MB body for A and 120 KB for B trips it.)*
 
 ### When to revisit
 
@@ -106,4 +113,7 @@ has no heredocs) — the same standing as the backtick rule.
   the rule's options (indentation by spaces, a terminator followed by
   more code) rather than adding a second mechanism.
 - The 2.8.0 streaming-engine rework, which may subsume the hold and
-  watch.
+  watch. *(Amended 2.9.2: it kept them — ADR 0028 made the scanner
+  report compose holds and finished groups the same way, gave the
+  watch more modes, and replaced the terminator search budget, as
+  noted above.)*

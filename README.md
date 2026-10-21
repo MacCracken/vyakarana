@@ -85,8 +85,8 @@ cyrius build src/main.cyr build/vyk
 Both pre-build steps are mandatory: `lib/` and `src/grammar_blobs.cyr`
 are gitignored, so a fresh checkout has neither. On an *existing*
 checkout, picking up a pin bump takes `cyriusly use <pin>` and then
-`rm -rf lib && cyrius deps` — `cyrius deps` treats an already-present
-`lib/<mod>.cyr` as satisfied and will not refresh it.
+`rm -rf lib && cyrius deps` (since cyrius 6.6.20 a plain `cyrius deps`
+also refreshes an existing `lib/`; older pins did not).
 
 ## `vyk` — the demo CLI
 
@@ -147,9 +147,9 @@ highlighted (half of all tagged fences weren't). Chunked streaming
 fixes: a prefixed triple-quoted string fed a byte at a time, an empty
 `<<''` heredoc, and five inputs that made it quadratic. Also nix floats,
 SCSS `$`, long heredoc delimiters, `Dockerfile.5.gz` no longer a
-Dockerfile, and the audit scripts hardened. 1123/1123 tests. Nothing
-else is pinned; the [roadmap](docs/development/roadmap.md) is
-consumer-driven.
+Dockerfile, and the audit scripts hardened. 1123/1123 tests. What
+comes next is the 2.9.x arc in the
+[roadmap](docs/development/roadmap.md).
 
 **2.9.0** (2026-10-21) — size and tooling
 ([ADR 0029](docs/adr/0029-compacted-blobs-posix-generator-size-budget.md)):
@@ -200,8 +200,7 @@ output is 3.5x faster. Tokens unchanged from 2.6.0.
 **2.6.0** (2026-10-20) — shell correctness. `${#arr[@]}`, `${x#p}` and
 `a#b` are code, not comments; here-documents (`<<EOF`, `<<'EOF'`,
 `<<-EOF`) are one string token; `\"` and `$1` are single tokens.
-Streaming stays chunk-invariant for all of it. 956/956 tests. Next on
-the [roadmap](docs/development/roadmap.md): 2.6.1 CLI hardening.
+Streaming stays chunk-invariant for all of it. 956/956 tests.
 
 **2.5.2** (2026-10-20) — the 2.5.x closeout audit. `vyk --theme` no
 longer passes a file's terminal escape sequences through to your
@@ -211,9 +210,7 @@ fed; unclosed `<style>` / code fences no longer make tokenization
 quadratic; malformed grammars are rejected instead of crashing. JSON
 decimals, CYML `"""` strings, PHP `===`, OCaml / Ruby `::` and `.zsh`
 files all tokenize correctly now. 927/927 tests. Details in
-[docs/audit/2026-10-20-2.5.x-closeout-audit.md](docs/audit/2026-10-20-2.5.x-closeout-audit.md);
-what comes next is pinned in
-[docs/development/roadmap.md](docs/development/roadmap.md).
+[docs/audit/2026-10-20-2.5.x-closeout-audit.md](docs/audit/2026-10-20-2.5.x-closeout-audit.md).
 
 **2.5.1** (2026-10-20) — toolchain pinned at `cyrius 6.7.15`.
 **46** bundled grammars, 923/923 tests, 5/5 fuzz harnesses. `vyk`
@@ -266,7 +263,7 @@ release gate green for the first time.
 `docs/development/state.md` is the authoritative live tracker;
 `CHANGELOG.md` is the per-cut log;
 [`docs/development/roadmap.md`](./docs/development/roadmap.md)
-holds the future work — pinned releases and backlog.
+holds the future work.
 
 ## License
 

@@ -86,7 +86,7 @@ fn _ci_same(a, b, lang, chunk) {
     if (na != nb) {
         eprint("FAIL: ", 6);
         eprint(lang, strlen(lang));
-        eprint(" — token count differs vs single-feed at chunk ", 48);
+        eprint(" — token count differs vs single-feed at chunk ", 49);
         efmt_int(chunk);
         eprint(" (", 2); efmt_int(na);
         eprint(" vs ", 4); efmt_int(nb);
@@ -106,7 +106,7 @@ fn _ci_same(a, b, lang, chunk) {
     if (bad >= 0) {
         eprint("FAIL: ", 6);
         eprint(lang, strlen(lang));
-        eprint(" — token #", 10); efmt_int(bad);
+        eprint(" — token #", 12); efmt_int(bad);
         eprint(" differs at chunk ", 18); efmt_int(chunk);
         eprint("\n", 1);
         return 0;
@@ -147,7 +147,7 @@ fn _ci_one(path, lang) {
     if (cov != n) {
         eprint("FAIL: ", 6);
         eprint(lang, strlen(lang));
-        eprint(" — single-feed coverage broken\n", 31);
+        eprint(" — single-feed coverage broken\n", 33);
         return 1;
     }
 
@@ -191,7 +191,7 @@ fn _ci_one(path, lang) {
 }
 
 # Every-offset two-feed split of a short literal input — the exact
-# shapes the 2.5.2 audit found. Returns 0 on success.
+# shapes the audits found, 2.5.2 onward. Returns 0 on success.
 fn _ci_every(lang, src) {
     _ci_n_shapes = _ci_n_shapes + 1;
     var n = strlen(src);

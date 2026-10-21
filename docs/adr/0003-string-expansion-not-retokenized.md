@@ -80,3 +80,11 @@ explicitly decide to change the contract.
 motivator for sub-grammars. If M3 wants Markdown code fences to
 route into the fenced language's grammar, nested-grammar support
 lands then — and shell strings can ride along.
+
+*(Amended 2.9.2: the nested-grammar rules landed — `compose` (ADR
+0013, 1.11.1), `compose_fenced` (ADR 0016, 1.13.2), `compose_region`
+(ADR 0019, 2.3.1) — and shell strings did not ride along:
+`"a ${x} $(ls) b"` is still one `string` token. The hand-coded
+tokenizer is still on disk as `vyk --handcoded`, and smoke still
+requires its output on `tests/corpus/shell.sh` to match the CYML
+grammar's byte for byte.)*

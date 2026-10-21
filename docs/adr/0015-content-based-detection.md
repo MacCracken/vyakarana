@@ -4,7 +4,8 @@
 - **Date:** 2026-05-08
 - **Deciders:** RM (1.11.2 cut)
 - **Relates to:** ADR 0001 (extension-based dispatch as the
-  starting contract), `src/detect.cyr`, `src/main.cyr` `main()`,
+  starting contract — *amended 2.9.1: ADR 0001 is the corpus sync
+  policy and says nothing about dispatch*), `src/detect.cyr`, `src/main.cyr` `main()`,
   `tests/vyakarana.tcyr` "1.11.2 content-based language detection",
   the `.s` / `.S` ambiguity carried since 1.2.3
 
@@ -57,6 +58,16 @@ public.**
   2. Signature peek. Fixed prefixes after the BOM:
      `<?xml` → `xml`, `<!DOCTYPE html` (any case) and
      `<html` → `html`, any other `<!DOCTYPE …` → `xml`.
+
+  *(Amended 2.9.2: the sniff has moved on. The BOM is skipped for
+  the signature peek only — a BOM before `#!` is no shebang; the
+  kernel would not run it as one (2.5.2). The interpreters grew
+  `pwsh` / `powershell` → `powershell` and `julia` → `julia` (2.6.2),
+  and each must be declared in its grammar's `shebangs` (ADR 0025);
+  `sh` matches only up to three bytes, so `shellcheck` is no shell;
+  blanks after `#!` and `env`'s own options are skipped. "Any case" is three
+  spellings — `<!DOCTYPE html`, `<!DOCTYPE HTML`, `<!doctype html`;
+  `<!doctype HTML` detects as nothing.)*
 - `detect_language_combined(path, src, src_len)` — new. Path
   dispatch first; if the result is `asm_x86_64` (the default
   for `.s` / `.S`) the asm flavour is rescored from content
@@ -152,4 +163,8 @@ existing `tokenize_source` / `lsp_kind_*` surfaces).
 - We add a streaming API (2.0.0). Detection then has to work
   on a smaller window than the full file — the current 4KB cap
   on the asm scan is already close, but shebang and signature
-  paths need explicit "first N bytes" contracts.
+  paths need explicit "first N bytes" contracts. *(Amended 2.9.2:
+  2.0.0 shipped without them. The three entry points still take a
+  buffer, and a streaming caller passes what it has — the asm vote
+  reads at most the first 4 KB, the shebang sniff the first line,
+  the signature peek the first bytes after a BOM.)*

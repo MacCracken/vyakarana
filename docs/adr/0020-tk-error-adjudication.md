@@ -71,8 +71,10 @@ Two corollaries that fell out of the audit:
 - **Where `'` opens a char literal rather than a string, `'` and
   `\` are operator fallbacks.** ADR 0010's scanner models `'C'`,
   `'\C'` and `'\xHH'`; every such language has at least one
-  escape form outside that set (`'A'`, `'\u{1F600}'`), and
+  escape form outside that set (`'\u0041'`, `'\u{1F600}'`), and
   without the fallback those fragment into `TK_ERROR`.
+  *(Amended 2.9.2: the first example read `'A'` — its `\u0041`
+  escape had been decoded.)*
   `grammars/c.cyml` already did this; the rest had diverged.
 - **Free-text formats have almost no invalid printable bytes.**
   HTML/XML element content, Vue/Svelte template text, YAML plain
@@ -139,4 +141,7 @@ quietly pass the gates.
   (backticks in doc comments still error), and variable-length
   delimiters (Lua `[==[`, Ruby/PHP heredocs, Swift raw strings)
   which `docs/development/state.md` already tracks for a
-  collective ADR.
+  collective ADR. *(Amended 2.9.2: ADR 0023 (2.6.0) gave shell
+  heredocs a rule and says the others should extend it rather than
+  add a mechanism; none has yet. Rust has no `/* */` rule at all, so
+  a backtick in a block comment is still an error token.)*

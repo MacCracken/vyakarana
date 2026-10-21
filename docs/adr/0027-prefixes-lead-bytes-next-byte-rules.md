@@ -97,7 +97,11 @@ Two related changes ride along without new keys:
 - A prefixed string never takes the drain's pending-pair fast path
   (the helpers expect the token to start with its start marker), so a
   very long prefixed string fed in small chunks is re-scanned per drain
-  — the 2.8.0 rescan cost, not a correctness issue.
+  — the 2.8.0 rescan cost, not a correctness issue. *(Amended 2.9.2:
+  2.8.0 lifted it — pending-pair detection looks past a declared
+  prefix and honours a raw prefix's lack of escapes (stream record
+  +168; ADR 0028): a 512 KB `f"…"` in 64-byte chunks went 18.6 s →
+  0.01 s.)*
 - Token boundaries change in python, rust, c, cpp, css, scss, php,
   cyrius, makefile, ruby, crystal and shell — shipped in a patch, as
   bug fixes, like 2.5.2's.

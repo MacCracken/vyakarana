@@ -67,10 +67,10 @@ Trust boundary:
   regressions in scope.
 - Super-linear time on adversarial input — e.g. compose openers
   with no closer were quadratic until 2.5.2 (1 MiB of `<style>`
-  ran past 300 s). Known remaining case: in the STREAMING API, a
-  single very long non-pair token (a line comment or identifier
-  hundreds of KB long) fed in small chunks is re-scanned per
-  drain; tracked on the roadmap.
+  ran past 300 s), and in the STREAMING API a long token or block
+  fed in small chunks was re-scanned per drain until 2.8.0
+  (ADR 0028), and the cases 2.8.0 missed until 2.9.1.
+  `scripts/audit/stream-sweep.sh` times each of these.
 - Adversarial `.cyml` grammar files crashing or hanging the
   loader.
 - Public-API misuse that produces undefined behaviour rather
@@ -84,7 +84,7 @@ Trust boundary:
 
 - Cosmetic tokenization gaps where coverage holds and no `error`
   tokens are emitted (char-literal splitting, INDENT/DEDENT in
-  Python, etc.) — see `docs/development/state.md` "Known cosmetic gaps."
+  Python, etc.) — see `docs/development/state.md` "Known limits."
 - Performance regressions without a security angle — file a perf
   issue, reference the bench CSV when one exists.
 - Tokenizing invalid source code "wrong" — vyakarana is a
@@ -142,6 +142,30 @@ Trust boundary:
   FINDING-011 (compose-rule START markers split across chunks
   losing the route) was filed as a known limitation, then
   resolved in 2.2.1 by `_stream_compose_prefix_hold`.
+- [2026-08-20 — 2.3.x hardening audit](docs/audit/2026-08-20-2.3.x-hardening-audit.md)
+  — 2.2.x and 2.3.x, which shipped without one. 4 P1, 6 P2, 4 P3,
+  all fixed in 2.3.4: `vyk` silently truncated input over 1 MiB
+  (FINDING-003), a one-byte out-of-bounds read, stream offsets
+  wrapped past 4 GiB, `alloc()` returns went unchecked
+  (FINDING-002). Streaming was found not chunk-invariant — partly
+  fixed there, whole since 2.8.0.
+- [2026-10-20 — 2.5.x closeout audit](docs/audit/2026-10-20-2.5.x-closeout-audit.md)
+  — 5 P1, 12 P2, 20 P3, 4 gate holes; 2.5.2 fixed the P1s, the
+  gate holes, 10 P2 and 12 P3. Among them: `vyk --theme` wrote a
+  file's terminal control bytes raw, the streaming heap grew
+  12–24× the input, and malformed grammars loaded and crashed the
+  scanner later.
+- [2026-10-20 — 2.6.x closeout audit](docs/audit/2026-10-20-2.6.x-closeout-audit.md)
+  — 2.6.x's heredoc and `start_after` rules, CLI and detection.
+  3 P1, 9 P2, 21 P3, 3 gate holes; 2.6.2 fixed the P1s, the gate
+  holes, 7 P2 and 17 P3, among them a heredoc hold bound that was
+  not enforced once its watch armed.
+- [2026-10-21 — 2.9.x closeout audit](docs/audit/2026-10-21-2.9.x-closeout-audit.md)
+  — 2.7.0 through 2.9.0. 2 P1, 8 P2, 10 P3, 11 gate holes; 2.9.1
+  fixed all but one P3 and the rest of P2-4 (the heredoc line
+  index's memory), both on the roadmap. Among them: two consumer
+  grammars composing into each other overflowed the stack, and
+  chunked streaming was still quadratic on some inputs.
 
 State at 2.3.0: 0 CRITICAL, 0 HIGH, 0 MEDIUM open. Every
 numbered finding from FINDING-006 on is closed — 006 in 1.0.1,
@@ -159,10 +183,9 @@ recommendations — and 2.2.2 / 2.2.3 / 2.3.0 are infrastructure:
 toolchain pin moves, the vendored-`lib/` model, a vestigial
 `cyrius.cyml` dependency removed, test-suite variable renames.
 None of them touched the scanner, the public API, the token
-layout, or the 45-grammar set. Next scheduled audit is therefore
-the hardening pass that opens the next feature batch — sooner if
-a cut lands new public-API surface or new buffer-touching code.
+layout, or the 45-grammar set; the next audit was 2.3.4's, above.
 CLAUDE.md §Hardening step 6 is the only gate that mandates a
-security review; the §Closeout pass checklist has never carried
-one, which is why the trigger hangs off the next feature batch
-rather than the next tag.
+security review — the §Closeout pass checklist has never carried
+one — so audits run as hardening passes; the next is the closeout
+audit that ends the 2.9.x arc in the
+[roadmap](docs/development/roadmap.md).

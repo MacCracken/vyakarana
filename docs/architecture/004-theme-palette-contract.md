@@ -27,8 +27,7 @@ The contract is:
 1. **The set of ten kinds is stable.** Adding an eleventh
    kind, or removing one, is a breaking change. ADR + CHANGELOG
    `Breaking` entry required. The 10-slot floor is documented
-   in [HANDOFF / state.md](../development/state.md) "Frozen
-   public contracts."
+   in [overview.md](overview.md) "Frozen public contracts."
 2. **The string returned by `kind_name(k)` is the stable
    identifier.** Themes index palettes by this string, not by
    the integer `TK_*` value. Renaming `keyword` to `kw` would
@@ -53,18 +52,14 @@ A reader of `src/token.cyr` sees the integer constants and the
 `kind_name` lookup, but they cannot tell from the code alone
 that **renaming a `kind_name` is breaking**. The names are not
 just labels for debug output — they're the keys consumers
-will hardcode in their theme files. owl's `theme.toml` will
-have lines like:
+hardcode in their theme code and files. owl's `src/theme.cyr`
+dispatches on `kind_name(kind)`, and its user themes
+(`~/.config/owl/themes/<name>.cyml`) have lines like:
 
-```toml
-[palette]
-keyword     = { fg = "magenta" }
-string      = { fg = "green" }
-number      = { fg = "cyan" }
-comment     = { fg = "grey", italic = true }
-preprocessor = { fg = "yellow" }
-error       = { fg = "red", reverse = true }
-# ident, operator, punctuation, whitespace inherit the default
+```
+token.keyword = 141
+token.string  = 113
+token.ident   = -1     # -1 = no colour, the terminal default
 ```
 
 Once one consumer's theme file is written and shipped, the
@@ -93,7 +88,8 @@ following reasons:**
    may not be the colour the new kind logically deserves.
 4. **The 10-slot palette is what owl, cyim, kybernet, and
    themes-of-themes were sized against.** Pre-1.0 design was
-   intentional ([roadmap §M0 type lockdown](../development/roadmap.md));
+   intentional ([design spec §3, §12](../../vyakarana-design-spec.md):
+   the `Token` type locked in M0);
    we don't churn it.
 
 ## How `vyk --theme=<name>` uses the contract
@@ -106,11 +102,12 @@ output. The `dark` theme is a variant tuned for dark-background
 terminals; `none` strips colour entirely (useful in pipes /
 non-tty contexts).
 
-A new theme is a new entry in `src/theme.cyr`'s table. There
-is no theme-file format yet — when one materializes (likely
-in the **1.11.0 external-integrations** wave for owl
-coordination), it will use the same kind-name keys as the
-table above.
+A new theme is a new clause in `src/theme.cyr`'s `theme_color()`
+and a name in `theme_resolve()`. `vyk` reads no theme files —
+themes are compiled in. The other direction shipped instead:
+`vyk --export-theme=vscode|helix|iterm` (1.11.1, 1.12.1;
+`src/theme_export.cyr`) writes a bundled palette out in an
+editor's own format.
 
 ## When it can break (and how to spot it)
 
@@ -118,7 +115,7 @@ table above.
   — the rename succeeds, but every theme file in every
   downstream consumer breaks silently. Mitigation: any change
   to `kind_name` requires an ADR + CHANGELOG `Breaking` entry
-  and is scheduled for a major release (currently 2.0+).
+  and is scheduled for a major release (3.0 or later).
 - **Adding an eleventh kind.** Same shape — silent fallback
   in consumers. Same mitigation.
 - **Reordering the integer values of `TK_*` constants.** Less
@@ -132,8 +129,7 @@ table above.
 
 - `src/token.cyr` — the canonical TK_* definitions and
   `kind_name`. Don't edit without an ADR.
-- `src/theme.cyr` (1.10.0+) — the bundled-theme table.
-- Downstream consumer themes (owl's `theme.toml`, future
-  cyim themes) — these will be where the contract matters
-  most. As of 1.10.0 they're not written yet; this note is
-  what they should reference when they are.
+- `src/theme.cyr` (1.10.0+) — the bundled themes.
+- Downstream consumer themes (owl's `src/theme.cyr` and its
+  user-theme files; cyim's highlighting) — where the contract
+  matters most. This note is what they reference.

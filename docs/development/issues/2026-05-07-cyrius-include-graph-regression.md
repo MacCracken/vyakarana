@@ -8,12 +8,18 @@
 historical include graph; downstream consumers blocked from
 picking up new vyakarana tags until either the language is fixed
 or the graph is flattened).
+**Status:** Resolved upstream in cyrius 5.9.36. vyakarana 1.0.3
+moved its pin there with no source change and the original include
+graph built green (CHANGELOG 1.0.3); the tree still uses that graph
+at 2.9.1. The flattening workaround below was never applied, and
+the `/tmp/cyrius-nested-include-broken/` reproducer no longer
+exists. Everything below is the record as filed.
 
 ## Status timeline
 
 | cyrius | `cyrius build src/main.cyr build/vyk` |
 |---|---|
-| 5.6.0 (last green per `docs/development/state.md` (formerly `docs/development/state.md`)) | green (per `docs/development/state.md`; not re-validated locally — `cyriusly` does not have 5.6.x installed; earliest available is 5.7.35) |
+| 5.6.0 (last green per `HANDOFF.md`, now `docs/development/state.md`) | green (per `HANDOFF.md`; not re-validated locally — `cyriusly` does not have 5.6.x installed; earliest available is 5.7.35) |
 | 5.9.32 | **FAIL** at `src/tokenize.cyr:16` — `expected '=', got string` |
 | 5.9.33 (in-flight, uncommitted in `cyrius/`) | **FAIL** identical |
 
@@ -174,7 +180,7 @@ The bisect favours (a): each file is individually clean.
 - **Pin bumped** in `cyrius.cyml`: `cyrius = "5.6.0"` →
   `cyrius = "5.9.32"`. Uncommitted (per CLAUDE.md the user
   handles git).
-- **Build remains red on 5.9.32.** `docs/development/state.md` (formerly `docs/development/state.md`)'s "Gates are
+- **Build remains red on 5.9.32.** `HANDOFF.md` (now `docs/development/state.md`)'s "Gates are
   green" line refers to the 5.6.0 era and is now stale; will be
   refreshed once the upstream fix lands or after a graph
   flattening port (see Workaround below).

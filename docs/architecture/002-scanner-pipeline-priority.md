@@ -17,14 +17,14 @@ the steps below in order. The first step that returns a non-zero
 | H  | Queued heredoc bodies — at the first byte after a top-level line break that follows their opener(s); body + terminator line = one token each | `[[rules]] match = "heredoc"` ([ADR 0023](../adr/0023-heredoc-rule.md), shell; 2.6.0) |
 | 0a | Compose rules (recursive — push start marker, inner-grammar body, end marker) | `[[rules]] match = "compose"` (HTML → CSS / JS) |
 | 0b | Compose-fenced rules (info-string picks the inner grammar) | `[[rules]] match = "compose_fenced"` ([ADR 0016](../adr/0016-compose-fenced-rule.md), markdown ``` fences) |
-| 0c | Compose-region rules (open-ended region to EOF) | `[[rules]] match = "compose_region"` ([ADR 0019](../adr/0019-compose-region-rule.md), CYML markdown bodies) |
+| 0c | Compose-region rules (open-ended region: up to an optional `end_before` lookahead, else to EOF) | `[[rules]] match = "compose_region"` ([ADR 0019](../adr/0019-compose-region-rule.md), CYML markdown bodies) |
 | 1  | Shebang (`#!…\n` at file start)              | `[defaults] shebang = true`                         |
-| 2  | Line rules — optionally only after a `start_after` byte | `[[rules]] match = "line"` (e.g. `#`, `//`); `start_after` [ADR 0022](../adr/0022-line-rule-start-after.md) (shell `#` at word start, 2.6.0) |
+| 2  | Line rules — optionally only after a `start_after` byte, and only when the next byte is in `followed_by` / not in `not_followed_by` | `[[rules]] match = "line"` (e.g. `#`, `//`); `start_after` [ADR 0022](../adr/0022-line-rule-start-after.md) (shell `#` at word start, 2.6.0); next-byte keys [ADR 0027](../adr/0027-prefixes-lead-bytes-next-byte-rules.md) (2.7.1) |
 | 3  | Pair rules                                   | `[[rules]] match = "pair"` (strings, block comments)|
-| 4  | Special var `$X` (2-byte; X in `#?@!*$-` or `0`-`9`) | `[defaults] special_vars = true` (shell, makefile; digits since 2.6.0) |
+| 4  | Special var `$X` (2-byte; X in `#?@!*$-` or `0`-`9`) | `[defaults] special_vars = true` (shell; digits since 2.6.0; makefile through 2.7.0) |
 | 5  | Lone `$` operator (1-byte, shell-only)       | falls out of step 4                                 |
-| 6  | Identifier / keyword                         | `[defaults] ident_start` + `[[rules]] match="words"`|
-| 7  | Number                                       | `[defaults] number_decimal/0x/0b/0o`                |
+| 6  | Identifier / keyword — an `ident_lead` byte starts one only before an ident byte; a declared string prefix and the string after it are one `string` | `[defaults] ident_start` / `ident_cont` / `ident_lead` + `[[rules]] match="words"`; `string_prefixes` / `raw_string_prefixes` ([ADR 0027](../adr/0027-prefixes-lead-bytes-next-byte-rules.md), 2.7.1) |
+| 7  | Number                                       | `[defaults] number_decimal/0x/0b/0o`; `number_float` / `number_separator` / `number_datetime` ([ADR 0026](../adr/0026-number-literal-shapes.md), 2.7.0) |
 | 7b | Char literal `'C'` / `'\…'` (≤ 12 bytes) / UTF-8 | `[defaults] char_literal = true` ([ADR 0010](../adr/0010-char-literal-default.md), escape forms [ADR 0024](../adr/0024-char-literal-escape-forms.md)) |
 | 7c | Heredoc opener — queues a body, consumes nothing | `[[rules]] match = "heredoc"` ([ADR 0023](../adr/0023-heredoc-rule.md)) |
 | 8  | Operator — FIRST entry that matches, in list order (list longest-first; a test enforces it since 2.5.2) | `[defaults] operators = […]` |
@@ -63,11 +63,11 @@ ambiguities:
   preserves Rust's lifetime tokenization (`'a`, `'static`). See
   [ADR 0010](../adr/0010-char-literal-default.md).
 - **Operator before punctuation.** Operators and punctuation
-  share a longest-match dispatch (`_ds_try_exact_list`); putting
-  operators first means a token like `,` (operator in some
-  grammars, punctuation in others) lands as whichever the grammar
-  declared first in its operator list — a deliberate choice, not
-  a tiebreak.
+  share a first-match dispatch (`_ds_try_exact_list`), and the
+  operator list is tried first: an entry in both lists comes back
+  as an operator. A grammar decides whether `,` is an operator or
+  punctuation by which list it puts it in — a deliberate choice,
+  not a tiebreak.
 - **Whitespace late, fallback last.** Whitespace runs collapse
   *after* every structural rule has had a turn so that a
   mid-token space (rare but possible in a future grammar) can be

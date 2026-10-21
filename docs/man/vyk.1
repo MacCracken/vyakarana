@@ -35,7 +35,11 @@ then file name
 .RI "(" Makefile ", " Dockerfile ,
 and variants such as
 .IR Dockerfile.dev ),
-then a content sniff (shebang, BOM, magic bytes), and an asm
+then a content sniff (a shebang, or a signature such as
+.B <?xml
+or
+.B <!DOCTYPE html>
+after any UTF-8 BOM), and an asm
 flavour vote for
 .IR .s / .S .
 Override with

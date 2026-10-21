@@ -33,7 +33,9 @@ options for handling the built-ins:
 **Emit built-ins as `ident`.** Only reserved words hit the
 `is_shell_keyword` lookup in `src/grammars/shell.cyr`. `local`,
 `declare`, `export`, `set`, `eval`, `true`, `false`, and similar
-are `ident`.
+are `ident`. *(Amended 2.9.2: since M2 the list that decides this is
+the `words` rule in `grammars/shell.cyml`; `is_shell_keyword`, with
+the same words, survives in the `vyk --handcoded` oracle.)*
 
 This preserves the palette semantics: a `keyword` token means the
 grammar cannot legally replace it with another word and have the
@@ -88,4 +90,7 @@ This ADR is the same argument applied to built-ins.
 
 **M4** (theme-palette contract). If owl's palette layer can't
 cleanly surface built-ins via token-text rules, reconsider. Until
-then, `ident` is the correct kind.
+then, `ident` is the correct kind. *(Amended 2.9.2: M4 landed as
+[architecture note 004](../architecture/004-theme-palette-contract.md)
+— whose rule 4 is this secondary-palette pattern — plus `vyk --theme=`
+/ `--export-theme=`. Built-ins are still `ident`.)*

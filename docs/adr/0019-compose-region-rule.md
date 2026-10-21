@@ -128,6 +128,13 @@ at column 0 hands the rest of the body back to the header rules.
 Indented or inline `[` is unaffected. This is the same class of
 documented literal-prefix limit as `<script>` vs
 `<script type="module">` in ADR 0013 §When to revisit.
+*(Amended 2.9.2: 2.5.2 narrowed it — `grammars/cyml.cyml` sets
+`end_before = "\n[["`, after vidya's `types.cyml` mis-lexed ~14 KB
+this way (across 35 real CYML files, 21 body lines began with `[`,
+and a body was followed by `[[` 663 times and by a single-bracket
+header never). The trade-off moved with it: a single-bracket
+`[table]` header right after a body reads as body text until the
+next `[[`.)*
 
 ## Alternatives considered
 
@@ -153,7 +160,8 @@ is precisely what the downstream consumer exists to do.
 - If a real corpus surfaces a markdown link-reference definition
   at column 0 inside a CYML body, `end_before` needs to become
   line-anchored, or gain a "must be followed by a TOML header
-  shape" predicate.
+  shape" predicate. *(Amended 2.9.2: it did, in 2.5.2 — and the fix
+  was the `\n[[` literal above, not a line anchor.)*
 - If a second format wants the same open-ended routing but with a
   terminator that is a *class* of bytes rather than a literal, the
   rule type should grow a char-class terminator rather than

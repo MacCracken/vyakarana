@@ -21,7 +21,7 @@ busybox as well as bash and gawk.
 |---|---|---|---|
 | `coverage-sweep.sh` | `vyk FILE` over real files: every NDJSON line a token of a known kind, tokens tiling the file (the coverage invariant), exit 1 if and only if an error token, no crash, no timeout; files over the CLI's 1 MiB cap are counted, not failed (`stream-sweep.sh` takes them through the library) | real files | 4,500 files (2.6.x list): 0 fails; 5,166 sampled per grammar (2.9.x list): 0 fails, 4 over the cap |
 | `poison-ab.sh` | two `CYRIUS_POISON` builds (fill 0xA5 / 0x5A) print the same bytes and exit for every file — no output depends on unwritten memory; exit 86 is a redzone overwrite | real files | 5,166 files, 0 diffs, 0 overwrites |
-| `stream-sweep.sh` | chunked feeds equal one feed (ADR 0017 / 0028). No FILE: the every-offset split over all 49 corpora, the heredoc shapes under every offset and every pair of offsets, and twelve generated stress inputs under a time limit. With FILEs: `chunks`, `rand` and `cutfirst` per file | corpora + `shapes/`, or real files | fixed set 164 runs, 0 fails, about 6 m; 2,384 real files 6,702 runs, 0 fails |
+| `stream-sweep.sh` | chunked feeds equal one feed (ADR 0017 / 0028). No FILE: the every-offset split over all 49 corpora, the heredoc shapes under every offset and every pair of offsets, and seventeen generated stress inputs under a time limit. With FILEs: `chunks`, `rand` and `cutfirst` per file | corpora + `shapes/`, or real files | fixed set 164 runs, 0 fails, about 6 m; 2,384 real files 6,702 runs, 0 fails |
 | `mutate-fuzz.sh` | mutants of real code (bytes overwritten; quote, comment, heredoc and compose markers inserted; ranges deleted or duplicated) tile their bytes and match one feed under random chunking | vidya's `content/` by default | 976 files, 97,600 mutants (`-i 100`), 0 fails (vidya `f753c5a`) |
 
 `scripts/bench-paired.sh` (one level up) is the latency protocol —
@@ -33,7 +33,8 @@ A sweep that cannot fail proves nothing (the 2.3.4, 2.5.2 and 2.6.x
 audits each found a gate that passed on inputs too narrow to fail).
 Built against the 2.7.1 tree, which had the chunking bugs 2.8.0 fixed:
 
-- `stream-sweep.sh` (no FILE) fails 16 of its 159 runs: all six
+- `stream-sweep.sh` (no FILE) fails 16 of the 159 runs it had at
+  2.9.0: all six
   compose corpora (html, markdown, vue, svelte, both cyml) under
   `every`, and ten of the twelve stress inputs — nine on the 10 s
   limit, the cyml region on its tokens. Only the 512 KB comment (3.3 s
@@ -52,11 +53,14 @@ a FAIL line.
 
 ## Inputs
 
-- **Real files.** The numbers above use the 2.6.x audit's lists:
-  4,500 files (2,955 for poison A/B, 879 for streaming), almost all
-  from the AGNOS repositories, a few dozen from `/usr/share`,
-  `/usr/lib` and `/usr/include`. Any list works; keep the one you used
-  beside the audit report so the next run can repeat it.
+- **Real files.** The numbers above use two lists: the 2.6.x audit's
+  4,500 files, almost all from the AGNOS repositories, a few dozen
+  from `/usr/share`, `/usr/lib` and `/usr/include`; and the 2.9.x
+  audit's 5,166, up to 250 per grammar from `~/Repos`, `/usr` and
+  `/etc` — all of them for poison A/B, and for streaming 2,384: the
+  879 of 2.8.0 plus that sample's markdown, html, vue, svelte, cyml,
+  shell, python, rust, c and php files. Any list works; keep the one
+  you used beside the audit report so the next run can repeat it.
 - **vidya** (`../vidya`, or `VIDYA=…`): `mutate-fuzz.sh` prints the
   commit it ran against — that is the snapshot.
 - **`shapes/`**: 45 heredoc shapes from the 2.6.x audit (quoting,

@@ -10,17 +10,19 @@ from this file.
 
 ## How releases are planned
 
-- **Evidence first.** Each pinned release below is defined by defects
-  and gaps already found and reproduced — by an audit, a real-file
-  sweep, a consumer — not by guesses at future demand. The closeout
-  audits ([2.5.x](../audit/2026-10-20-2.5.x-closeout-audit.md),
+- **Evidence first.** Each release below is defined by defects and gaps
+  already found and reproduced — by an audit, a real-file sweep, a
+  consumer — not by guesses at future demand. The closeout audits ([2.5.x](../audit/2026-10-20-2.5.x-closeout-audit.md),
   [2.6.x](../audit/2026-10-20-2.6.x-closeout-audit.md),
   [2.9.x](../audit/2026-10-21-2.9.x-closeout-audit.md)) are the main
   source.
-- **Versioning.** A minor when token boundaries change for some input
-  (a consumer can see the difference) or a feature lands; a patch
-  otherwise. The CLAUDE.md hardening step runs as a closeout patch,
-  over everything since the last one — the sweeps from `scripts/audit/`.
+- **Versioning.** The 2.9.x arc ships the former backlog as patches, as
+  2.5.2, 2.6.2 and 2.7.1 shipped token-boundary changes: each entry's
+  CHANGELOG lists what tokens change, and new public API still needs
+  an ADR. Outside an arc: a minor when token boundaries change for some
+  input or a feature lands, a patch otherwise. The CLAUDE.md hardening
+  step runs as a closeout patch at the end of each arc, with the sweeps
+  from `scripts/audit/`.
 - **Toolchain catch-ups** are user-directed patch releases at any point
   in the train (pin → re-vendor → gates → byte-identical output A/B).
   They never carry other work.
@@ -32,53 +34,124 @@ from this file.
 
 ---
 
-## Pinned releases
+## The 2.9.x arc
 
-None. The 2.9.x audit closed the train that the 2.5.x and 2.6.x audits
-pinned; what comes next is the backlog below, taken when a consumer asks,
-or a user-directed toolchain catch-up.
+The backlog, scheduled (decided 2026-10-21). Smallest and most
+data-only first; the two API additions last, as they reopen the most;
+a closeout audit at the end. Each entry ships only when the gates are
+green and, where it adds a gate, that gate is shown to fail on the
+release before.
+
+### 2.9.2 — Literal data gaps *(patch)*
+
+- **Block comments in rust, javascript and typescript** — none of the
+  three declares `/* … */` (found in the 2.9.x doc sweep; their corpora
+  have none, so no gate saw it). A pair rule each; Rust's comments nest,
+  which a pair rule cannot express — say so in its header, or extend
+  the rule.
+- **Python 3.14 template strings** — `t"…"` and the raw `tr` / `rt`, any
+  case, in python's `string_prefixes` / `raw_string_prefixes`. Data
+  only (ADR 0027).
+- **SQL `N'…'` and Julia string macros** (`raw"…"`, `r"…"`, `b"…"`) —
+  identifier-shaped prefixes, so data only as well; `raw` is a raw
+  prefix.
+- **Swift and HCL tuple indexes** — `t.0.1` lexes as `t . 0.1` (2.9.x
+  audit, reviewer A). Rust reads it the same way, deliberately (rustc;
+  a test holds it). Check what Swift's and HCL's own lexers do first;
+  if they read `0 . 1`, give the number step a per-grammar way to skip
+  the fraction after a single `.` (an ADR 0026 amendment).
+
+### 2.9.3 — Heredoc line-index memory *(patch)*
+
+- 36 bytes per line of the scan buffer since 2.9.1 (52 in 2.8.0): line
+  ends recomputed from the next line's start, and the tab-stripped half
+  built only when a `<<-` is pending — about 20 bytes a line. Matters
+  for floods of short lines after an opener (a 1 MiB one: 43 MB).
+- Done when output is byte-identical over the audit samples, the flood
+  is re-measured, and `stream-sweep.sh`'s heredoc stress inputs keep
+  their times.
+
+### 2.9.4 — Variable-length delimiters *(patch)*
+
+- One ADR extending the heredoc rule, as ADR 0023 says to, rather than
+  a new mechanism: bracket-counted closers (Rust `r#"…"#`, Swift
+  `#"…"#`, Lua `[==[…]==]`), a captured tag (C++ `R"d(…)d"`), and
+  line-terminated heredocs for Ruby (`<<EOS`, `<<-EOS`, `<<~EOS`) and
+  PHP (`<<<EOT`, `<<<'EOT'`) — neither grammar has a heredoc rule yet.
+- Evidence: a Rust raw string holding quotes surfaces `error` tokens
+  (2 of 5,166 sampled real files at the 2.9.x audit).
+- Streaming: each new terminator gets a hold and a watch (ADR 0028);
+  every-offset and small-feed shapes in `fuzz/chunk_invariance.fcyr`.
+
+### 2.9.5 — Non-identifier string prefixes *(patch)*
+
+- C# verbatim and interpolated strings — `@"…"` (`""` escapes a quote),
+  `$"…"`, `$@"…"` / `@$"…"`. Today `@` and `$` are operators before an
+  ordinary string. The scanner has to try such a prefix before the
+  operator step; an ADR 0027 amendment.
+
+### 2.9.6 — Number shapes *(patch)*
+
+- Leading- and trailing-dot floats (`.5`, `1.`) where the language has
+  them, and type suffixes as part of the literal (`1.5f`, `10L`, `2j`,
+  `1u32`, `1e5f`) — per-grammar `[defaults]` keys, an ADR 0026
+  extension. Ranges (`0..10`) and member access (`1.max`) stay split.
+
+### 2.9.7 — Detection for consumers *(patch)*
+
+- `detect_language_registered(path)` — an additive public function that
+  walks the registry's declared `extensions` / `filenames` / `shebangs`
+  (ADR 0025), so a consumer that registers its own grammars can route
+  them, and one that routes vyakarana's itself can stop: cyim keeps 46
+  languages' routing in `src/lang.cyr` and a second name table in
+  `src/highlight.cyr`. Public API — an ADR first (CLAUDE.md §Do not).
+
+### 2.9.8 — New grammars *(patch)*
+
+- NASM (it would retake `.asm`, which 2.6.2 stopped claiming, with ADR
+  0015's content vote against GAS), MDX, Lean 4 — each with a corpus
+  (vidya's sample, or an ADR 0006 stand-in) and the every-offset sweep.
+  Shell variants beyond bash / zsh / sh / dash only if one is asked for.
+
+### 2.9.9 — Tokens inside a long, still-open compose region *(patch)*
+
+- Today a `<style>`, fence or cyml body that has not closed yields no
+  tokens until it does (ADR 0028's known limit). Make the region
+  resumable: the stream remembers the inner grammar and re-scans only
+  the body, committing what the inner grammar settles — ADR 0028's
+  "when to revisit".
+- Done when chunk invariance holds at every offset for the compose
+  corpora as now, and a long open region's live buffer and latency are
+  bounded by the inner grammar's own, not by the region.
+
+### 2.9.10 — Incremental retokenization *(patch)*
+
+- An edit API for live editors (`retokenize_range` or an edit-feed
+  form): re-tokenize from the first token an edit can affect to the
+  first point where the old and new token streams agree again. cyim
+  tokenizes whole buffers today, and notes that the streaming fixes
+  since 2.4.0 reach it only through this.
+- Contract: the result equals tokenizing the edited text from scratch.
+  A new gate holds it — every edit at every offset of the corpora —
+  shown to fail on a deliberately broken resync. Additive public API —
+  an ADR first; breaking would be 3.0.0.
+
+### 2.9.11 — Closeout audit *(patch)*
+
+- The CLAUDE.md hardening step over the arc, with the sweeps from
+  `scripts/audit/` over the whole library (their README holds 2.9.1's
+  clean numbers) and independent reviewers per area, as the 2.9.x
+  audit did.
 
 ---
 
-## Backlog — consumer-driven, no fixed slot
+## Not planned
 
-Taken only when a consumer asks; each becomes a pinned minor when it
-does.
-
-- **Incremental retokenization** (`retokenize_range`) for live editors
-  (cyim). Additive → a 2.x minor; breaking → 3.0.0.
-- **New grammars** — a NASM / MASM grammar (would take `.asm`, which
-  2.6.2 stopped claiming), MDX, Lean 4, shell variants beyond
-  bash / zsh / sh / dash, whatever a consumer needs.
-- **Incremental tokens inside a long, still-open compose region** — a
-  resumable region that re-scans only its body (ADR 0028's "when to
-  revisit"); today such a region commits when it closes.
-- **Consumer-routed detection** — an additive
-  `detect_language_registered(path)` that walks the registry, if a
-  consumer wants vyakarana to route its own grammars
-  ([ADR 0025](../adr/0025-detection-declared-by-grammars.md)).
-- **Literal shapes ADR 0027 left out** — variable-length delimiters
-  (Rust `r#"…"#`, C++ `R"d(…)d"`, Lua `[==[…]==]`, Ruby `<<~EOS`, PHP
-  `<<<EOT`, Swift `#"…"#`; ADR 0023 says extend the heredoc rule),
-  non-identifier string prefixes (C# `@"…"` / `$"…"`), SQL `N'…'`,
-  Julia string macros.
-- **Number shapes ADR 0026 left out** — leading- / trailing-dot floats
-  (`.5`, `1.`) and suffixes as part of the literal (`1.5f`, `2j`,
-  `1u32`), if a consumer wants them coloured as one token. Also a tuple
-  index after `.` in Swift and HCL: `t.0.1` lexes as `t . 0.1`. rustc
-  does the same for Rust, which a test holds; whether Swift's lexer
-  reads `0 . 1` there is unverified — a per-grammar choice once checked
-  (2.9.x audit).
-- **Python 3.14 template strings** — `t"…"` (and `tr` / `rt`) are not in
-  python's `string_prefixes` yet: data only, ADR 0027's mechanism.
-- **Heredoc line-index memory** — 36 bytes per line of the scan buffer
-  since 2.9.1 (52 in 2.8.0): line ends could be recomputed from the next
-  line's start and the tab-stripped half built only when a `<<-` is
-  pending, about 20 bytes a line. Matters only for floods of short lines
-  after an opener (a 1 MiB one: 43 MB) — 2.9.x audit.
-- **Regex rule type** — only under the constraint above.
+- **A regex rule type** — only if a grammar genuinely cannot be
+  expressed without one (ADR 0005).
 - **3.0.0** — only for a consumer-driven contract break (token kinds,
-  `Token` layout, the streaming API). None is planned.
+  the `Token` layout, the streaming API).
+- **Parsing** — vyakarana stops at tokens.
 
 ---
 
@@ -89,4 +162,6 @@ does.
 | A grammar needs a distinction the ten kinds cannot express | Defer adding a kind; check whether a theme can distinguish by token text first |
 | Consumers want parsing, not tokens | Point them at a parser library; vyakarana stops at tokens |
 | Streaming complexity keeps concentrating in the drain (holds, watches, groups, the marker window) | Every drain decision reads scanner-reported state (ADR 0028); every drain change is gated by the every-offset split over all 49 corpora |
-| Gates that pass on inputs too narrow to fail — the recurring theme of the 2.3.4, 2.5.2 and 2.6.x audits | Every new gate is shown to fail against the previous release before it ships |
+| Gates that pass on inputs too narrow to fail — the recurring theme of the 2.3.4, 2.5.2, 2.6.x and 2.9.x audits | Every new gate is shown to fail against the previous release before it ships |
+| The arc adds public API in patches (2.9.7, 2.9.10) | Additive only, each behind an ADR; a contract break is 3.0.0, not a 2.9.x |
+| Resumable regions and incremental retokenization reopen the streaming engine the 2.9.x audit just closed | Last in the arc; each brings its own invariance gate, and the closeout audit follows directly |

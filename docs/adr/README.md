@@ -23,11 +23,11 @@ sub-blocks).
 | 0007 | [Rust grammar treats `$` as `ident_start`](0007-rust-dollar-in-ident-start.md)            | Accepted | 2026-05-08 |
 | 0008 | [TOML grammar handles triple-quoted strings](0008-toml-triple-quoted-strings.md)         | Accepted | 2026-05-08 |
 | 0009 | [`unicode_ident` default + C block comments](0009-unicode-ident-default.md)               | Accepted | 2026-05-08 |
-| 0010 | [`char_literal` default](0010-char-literal-default.md)                                    | Accepted | 2026-05-08 |
+| 0010 | [`char_literal` default](0010-char-literal-default.md)                                    | Accepted (escape forms widened by 0024) | 2026-05-08 |
 | 0011 | [`case_insensitive_keywords` default](0011-case-insensitive-keywords-default.md)         | Accepted | 2026-05-08 |
 | 0012 | [LSP semantic-tokens bridge mapping](0012-lsp-semantic-tokens-bridge.md)                  | Accepted | 2026-05-08 |
 | 0013 | [Grammar composition rule](0013-grammar-composition-rule.md)                              | Accepted | 2026-05-08 |
-| 0014 | [Embedded grammar blobs in the dist bundle](0014-embedded-grammar-blobs.md)                | Accepted | 2026-05-08 |
+| 0014 | [Embedded grammar blobs in the dist bundle](0014-embedded-grammar-blobs.md)                | Accepted (blob encoding amended by 0029) | 2026-05-08 |
 | 0015 | [Content-based language detection](0015-content-based-detection.md)                        | Accepted | 2026-05-08 |
 | 0016 | [`compose_fenced` rule type for markdown fences](0016-compose-fenced-rule.md)              | Accepted | 2026-05-08 |
 | 0017 | [Streaming tokenizer API (2.0)](0017-streaming-api.md)                                     | Accepted | 2026-05-08 |
@@ -36,20 +36,22 @@ sub-blocks).
 | 0020 | [When `TK_ERROR` is correct and when it is a grammar hole](0020-tk-error-adjudication.md) | Accepted | 2026-07-31 |
 | 0021 | [`Token.start` / `Token.len` stay u32; the 4 GiB stream ceiling is deliberate](0021-token-span-width-ceiling.md) | Accepted | 2026-08-20 |
 | 0022 | [`start_after`: a line rule that only opens at a word boundary](0022-line-rule-start-after.md) | Accepted | 2026-10-20 |
-| 0023 | [`heredoc` rule type for here-documents](0023-heredoc-rule.md)                        | Accepted | 2026-10-20 |
-| 0024 | [Char-literal escape forms beyond `'\C'` / `'\xHH'`](0024-char-literal-escape-forms.md) | Accepted | 2026-10-20 |
+| 0023 | [`heredoc` rule type for here-documents](0023-heredoc-rule.md)                        | Accepted (search budget superseded by 0028) | 2026-10-20 |
+| 0024 | [Char-literal escape forms beyond `'\C'` / `'\xHH'`](0024-char-literal-escape-forms.md) | Accepted (amends 0010) | 2026-10-20 |
 | 0025 | [Grammars declare their detection routes; `detect.cyr` stays compiled](0025-detection-declared-by-grammars.md) | Accepted | 2026-10-20 |
 | 0026 | [Number literal shapes: floats, digit separators, datetimes](0026-number-literal-shapes.md) | Accepted | 2026-10-20 |
 | 0027 | [String prefixes, identifier lead bytes, next-byte line rules](0027-prefixes-lead-bytes-next-byte-rules.md) | Accepted | 2026-10-20 |
 | 0028 | [Streaming engine: scanner-reported holds, watches and groups](0028-streaming-holds-watches-groups.md) | Accepted | 2026-10-20 |
-| 0029 | [Compacted grammar blobs, a POSIX generator, a checked size budget](0029-compacted-blobs-posix-generator-size-budget.md) | Accepted | 2026-10-21 |
+| 0029 | [Compacted grammar blobs, a POSIX generator, a checked size budget](0029-compacted-blobs-posix-generator-size-budget.md) | Accepted (amends 0014) | 2026-10-21 |
 
 ## Conventions
 
 - **Filename:** `NNNN-short-kebab-title.md`, zero-padded to four digits.
-- **Never edit Accepted ADRs in place** — if a decision needs to
-  change, open a new ADR that marks the old one Superseded and
-  update this index.
+- **Never rewrite an Accepted ADR's decision in place** — if a
+  decision needs to change, open a new ADR that marks the old one
+  Superseded (or amended, as 0024 does 0010) and update this index.
+  A factual correction goes in beside the text it corrects as a
+  dated *(Amended X.Y.Z: …)* note that keeps the original wording.
 - **Keep them short.** An ADR is a record, not an essay. If you
   find yourself writing more than a page of Context, the decision
   is probably more than one decision.

@@ -59,8 +59,8 @@ php, toml, cyrius; **`'`** — cpp. **Datetime** — toml, yaml, cyml.
 Not opted in: shell, makefile, dockerfile, ini (values are text), the
 two asm grammars, nix, and the markup / compose grammars (their
 embedded languages bring their own settings). *(Amended 2.9.1: nix is
-opted in for floats — it has them, its own grammar header said so, and
-nothing recorded why it was left out.)*
+opted in for floats, which makes 35 — it has them, its own grammar
+header said so, and nothing recorded why it was left out.)*
 
 **Streaming.** A number can now grow from bytes *after* its end —
 `1` + `.5`, `1_` + `000`, `1979` + `-05-27` — while the drain treated

@@ -1,6 +1,6 @@
 # 0029 — Compacted grammar blobs, a POSIX generator, a checked size budget
 
-- **Status:** Accepted
+- **Status:** Accepted (amends [ADR 0014](0014-embedded-grammar-blobs.md))
 - **Date:** 2026-10-21
 - **Deciders:** 2.9.0 size-and-tooling work (proposed) / user (accepted
   via the pinned 2.9.0 roadmap entry)
@@ -98,7 +98,9 @@ The roadmap named two replacements: cyrius's `[embed]` manifest section
 - A blob is no longer a readable copy of its grammar; `grammars/` is.
   (Loader errors carry no line numbers, so nothing pointed into a blob.)
 - One more gate. A change that needs more than 55 KB of headroom has to
-  move the budget in this ADR's successor, not quietly.
+  move the budget in this ADR's successor, not quietly. *(Amended
+  2.9.1: 46,616 bytes of headroom now — the DCE build is 260,584, the
+  blobs 55,574 bytes.)*
 
 ### When to revisit
 

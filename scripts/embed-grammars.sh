@@ -200,8 +200,8 @@ EOF
     return 0;
 }
 
-# Number of embedded grammars. Mostly a self-test hook — bootstrap
-# expects this to match grammars/*.cyml at build time.
+# Number of embedded grammars — a self-test hook: tests/vyakarana.tcyr
+# and fuzz/grammar_load.fcyr check it against the grammars that load.
 fn _grammar_blob_count() {
 EOF
     printf '    return %d;\n' "$COUNT"

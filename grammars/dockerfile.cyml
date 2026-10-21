@@ -26,9 +26,12 @@
 #
 # Filename dispatch: Dockerfile uses no extension — `filenames`
 # below. A path ending in `Dockerfile` or `Containerfile` matches
-# (so `app.Dockerfile` too), and since 2.6.2 so does a variant like
-# `Dockerfile.dev` when no extension claims it first (ADR 0025).
-# Other names need `--language=dockerfile`.
+# where the name starts the path or follows `/ . - _` (so
+# `app.Dockerfile` too, but not `notaDockerfile` since 2.9.1), and
+# since 2.6.2 so does a variant like `Dockerfile.dev` when no
+# extension claims it first — its suffix must start with a letter
+# and not be a compression or tool one (`Dockerfile.5.gz` is not,
+# 2.9.1; ADR 0025). Other names need `--language=dockerfile`.
 #
 # Known gaps (not triggered by the stand-in):
 #   - Heredoc syntax (`COPY <<EOT`, etc.). Variable-length

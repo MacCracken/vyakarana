@@ -1,5 +1,7 @@
 #!/bin/sh
-# vyakarana smoke test — M0 (version/help/list).
+# vyakarana smoke test — the `vyk` CLI end to end: version / help /
+# list (M0), every bundled grammar's corpus, detection, the error and
+# exit-code contract, and each release's regression probes.
 # Usage: sh scripts/smoke.sh [path/to/vyk]    (default: build/vyk)
 set -eu
 
@@ -351,8 +353,8 @@ printf '%s\n' "$llist" | grep -q "^shell\$" \
     || fail "--list-languages: shell not listed after M2 registry load"
 
 # Regression: hand-coded (M1) vs data-driven (M2) token output must
-# be byte-identical. --handcoded is an undocumented diagnostic flag
-# wired only for this check.
+# be byte-identical. --handcoded is a diagnostic flag (in --help and
+# vyk.1) that exists for this check.
 "$BIN" --handcoded "$CORPUS" > "$TMPDIR/m1.ndjson" 2> "$TMPDIR/err" \
     || fail "handcoded oracle run failed: $(cat "$TMPDIR/err")"
 "$BIN" "$CORPUS" > "$TMPDIR/m2.ndjson" 2> "$TMPDIR/err" \

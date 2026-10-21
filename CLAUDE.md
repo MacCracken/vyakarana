@@ -25,7 +25,7 @@ sh scripts/embed-grammars.sh
 cyrius deps && cyrius build src/main.cyr build/vyk
 cyrius test tests/vyakarana.tcyr
 sh scripts/smoke.sh build/vyk
-sh scripts/lint-fmt.sh                 # lint + fmt --check, all src/*
+sh scripts/lint-fmt.sh                 # lint + fmt --check, src/ + scripts/audit/
 sh scripts/check-size.sh               # shipped (DCE) binary <= 300 KiB
 ```
 
@@ -34,12 +34,14 @@ Run all six on session entry. Don't take
 face value until you've seen the commands pass. Use `cyrius build`,
 never raw `cc3`/`cc5`.
 
-**`cyrius deps` does not refresh a `lib/` that already exists.**
-It treats a present `lib/<mod>.cyr` as satisfied, so the vendored
-stdlib silently stays at whatever snapshot first populated it.
-This is exactly what happened between 2.2.2 and 2.3.0: `lib/` sat
-at a 6.0.x vintage across two pin bumps. **After any pin change,
-`rm -rf lib && cyrius deps`.**
+**`cyrius deps` used not to refresh a `lib/` that already existed.**
+Through the 6.5.x pins it treated a present `lib/<mod>.cyr` as
+satisfied, so the vendored stdlib silently stayed at whatever
+snapshot first populated it — between 2.2.2 and 2.3.0 `lib/` sat at
+a 6.0.x vintage across two pin bumps. Since 6.6.20 a plain `cyrius
+deps` refreshes it (CHANGELOG 2.4.3; re-checked at 6.7.15 on 2026-10-21).
+**After any pin change, `rm -rf lib && cyrius deps` anyway** — it
+costs nothing, and an older pin may not refresh.
 
 Confirm with a *whole-tree* diff, not one file — `str.cyr` is
 unchanged across many pins and will pass while everything else
@@ -133,15 +135,14 @@ catch drift before it compounds.
    through `file_read_all` with cap respected. vyakarana is a
    library over arbitrary input — the coverage invariant is the
    correctness contract, but boundary checks on buffer allocation
-   still matter. File findings in `docs/audit/YYYY-MM-DD-audit.md`
-   (create the directory when the first audit lands). The empirical
-   sweeps are scripted in `scripts/audit/` (its README): real-file
-   coverage, poison A/B, streaming invariance, mutation fuzz over
-   vidya — rerun them; don't rebuild them.
+   still matter. File findings in `docs/audit/YYYY-MM-DD-audit.md`.
+   The empirical sweeps are scripted in `scripts/audit/` (its
+   README): real-file coverage, poison A/B, streaming invariance,
+   mutation fuzz over vidya — rerun them; don't rebuild them.
 7. Additional tests / corpus entries from findings — any new shape
    worth locking with an assertion or a stand-in probe.
 8. Post-review gate run — prove the hardening didn't regress
-   anything: all three gates green again.
+   anything: all six gates green again.
 9. Documentation audit — `docs/development/state.md` / ROADMAP / ADRs / grammar
    headers reflect current reality; prune stale `TODO`s.
 10. Repeat if the audit turned up a lot. Don't start the next
@@ -174,9 +175,9 @@ Run a closeout pass before the user cuts `0.Y.0` or `1.0.0`:
    zero error kinds and the coverage invariant holds.
 3. **Lint + fmt — `sh scripts/lint-fmt.sh` exits 0.** Both
    `cyrius lint` (zero warnings) and `cyrius fmt --check` (no
-   drift) across every hand-edited `src/*.cyr` and
-   `src/grammars/*.cyr`. CI gates the same; failing either
-   blocks the tag.
+   drift) across every hand-edited `src/*.cyr`,
+   `src/grammars/*.cyr` and `scripts/audit/*.cyr`. CI gates the
+   same; failing either blocks the tag.
 4. Dead-code audit — check for unused functions with the
    compiler's "dead:" output; remove anything stale.
 5. Stale comment sweep — grep for old version refs, outdated
@@ -256,8 +257,8 @@ Cyrius code. When dialect is unclear, read `cyrius/programs/*.cyr`
 - **Do not use `gh` CLI** — if GitHub-API calls are needed, use
   `curl` against the REST API.
 - Do not modify files in `lib/` — vendored stdlib. Re-vendor with
-  `rm -rf lib && cyrius deps`; a plain `cyrius deps` will not
-  refresh an existing tree.
+  `rm -rf lib && cyrius deps` (a plain `cyrius deps` refreshes an
+  existing tree since 6.6.20, but not on older pins).
 - Do not depend on `owl` or any other consumer — vyakarana is
   upstream of all of them.
 - Do not add a token kind, change the `Token` layout, or change

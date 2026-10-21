@@ -71,3 +71,9 @@ cp ../vidya/content/lexing_and_parsing/shell.sh tests/corpus/shell.sh
 (build-time pull via `scripts/pull-corpus.sh`) against the
 accumulated sync debt. If vidya's sample churn stays low, snapshots
 may still be the right answer.
+
+*(Amended 2.9.2: M3 passed with the snapshot kept, and no re-sync
+check fell out of M4. `tests/corpus/` holds 48 files — 15 vidya
+snapshots and 33 ADR 0006 stand-ins — last re-synced in 2.6.2; there
+is no `scripts/pull-corpus.sh`. The re-sync recipe is in
+`tests/corpus/README.md`.)*

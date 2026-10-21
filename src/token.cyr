@@ -1,12 +1,12 @@
 # vyakarana — token kind palette + Token record
 #
 # The ten-kind palette is a stable contract. Grammar authors and theme
-# palettes both depend on the set; do not add a kind without a design
-# review and a CHANGELOG entry.
+# palettes both depend on the set; do not add a kind without an ADR
+# and a CHANGELOG entry.
 #
 # Token layout (kind: u8, start: u32, len: u32 — 12 bytes) is
-# load-bearing for downstream consumers (owl M3b). Pre-1.0 changes
-# must be CHANGELOG-flagged.
+# load-bearing for downstream consumers (owl M3b). Changing it needs
+# an ADR and a CHANGELOG entry too (ADR 0002; CLAUDE.md §Do not).
 
 # ── Token kinds ─────────────────────────────
 var TK_IDENT        = 0;
@@ -23,7 +23,8 @@ var TK_ERROR        = 9;
 var TK_COUNT = 10;
 
 # Kind → name. Parallel to the TK_* constants.
-# M2+ grammars reference these names; M0 just exposes them via vyk.
+# Grammar files name kinds this way (`kind = "keyword"`), and vyk
+# prints them (NDJSON, `--list-kinds`).
 fn kind_name(kind) {
     if (kind == TK_IDENT)        { return "ident"; }
     if (kind == TK_KEYWORD)      { return "keyword"; }
@@ -54,13 +55,13 @@ fn kind_is_valid(kind) {
 # Layout: (kind: u8 @ 0, start: u32 @ 4, len: u32 @ 8) — 12 bytes.
 # Bytes 1..3 are padding so start is 4-byte aligned.
 # See design-spec §4. This layout is the consumer contract for owl M3b
-# and subsequent consumers; do not shuffle fields without a CHANGELOG
-# entry and a minor-version bump.
+# and subsequent consumers; do not shuffle fields without an ADR, a
+# CHANGELOG entry and a minor-version bump.
 var TOKEN_SIZE = 12;
 
 # ── tokenbuf — contiguous growable array of 12-byte Token records ───
 #
-# Design-spec §6 requires "no allocations per token." Stdlib Vec stores
+# Design-spec §2 requires "no allocations per token." Stdlib Vec stores
 # 8-byte slots, which doesn't fit the 12-byte Token layout, so this is
 # a purpose-built buffer: three i64 fields (data_ptr, count, byte_cap)
 # at the handle, 12 bytes per record in `data`.
@@ -74,8 +75,8 @@ var _TB_INIT_CAP = 64;   # initial record capacity (768 bytes)
 # already treats a 0 tokenbuf as "no grammar / give up" (see
 # `tokenize_buf` in src/main.cyr), so propagating 0 is the
 # existing contract rather than a new one. Last of the
-# FINDING-002 family — `_tokenbuf_grow` and `_vyk_stream_grow` are
-# guarded above.
+# FINDING-002 family — `_tokenbuf_grow` (below) and
+# `_vyk_stream_grow` (src/tokenize.cyr) are guarded too.
 fn tokenbuf_new() {
     var tb = alloc(24);
     if (tb == 0) { return 0; }

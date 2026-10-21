@@ -8,10 +8,10 @@
 #
 # What's measured (1.13.0 establishes these eight):
 #
-#   tokenize/shell-small     — 32-byte shell snippet
-#   tokenize/rust-small      — 64-byte rust snippet
-#   tokenize/json-small      — 32-byte json snippet
-#   tokenize/html-compose    — 64-byte html with <style> compose block
+#   tokenize/shell-small     — 34-byte shell snippet
+#   tokenize/rust-small      — 39-byte rust snippet
+#   tokenize/json-small      — 27-byte json snippet
+#   tokenize/html-compose    — 35-byte html with <style> compose block
 #   detect/path-shell        — extension-only dispatch
 #   detect/content-python    — shebang-driven content sniff
 #   detect/combined-asm-arm  — asm flavour vote

@@ -100,6 +100,12 @@ words = [ "if", "then", "else", ... ]
 
 Every step is data-driven by the grammar struct parsed from CYML.
 A grammar that sets `ident_start = ""` simply skips the ident stage.
+*(Amended 2.9.2: later ADRs added steps — queued heredoc bodies and
+the three compose rule types ahead of the shebang, a char-literal
+step and a heredoc opener after numbers — and a lone `$` is its own
+step after `$X`. The current order is
+[architecture note 002](../architecture/002-scanner-pipeline-priority.md)
+and the header of `src/grammars/default_scanner.cyr`.)*
 
 ## Consequences
 
@@ -141,6 +147,10 @@ A grammar that sets `ident_start = ""` simply skips the ident stage.
   `tests/corpus/shell.sh`; the token streams must be byte-identical.
 - Delete `src/grammars/shell.cyr` in a follow-up after M2 ships,
   or leave it as a compile-checked oracle until M3 finishes.
+  *(Amended 2.9.2: it stayed past M3 — it is the `vyk --handcoded`
+  oracle, and smoke still requires byte-identical output on
+  `tests/corpus/shell.sh`. It has no backtick or heredoc rule;
+  that file exercises neither.)*
 
 ### When to revisit
 
@@ -149,6 +159,13 @@ A grammar that sets `ident_start = ""` simply skips the ident stage.
   an ADR extending the set.
 - **M5** — streaming tokenizer may want to inline the
   default-scanner dispatch differently; the surface doesn't change.
+
+*(Amended 2.9.2: both came. From M3 on, each extension got its own
+ADR — `[defaults]` keys in ADRs 0009–0011, 0026 and 0027; the rule
+types `compose`, `compose_fenced`, `compose_region` and `heredoc` in
+ADRs 0013, 0016, 0019 and 0023; line-rule keys in 0022 and 0027. M5
+(2.0) left the dispatch alone: the streaming drain re-runs this
+scanner over its buffer (ADRs 0017, 0028).)*
 
 ### Design-spec update
 

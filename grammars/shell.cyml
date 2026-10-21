@@ -1,7 +1,8 @@
 # shell — bash / sh / zsh / dash tokenizer grammar
 #
-# Comments here are parsed on every grammar load — keep them short;
-# rationale lives in the ADRs.
+# Keep comments here short; rationale lives in the ADRs. (Through 2.8.0
+# they were parsed on every grammar load; the compacted blobs drop them
+# since 2.9.0, ADR 0029.)
 #
 # Regression bar: on tests/corpus/shell.sh, tokens are byte-identical to
 # the hand-coded oracle src/grammars/shell.cyr (smoke checks it). Not

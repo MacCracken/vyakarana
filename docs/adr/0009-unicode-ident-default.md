@@ -62,6 +62,8 @@ Two coupled changes:
    needs it. Currently set in `grammars/c.cyml` and
    `grammars/markdown.cyml`. Other grammars can flip the flag
    if a future corpus surfaces UTF-8 outside their string spans.
+   *(Amended 2.9.2: 43 of the 46 grammars set it now — all but
+   `cyrius`, `json` and `toml`.)*
 
 2. **C grammar gains a `match = "pair"` rule for `/* … */`.**
    C's block comments are non-nestable, so the same simple greedy
@@ -108,7 +110,10 @@ Two coupled changes:
 - **Grammar-record ABI bumped** from 136 to 144 bytes. No
   external consumer depends on the in-memory record layout
   (`tokenize_source` returns a `tokenbuf`, not a `Grammar`), so
-  this is a private change.
+  this is a private change. *(Amended 2.9.2: `tokenize_source` was
+  removed in 2.0.0; the streaming API hands out tokens too, and a
+  consumer reaches the record — 248 bytes now — only through the
+  `grammar_*` accessors.)*
 
 ### When to revisit
 

@@ -3,8 +3,9 @@
 # Rule scheme per ADR 0005. JavaScript is TypeScript minus the
 # type-declaration layer (interface / type / enum / namespace /
 # visibility modifiers). Shares the defaults: same ident class,
-# same operators, same three string types. The only real
-# difference from typescript.cyml is the keyword list.
+# same operators, same three string types. The differences from
+# typescript.cyml are the keyword list and the `#!` line: javascript
+# routes `node` scripts and reads a leading `#!` as one token (2.6.2).
 #
 # Corpus: tests/corpus/concept.js (hand-rolled stand-in per
 # ADR 0006 — vidya doesn't yet ship a JS reference sample).

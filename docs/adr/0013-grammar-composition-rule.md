@@ -96,7 +96,12 @@ grammars that themselves have compose rules nest correctly.
 Real-world recursion depth ≤ 2 (HTML → CSS, HTML → JS;
 JS-template-literal-containing-HTML is theoretically possible
 but the JS grammar doesn't have compose rules today). No
-explicit depth cap — Cyrius's stack handles it.
+explicit depth cap — Cyrius's stack handles it. *(Amended 2.9.2:
+it did not — two consumer grammars whose `compose_region` rules
+route into each other overflowed the stack at 20,000 nested
+regions. Nesting stops at `DS_MAX_DEPTH`, 32 levels; a deeper body is
+one string, as for a missing grammar. The bundled grammars nest
+three deep at most: cyml → markdown → html → css.)*
 
 ## Consequences
 
@@ -130,6 +135,10 @@ explicit depth cap — Cyrius's stack handles it.
   fence routing, see "When to revisit"), a future
   optimisation would tokenize directly into the outer
   tokenbuf with an offset parameter. Not yet warranted.
+  *(Amended 2.9.2: since 2.5.2 the inner tokenbuf is one scratch
+  buffer per nesting depth, reused — the bump allocator never
+  frees, and `<style>a</style>` × 65,000 took 57.8 MB of heap. The
+  tokens are still copied out with shifted offsets.)*
 - **Start markers are matched literally.** `<style>` matches
   the literal string; `<style type="module">` doesn't, so its
   body falls back to outer-grammar HTML tokenization. Common
@@ -159,7 +168,8 @@ explicit depth cap — Cyrius's stack handles it.
   extension — likely `inner = "@fence"` or a special
   match-type `match = "compose-dynamic"` — should land as
   its own ADR. Until then, fenced code blocks tokenize as
-  plain markdown content.
+  plain markdown content. *(Amended 2.9.2: done in 1.13.2 as
+  `match = "compose_fenced"` — ADR 0016.)*
 - **Attribute-bearing HTML tags.** `<style type="module">`
   bypasses the literal-prefix match. Future ADR could allow
   `start = "<style"` (no closing `>`) with an "anything
@@ -170,3 +180,5 @@ explicit depth cap — Cyrius's stack handles it.
   `tokenize_with_grammar_offset(g, src, src_len, tb,
   offset)` that pushes tokens directly to `tb` with `start +
   offset`. Pure perf optimization; no behavioral change.
+  *(Amended 2.9.2: the allocation half is solved by reuse — see
+  Negative; the copy remains.)*

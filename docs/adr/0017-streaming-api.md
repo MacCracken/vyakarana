@@ -54,7 +54,9 @@ fn tokenize_stream_free(s)
   tokens this call appended. **2.0.0 implementation note:** the
   scanner runs at finish() time, so drain() returns 0 until
   finish() has been called once. 2.0.1+ will emit tokens for
-  completed prefixes after each feed.
+  completed prefixes after each feed. *(Amended 2.9.2: 2.0.1 did —
+  each drain re-scans the live buffer and commits what the scanner
+  reports settled; ADR 0028 is how it decides.)*
 - `tokenize_stream_finish(s, out_tb)` — marks the stream done;
   emits every remaining token. After finish, feed returns
   `VYK_ERR_FINISHED` and drain becomes a no-op.
@@ -67,7 +69,10 @@ Choice rationale (see the question/answer trail in the cut log):
   network read, pipe — and pushes chunks. Maps naturally to
   `read(fd, buf, n)` loops without forcing vyakarana to know
   about the source. Pull adapter (`tokenize_stream_next`) is
-  queued for 2.0.1+ as a thin wrapper.
+  queued for 2.0.1+ as a thin wrapper. *(Amended 2.9.2: shipped in
+  2.0.2 — `tokenize_stream_next(s)` returns 1 when a token is
+  current, read with `tokenize_stream_kind` / `_start` / `_len`;
+  `tokenize_stream_discard_consumed` joined it in 2.1.4.)*
 - **Sub-cut by API and internals.** 2.0.0 ships only the new
   surface; the internal scanner is unchanged. feed() buffers
   chunks into a single contiguous source; finish() runs the
@@ -177,7 +182,11 @@ flow follows the same shape inside `tokenize_buf` in
   until finish has been called; consumers writing
   `while (drain() > 0) { … }` loops won't see anything until
   finish runs. The contract doesn't *require* per-feed
-  drainage today; 2.0.1+ delivers it.
+  drainage today; 2.0.1+ delivers it. *(Amended 2.9.2: both
+  lifted in 2.0.1. Drains commit per feed, and `VYK_STREAM_CAP` —
+  16 MiB since then — bounds the live window, not the input; total
+  input per stream stops at 4 GiB, the u32 offsets' limit (ADR
+  0021).)*
 
 ### When to revisit
 
@@ -195,3 +204,9 @@ flow follows the same shape inside `tokenize_buf` in
 - **Async / coroutine API.** If Cyrius gains coroutines, the
   pull adapter could become a real generator. Not on any
   near-term roadmap.
+
+*(Amended 2.9.2: the first three happened, as noted above — the
+rolling buffer in 2.0.1, the pull adapter in 2.0.2, the cap as a
+live-window bound in 2.0.1. The scanner was not turned into a
+resumable state machine: 2.8.0 kept rescan-and-commit and rejected
+that rewrite (ADR 0028).)*

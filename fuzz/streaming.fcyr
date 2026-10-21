@@ -28,6 +28,8 @@
 #   - rust — multi-byte operators (`<<=`, `..=`)
 #   - c — block comments straddling chunks (the 2.0.3 case)
 #   - html — compose rules (script body routes through JS)
+#   - vue — two compose rules in one grammar
+#   - markdown — compose_fenced (a boundary inside the fence opener)
 #   - python — line comments + indented strings (no triple-
 #     quote here yet; covered by julia in 2.1.0)
 #
@@ -111,24 +113,24 @@ fn _strm_compare(tb_a, tb_b, label) {
     var cb = tokenbuf_count(tb_b);
     if (ca != cb) {
         eprint("FAIL: ", 6); eprint(label, strlen(label));
-        eprint(" — token count mismatch\n", 25);
+        eprint(" — token count mismatch\n", 26);
         return 1;
     }
     var i = 0;
     while (i < ca) {
         if (tokenbuf_kind(tb_a, i)  != tokenbuf_kind(tb_b, i))  {
             eprint("FAIL: ", 6); eprint(label, strlen(label));
-            eprint(" — kind mismatch\n", 18);
+            eprint(" — kind mismatch\n", 19);
             return 1;
         }
         if (tokenbuf_start(tb_a, i) != tokenbuf_start(tb_b, i)) {
             eprint("FAIL: ", 6); eprint(label, strlen(label));
-            eprint(" — start mismatch\n", 19);
+            eprint(" — start mismatch\n", 20);
             return 1;
         }
         if (tokenbuf_len(tb_a, i)   != tokenbuf_len(tb_b, i))   {
             eprint("FAIL: ", 6); eprint(label, strlen(label));
-            eprint(" — len mismatch\n", 17);
+            eprint(" — len mismatch\n", 18);
             return 1;
         }
         i = i + 1;
@@ -167,7 +169,7 @@ fn _strm_one(src, lang, label) {
         var split_tb = _strm_random_split(src, lang, n_splits);
         if (split_tb == 0) {
             eprint("FAIL: ", 6); eprint(label, strlen(label));
-            eprint(" — split tokenbuf is null\n", 27);
+            eprint(" — split tokenbuf is null\n", 28);
             return 1;
         }
         if (_strm_compare(baseline, split_tb, label) != 0) { return 1; }
@@ -178,7 +180,7 @@ fn _strm_one(src, lang, label) {
 
 fn fuzz_main(data, n) {
     if (has_grammar("shell") == 0) {
-        eprint("FAIL: shell grammar didn't load\n", 33);
+        eprint("FAIL: shell grammar didn't load\n", 32);
         return 1;
     }
 
@@ -230,7 +232,7 @@ fn fuzz_main(data, n) {
 
 fn _harness_main() {
     if (fuzz_main("x", 1) != 0) {
-        eprint("streaming fuzz: FAIL\n", 22);
+        eprint("streaming fuzz: FAIL\n", 21);
         return 1;
     }
     print("streaming fuzz: OK\n", 19);

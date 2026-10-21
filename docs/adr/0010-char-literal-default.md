@@ -77,6 +77,9 @@ and the CYML loader (`char_literal = true|false`).
 
 Defaulting **off**, enabled per-grammar in `grammars/c.cyml`,
 `grammars/rust.cyml`, `grammars/go.cyml`, and `grammars/zig.cyml`.
+*(Amended 2.9.2: 19 grammars set it now — both asm grammars, c, cpp,
+crystal, csharp, cyrius, go, haskell, java, julia, kotlin, lua,
+ocaml, php, ruby, rust, swift and zig.)*
 
 ## Consequences
 
@@ -116,6 +119,8 @@ Defaulting **off**, enabled per-grammar in `grammars/c.cyml`,
 - **Grammar-record ABI bumped** from 144 to 152 bytes. Same
   story as ADR 0009: no consumer reads the in-memory `Grammar`,
   only the public `tokenize_source` / `tokenbuf` API.
+  *(Amended 2.9.2: `tokenize_source` was removed in 2.0.0 — ADR
+  0017; the streaming API is just as opaque about `Grammar`.)*
 
 ### When to revisit
 
@@ -128,3 +133,10 @@ Defaulting **off**, enabled per-grammar in `grammars/c.cyml`,
 - If the scanner ever moves to a length-indexed dispatch for
   performance (the M5 streaming work), step 7b stays an explicit
   branch — its lookahead is non-prefix-keyed.
+
+*(Amended 2.9.2: the first two have happened. `'\u{…}'` and the
+other longer escapes are one token since 2.5.2 — ADR 0024. Byte
+chars collapse through a prefix, not a flag: 2.7.1's
+`string_prefixes` (ADR 0027) joins Rust's `b` to the char literal
+after it and Python's `b` to its `'…'` string. The third has not: M5
+left the dispatch as it was, and step 7b is still its own branch.)*

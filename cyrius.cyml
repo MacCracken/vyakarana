@@ -34,6 +34,10 @@ output = "vyk"
 #                    regression-diff path (`vyk --handcoded`).
 #                    Consumer DCE builds strip it automatically.
 #   tokenize       — public dispatch (uses all of the above).
+#   detect         — path + content language detection (ADR 0015,
+#                    ADR 0025; uses token).
+#   lsp            — LSP semantic-tokens → TK_* bridge (ADR 0012;
+#                    uses token).
 [lib]
 modules = [
     "src/token.cyr",

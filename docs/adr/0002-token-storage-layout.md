@@ -48,7 +48,13 @@ fn tokenbuf_len(tb, i)            # u32 accessor
 
 `tokenize_source(src, "shell")` returns a `tokenbuf` handle (opaque
 pointer); callers read tokens via the accessors. Handle is `0` when
-no grammar matches.
+no grammar matches. *(Amended 2.9.2: `tokenize_source` was removed in
+2.0.0 — ADR 0017. A consumer now allocates the tokenbuf with
+`tokenbuf_new()` and `tokenize_stream_drain` / `_finish` append to it,
+or reads one token at a time through the pull adapter
+(`tokenize_stream_next` and its `_kind` / `_start` / `_len`
+accessors); `tokenize_stream_new` returns `0` for an unknown grammar.
+The record and the accessors above are unchanged.)*
 
 ## Consequences
 
@@ -96,4 +102,7 @@ internal shape — e.g. producing tokens incrementally without ever
 materializing a full buffer. The `tokenbuf` accessor surface
 (`count` / `kind` / `start` / `len` by index) should remain stable
 for Vec-mode consumers even if a new streaming-mode API lands
-alongside it.
+alongside it. *(Amended 2.9.2: M5 landed as the 2.0 streaming API,
+which kept `tokenbuf` as its output and the accessor surface as it
+was — see the note under Decision; ADR 0021 keeps `start` / `len` at
+u32.)*

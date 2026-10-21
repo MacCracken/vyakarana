@@ -67,7 +67,8 @@ stays normative.
 
 Defaulting **off**, enabled per-grammar in `grammars/sql.cyml`.
 Other grammars can flip the flag if their language spec calls
-for case-insensitive reserved words.
+for case-insensitive reserved words. *(Amended 2.9.2: `dockerfile`
+(1.8.0) and `powershell` (2.1.0) set it too.)*
 
 ## Consequences
 

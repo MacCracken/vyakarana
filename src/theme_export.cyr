@@ -231,7 +231,7 @@ fn theme_export_helix(theme) {
 # so the bright kinds (which the dark theme uses) read clearly.
 #
 # Float strings are precomputed: each ANSI channel value is one
-# of {0, 92, 205, 229, 238, 255} → fixed strings to avoid having
+# of {0, 92, 127, 205, 229, 238, 255} → fixed strings to avoid having
 # to print floats from Cyrius (no float runtime).
 
 # Float-string for one byte channel value.

@@ -45,17 +45,17 @@ fn _detect_check_lang(name, label) {
     var l = strlen(name);
     if (l == 0) {
         eprint("FAIL: ", 6); eprint(label, strlen(label));
-        eprint(" — empty cstr returned\n", 24);
+        eprint(" — empty cstr returned\n", 25);
         return 1;
     }
     if (l > 32) {
         eprint("FAIL: ", 6); eprint(label, strlen(label));
-        eprint(" — implausibly long cstr returned\n", 35);
+        eprint(" — implausibly long cstr returned\n", 36);
         return 1;
     }
     if (has_grammar(name) == 0) {
         eprint("FAIL: ", 6); eprint(label, strlen(label));
-        eprint(" — returned name not a registered grammar: ", 44);
+        eprint(" — returned name not a registered grammar: ", 45);
         eprint(name, l);
         eprint("\n", 1);
         return 1;
@@ -163,7 +163,7 @@ fn fuzz_main(data, n) {
 
 fn _harness_main() {
     if (fuzz_main("x", 1) != 0) {
-        eprint("detect fuzz: FAIL\n", 19);
+        eprint("detect fuzz: FAIL\n", 18);
         return 1;
     }
     print("detect fuzz: OK\n", 16);

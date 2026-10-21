@@ -30,7 +30,12 @@ was removed and the matched snapshot took over.
 The sibling first-party libraries — `patra`, `sigil` — both
 **gitignore `/lib`** and track zero files there. `cyrius deps`
 populates `lib/` fresh from the matched snapshot on each checkout,
-so it can never drift from the pin.
+so it can never drift from the pin. *(Amended 2.9.2: it could,
+through the 6.5.x pins — `cyrius deps` treated a `lib/` that already
+existed as satisfied, and this tree's sat at a 6.0.x vintage across
+two pin bumps before 2.3.0. Since 6.6.20 a plain `cyrius deps`
+refreshes it (CHANGELOG 2.4.3; re-checked at 6.7.15); after a pin
+move, `rm -rf lib && cyrius deps` all the same — CLAUDE.md §Gates.)*
 
 ## Decision
 
@@ -66,6 +71,14 @@ API, token layout, or grammar change.
   fetches the matched snapshot into `lib/`). This is already the
   first documented gate step, but offline/air-gapped builds must
   ensure the toolchain version is installed locally first.
+  *(Amended 2.9.2: no longer. Since cyrius 6.5.32 the compiler takes
+  the stdlib from `~/.cyrius/versions/<pin>/lib` and the project
+  `lib/` is inert at build time; at 2.9.1 a tree with no `lib/`
+  builds a byte-identical `vyk`. The pin's toolchain must still be
+  installed, and `lib/` is still populated and kept in step with
+  the pin: a stale copy no longer changes the build, but it draws a
+  `shadow lib` warning and makes the tree describe a version it is
+  not on.)*
 - Loses the "exact bytes we built against" provenance that a
   committed `lib/` gave. The `cyrius` pin + `cyriusly use <pin>`
   reconstructs it deterministically, so this is acceptable.

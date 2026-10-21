@@ -485,7 +485,7 @@ fn emit_ndjson(tb) {
     return any_error;
 }
 
-# Read file, tokenize with the given language, emit either
+# Tokenize with the given language and emit either
 # NDJSON (default) or ANSI-themed source bytes (when `theme >=
 # 0`). Returns an exit code. `handcoded = 1` routes through the
 # M1 oracle path (see src/tokenize.cyr) for the M2 regression

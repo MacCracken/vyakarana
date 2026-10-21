@@ -22,9 +22,10 @@ Thanks for wanting to help vyakarana see more grammar.
    anything else
 3. `cyrius deps` — vendors stdlib into `lib/`. If `lib/` is
    already on disk from an older pin, `rm -rf lib && cyrius deps`
-   instead: an already-present `lib/<mod>.cyr` counts as
-   satisfied and is never refreshed, so a stale tree survives a
-   pin bump in silence. That is exactly how 2.2.3 built against a
+   instead. Before cyrius 6.6.20 an already-present
+   `lib/<mod>.cyr` counted as satisfied and was never refreshed,
+   so a stale tree survived a pin bump in silence (6.6.20 and
+   later refresh it). That is exactly how 2.2.3 built against a
    6.0.x-vintage stdlib while claiming 6.1.24: the tree that
    `cyrius deps` laid down at 2.2.2 (pin 6.0.3) survived the next
    bump untouched, and nothing caught it until 2.3.0.
@@ -35,8 +36,10 @@ Thanks for wanting to help vyakarana see more grammar.
 5. Branch from `main`
 6. Make your change
 7. Run every gate below before opening a PR — CI runs the same
-   set plus a `dist/vyakarana.cyr` drift check
-8. Reference the ROADMAP milestone your change belongs to
+   set plus the audit-tools build and a `dist/vyakarana.cyr` drift
+   check
+8. Reference the roadmap release your change belongs to, if it has
+   one
 
 ## Bumping the version
 
@@ -56,7 +59,8 @@ way to move the version. It writes exactly three things:
 Everything else is manual: the CHANGELOG body, the cyrius
 toolchain pin in `cyrius.cyml`'s `[package].cyrius` (independent
 of vyakarana's own version — the two move on separate clocks),
-`docs/development/state.md` if the status shifted, and
+`docs/development/state.md` if the status shifted, the version
+and date on the `.TH` line of `docs/man/vyk.1`, and
 `dist/vyakarana.cyr` via `cyrius distlib`. `cyrius.cyml`'s
 `version` field needs no touch; it resolves `${file:VERSION}`.
 Run `sh scripts/embed-grammars.sh` *before* `cyrius distlib` —
@@ -93,7 +97,7 @@ CI runs them. All eight must be green before a PR merges:
 cyrius deps                             # vendors stdlib into lib/
 sh scripts/embed-grammars.sh            # regenerates src/grammar_blobs.cyr
 cyrius build src/main.cyr build/vyk
-sh scripts/lint-fmt.sh                  # lint + fmt --check, all src/*
+sh scripts/lint-fmt.sh                  # lint + fmt --check, src/ + scripts/audit/
 cyrius test tests/vyakarana.tcyr
 sh scripts/smoke.sh build/vyk
 sh scripts/check-size.sh                # the shipped (DCE) binary <= 300 KiB
@@ -142,8 +146,10 @@ that; the tokenizer should not."
 
 vyakarana grammars are CYML, not TextMate / Sublime / tree-sitter.
 Design reasoning lives in `vyakarana-design-spec.md`. When adding a new
-bundled grammar, start from the shell grammar shipped in M1 and copy
-its shape. Don't invent a new structure ad-hoc.
+bundled grammar, start from the bundled grammar closest to the new
+language and copy its shape — `grammars/json.cyml` is the plainest,
+`grammars/shell.cyml` the most specialised (heredocs, `start_after`).
+Don't invent a new structure ad-hoc.
 
 **Detection routes are declared twice, on purpose** (ADR 0025). A new
 extension, filename or shebang interpreter goes in the grammar's

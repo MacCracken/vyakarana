@@ -12,9 +12,10 @@ the absolute values.
 > absolute table only from a quiet one (load near 1). Keep prior
 > releases under §History.
 
-Hardware on which the baseline below was captured: Linux x86_64
-(7.1.5-arch1-1). Local dev machine, not a controlled benchmark
-host — variance ~±10% between runs.
+Hardware on which the baseline below was captured: Linux x86_64,
+kernel 7.2.10-arch1-1, toolchain 6.7.15 (the 2.3.0 table under
+§History was captured on 7.1.5-arch1-1). Local dev machine, not a
+controlled benchmark host — variance ~±10% between runs.
 
 ---
 
@@ -22,14 +23,17 @@ host — variance ~±10% between runs.
 
 | Artifact                    | Size (bytes) | Size (KB) | Notes                                         |
 |-----------------------------|-------------:|----------:|-----------------------------------------------|
-| `build/vyk` (CLI binary)    |      354,792 |     346.5 | Includes 46 compacted grammars (55.5 KB of data) |
-| `build/vyk`, `CYRIUS_DCE=1` |      260,584 |     254.5 | Same tree, dead fns compacted out — **what releases ship**; budget 300 KiB |
-| `dist/vyakarana.cyr`        |      362,193 |     353.7 | Single-file bundle for `cyrius deps` (7,054 lines by `wc -l`) |
+| `build/vyk` (CLI binary)    |      354,792 |     346.5 | Includes 46 compacted grammars (55,574 bytes of blob data) |
+| `build/vyk`, `CYRIUS_DCE=1` |      260,584 |     254.5 | Same tree, dead fns compacted out — **what releases ship**; budget 300 KiB (307,200 bytes, `scripts/check-size.sh`) |
+| `dist/vyakarana.cyr`        |      363,651 |     355.1 | Single-file bundle for `cyrius deps` (7,075 lines by `wc -l`) |
 
 **`2.9.1` (2026-10-21):** 2.9.0 → 2.9.1 +12,456 (DCE +8,360, 46,616
 under budget) — the audit's fixes: the fence tag lookup, the watches'
 new state, the depth cap and validations, and `_grammar_blob_path`'s
-46 path strings; the bundle +19 KB, mostly comments.
+46 path strings; the bundle +20,776 bytes, mostly comments (the 2.9.1
+documentation sweep among them).
+The default build carries 400 unreachable functions (92,741 bytes);
+`CYRIUS_DCE=1` drops them.
 
 **Re-captured 2026-10-21 at `2.9.0`, 6.7.15 toolchain.** 2.8.0 →
 2.9.0: 498,792 → 342,336 (−156,456; DCE 408,680 → 252,224) — the
@@ -41,6 +45,132 @@ shipped (DCE) binary is under the design spec's 300 KB target, with
 307,200 bytes in CI (it fails on 2.8.0's binary by 101,480). DEFLATE
 would take the blobs to 9,717 bytes — about 46 KB more — at the cost
 of an inflater in every binary; ADR 0029 defers it.
+
+Earlier captures, 2.2.1 – 2.8.0, are under §History.
+
+## Tokenize / detect / load latencies (2.7.0 baseline, 2026-10-20)
+
+The table of record: not re-captured at 2.7.1, 2.8.0, 2.9.0 or
+2.9.1, whose hosts were loaded — the A/B notes below carry those
+releases' ratios.
+
+Paired protocol (iterations ÷ 10, 2.6.2 and 2.7.0 alternated for 10
+rounds, host load ≈ 1.2), best run:
+
+| Benchmark                  |       Avg |       Min |       Max | Iterations |
+|----------------------------|----------:|----------:|----------:|-----------:|
+| tokenize/shell-small       | 10.849 µs | 10.638 µs | 11.281 µs | 100,000 × 10 runs |
+| tokenize/rust-small        | 16.103 µs | 15.866 µs | 18.000 µs | 100,000 × 10 runs |
+| tokenize/json-small        |  3.774 µs |  3.694 µs |  4.021 µs | 100,000 × 10 runs |
+| tokenize/html-compose      |  7.359 µs |  7.195 µs |  7.769 µs | 100,000 × 10 runs |
+| detect/path-shell          |     32 ns |     31 ns |     36 ns | 1,000,000 × 10 runs |
+| detect/content-python      |    188 ns |    186 ns |    197 ns | 1,000,000 × 10 runs |
+| detect/combined-asm-arm    |  5.265 µs |  5.229 µs |  5.569 µs | 100,000 × 10 runs |
+| blob/grammar-load-shell    | 30.292 µs | 29.885 µs | 32.242 µs | 10,000 × 10 runs |
+
+**Median per-round ratio 2.7.0 / 2.6.2:** content-python −13.8 %,
+path-shell −4.2 %, html-compose −2.8 %, combined-asm-arm −0.9 %,
+shell-small −0.7 %, rust-small +0.2 %, json-small +1.5 %,
+grammar-load-shell +1.5 %. Number scanning costs nothing measurable:
+`json-small` and `rust-small` carry floats and are within 2 %.
+`content-python` moved −13.8 % with no change on its path — the same
+row moved +13 % in 2.6.2 from code placement alone (§Bench note 2.6.2);
+it is back where 2.6.1 had it. Over 4,500 real files, 773 tokenize
+differently from 2.6.2 — every change is to a number token (ADR 0026).
+
+## Bench note (2.9.1, 2026-10-21) — the closeout audit's fixes, A/B'd
+
+`sh scripts/bench-paired.sh 2.9.0`, host load 3.8–5.9: every tokenize row
+and grammar loading within ±1.1 %, `detect/content-python` −3.9 %, and
+`detect/path-shell` +9.4 % (a second run +9.3 %) — 3 ns on 31 ns, on code
+that did not change (`foo.sh` is matched by `_detect_short`, before the
+filename rule 2.9.1 tightened). A padding probe moved the same row 2.9 %
+with no code change at all: it is layout-sensitive like `content-python`.
+The audit's streaming fixes are in chunked feeds, which this bench does
+not run; `scripts/audit/stream-sweep.sh` times them (five inputs from
+over 10 s to under one).
+
+## Bench note (2.9.0, 2026-10-21) — compacted blobs, A/B'd
+
+`sh scripts/bench-paired.sh 2.8.0` — the protocol below, now one
+command — at host load 12.8 → 7.8 (other builds on the host):
+
+| Benchmark                  | Median 2.9.0 / 2.8.0 | IQR             |
+|----------------------------|---------------------:|-----------------|
+| blob/grammar-load-shell    |              −15.0 % | −24.6 … −14.2 % |
+| detect/combined-asm-arm    |               −4.3 % | −9.9 … −0.8 %   |
+| detect/path-shell          |               −3.9 % | −5.6 … −2.1 %   |
+| tokenize/shell-small       |               −2.9 % | −6.5 … +5.3 %   |
+| detect/content-python      |               −2.3 % | −8.9 … +5.3 %   |
+| tokenize/html-compose      |               −1.6 % | −4.9 … −0.3 %   |
+| tokenize/rust-small        |               −0.7 % | −5.1 … +3.6 %   |
+| tokenize/json-small        |               +0.6 % | −2.4 … +4.8 %   |
+
+Loading a grammar is 15 % faster: the loader no longer skips 156 KB of
+comments and blanks across the 46 blobs (an earlier run, which
+overlapped a gate run on the same host and spread ±20 % on every other
+row, agreed at −15.6 %). Every tokenize and detect row is within noise, as it should
+be — the parsed grammars are identical (the 2.9.0 test group compares
+them field by field), so the scanner runs the same code on the same
+records. The absolute table is again not refreshed (load 8–13); the
+2.7.0 table stays the baseline until a quiet-host run.
+
+## Bench note (2.8.0, 2026-10-20) — streaming engine, A/B'd
+
+Paired protocol, 2.7.1 and 2.8.0 alternated for 10 rounds, twice. Run 1
+at host load 7.0 → 11.7, run 2 at 7.7 → 11.6 (other builds on the host):
+
+| Benchmark                  | Run 1 median 2.8.0 / 2.7.1 | IQR            | Run 2 median |
+|----------------------------|---------------------------:|----------------|-------------:|
+| detect/path-shell          |                     −1.4 % | −5.1 … +5.6 %  |       −1.9 % |
+| detect/combined-asm-arm    |                     −1.1 % | −8.2 … +1.0 %  |       −3.2 % |
+| tokenize/shell-small       |                     +0.0 % | −3.5 … +2.9 %  |       +4.3 % |
+| blob/grammar-load-shell    |                     +0.2 % | −4.6 … +1.9 %  |       +1.2 % |
+| tokenize/json-small        |                     +0.4 % | −1.2 … +3.9 %  |       +1.5 % |
+| tokenize/html-compose      |                     +1.0 % | −5.4 … +1.7 %  |       −1.6 % |
+| tokenize/rust-small        |                     +1.9 % | −3.2 … +3.2 %  |       −1.3 % |
+| detect/content-python      |                     +3.6 % | +1.4 … +9.7 %  |       +7.8 % |
+
+No row moves outside its spread in both runs except `content-python`,
+the layout-sensitive row (§Bench note 2.6.2; run 2's IQR there was
+−13 … +29 %). That matches the change: a single feed meets the drain
+once, at finish, and the scanner's additions run only when asked — the
+heredoc line index in heredoc grammars, group collection when the drain
+sets it. 2.8.0's wins are in chunked streaming, which this bench does not
+exercise; they are in the CHANGELOG's 2.8.0 table (512 KB tokens in
+64-byte chunks 3–18 s → 0.01–0.05 s; a 540 KB `<style>` and a 550 KB
+fence in 4 KB chunks 12.8 s and > 300 s → 0.25 and 0.26 s).
+
+**The latency table is not refreshed for this minor.** Under this load
+the best-run absolutes sit 6–27 % above the 2.7.0 table (captured at
+load 1.2) for both versions alike, so they would record the host, not
+vyakarana. The 2.7.0 table stays the baseline; re-capture it on a quiet
+host.
+
+## Bench note (2.7.1, 2026-10-20) — grammar polish, A/B'd
+
+Paired protocol, 2.7.0 and 2.7.1 alternated for 10 rounds, host load
+≈ 3.6 (a second run at load 11–19 agreed within its wider spread):
+
+| Benchmark                  | Median 2.7.1 / 2.7.0 | IQR             |
+|----------------------------|---------------------:|-----------------|
+| detect/content-python      |               −9.7 % | −10.6 … −6.2 %  |
+| detect/path-shell          |               −2.8 % | −2.9 … +0.0 %   |
+| tokenize/json-small        |               +1.0 % | −0.6 … +2.2 %   |
+| detect/combined-asm-arm    |               +1.3 % | −0.1 … +3.6 %   |
+| tokenize/html-compose      |               +1.3 % | +1.1 … +3.4 %   |
+| tokenize/shell-small       |               +2.2 % | +1.1 … +2.7 %   |
+| tokenize/rust-small        |               +2.3 % | +1.4 … +4.7 %   |
+| blob/grammar-load-shell    |               +4.8 % | +2.0 … +8.7 %   |
+
+The tokenize rows pay ~2 % for the identifier step's prefix and
+`ident_lead` checks; grammar-load for the extra keys the loader compares
+(the loaded run measured it −0.7 %). `content-python` is the
+layout-sensitive row again. The 2.7.0 latency table stays the baseline.
+
+## History
+
+### Binary size, 2.2.1 – 2.8.0
 
 **`2.8.0` capture (2026-10-20).** 2.7.1 →
 2.8.0: 490,560 → 498,792 (+8,232; DCE 400,448 → 408,680) — all code,
@@ -181,7 +311,9 @@ grammar blobs (46 grammars × ADR 0014 inlining). 2.1.x audit
 (2026-05-09) flagged the cap revisit as a 2.x roadmap item; not
 a security or correctness concern. See ADR 0014 for why inlining
 is the right trade-off (downstream `cyrius deps` consumers no
-longer need to vendor `grammars/`).
+longer need to vendor `grammars/`). *(2.9.0 replaced the soft
+target with a checked 300 KiB budget on the DCE build — ADR 0029,
+and §Binary size above.)*
 
 Cyrius DCE is opt-in, not on by default — a plain `cyrius build`
 reports 342 unreachable fns (58,238 bytes) and emits them anyway.
@@ -194,7 +326,7 @@ not in size. (Re-checked 2026-07-31 on 6.5.4: the shipped
 since 1.0.0; see the 2.5.1 capture above. And DCE no longer
 leaves the size unchanged.)
 
-## Bench note (2.5.0, 2026-10-20) — toolchain bumps are perf-neutral
+### Bench note (2.5.0, 2026-10-20) — toolchain bumps are perf-neutral
 
 Both 2.4.3 (`6.6.2` → `6.6.20`) and 2.5.0 (`6.6.20` → `6.7.9`)
 were A/B'd on the *same* tree, three rounds alternating between
@@ -258,7 +390,7 @@ refresh needs an idle host, which this cut did not get; the
 re-runs `cyrius bench tests/bcyr/vyakarana.bcyr` on a quiet
 machine and replaces it.
 
-## Bench note (2.3.3, 2026-08-20) — toolchain bump is perf-neutral
+### Bench note (2.3.3, 2026-08-20) — toolchain bump is perf-neutral
 
 The `6.5.4` → `6.5.32` bump was A/B'd on the *same* tree by
 running `cyrius bench` under each toolchain back to back. All
@@ -285,123 +417,7 @@ win. The `2.3.0` table was captured on 6.5.4, which does subtract
 it. Table not refreshed: the documented cadence is minor-release
 boundaries, and this is a patch.
 
-## Bench note (2.9.1, 2026-10-21) — the closeout audit's fixes, A/B'd
-
-`sh scripts/bench-paired.sh 2.9.0`, host load 3.8–5.9: every tokenize row
-and grammar loading within ±1.1 %, `detect/content-python` −3.9 %, and
-`detect/path-shell` +9.4 % (a second run +9.3 %) — 3 ns on 31 ns, on code
-that did not change (`foo.sh` is matched by `_detect_short`, before the
-filename rule 2.9.1 tightened). A padding probe moved the same row 2.9 %
-with no code change at all: it is layout-sensitive like `content-python`.
-The audit's streaming fixes are in chunked feeds, which this bench does
-not run; `scripts/audit/stream-sweep.sh` times them (five inputs from
-over 10 s to under one).
-
-## Bench note (2.9.0, 2026-10-21) — compacted blobs, A/B'd
-
-`sh scripts/bench-paired.sh 2.8.0` — the protocol below, now one
-command — at host load 12.8 → 7.8 (other builds on the host):
-
-| Benchmark                  | Median 2.9.0 / 2.8.0 | IQR             |
-|----------------------------|---------------------:|-----------------|
-| blob/grammar-load-shell    |              −15.0 % | −24.6 … −14.2 % |
-| detect/combined-asm-arm    |               −4.3 % | −9.9 … −0.8 %   |
-| detect/path-shell          |               −3.9 % | −5.6 … −2.1 %   |
-| tokenize/shell-small       |               −2.9 % | −6.5 … +5.3 %   |
-| detect/content-python      |               −2.3 % | −8.9 … +5.3 %   |
-| tokenize/html-compose      |               −1.6 % | −4.9 … −0.3 %   |
-| tokenize/rust-small        |               −0.7 % | −5.1 … +3.6 %   |
-| tokenize/json-small        |               +0.6 % | −2.4 … +4.8 %   |
-
-Loading a grammar is 15 % faster: the loader no longer skips 156 KB of
-comments and blanks across the 46 blobs (an earlier run, which
-overlapped a gate run on the same host and spread ±20 % on every other
-row, agreed at −15.6 %). Every tokenize and detect row is within noise, as it should
-be — the parsed grammars are identical (the 2.9.0 test group compares
-them field by field), so the scanner runs the same code on the same
-records. The absolute table is again not refreshed (load 8–13); the
-2.7.0 table stays the baseline until a quiet-host run.
-
-## Bench note (2.8.0, 2026-10-20) — streaming engine, A/B'd
-
-Paired protocol, 2.7.1 and 2.8.0 alternated for 10 rounds, twice. Run 1
-at host load 7.0 → 11.7, run 2 at 7.7 → 11.6 (other builds on the host):
-
-| Benchmark                  | Run 1 median 2.8.0 / 2.7.1 | IQR            | Run 2 median |
-|----------------------------|---------------------------:|----------------|-------------:|
-| detect/path-shell          |                     −1.4 % | −5.1 … +5.6 %  |       −1.9 % |
-| detect/combined-asm-arm    |                     −1.1 % | −8.2 … +1.0 %  |       −3.2 % |
-| tokenize/shell-small       |                     +0.0 % | −3.5 … +2.9 %  |       +4.3 % |
-| blob/grammar-load-shell    |                     +0.2 % | −4.6 … +1.9 %  |       +1.2 % |
-| tokenize/json-small        |                     +0.4 % | −1.2 … +3.9 %  |       +1.5 % |
-| tokenize/html-compose      |                     +1.0 % | −5.4 … +1.7 %  |       −1.6 % |
-| tokenize/rust-small        |                     +1.9 % | −3.2 … +3.2 %  |       −1.3 % |
-| detect/content-python      |                     +3.6 % | +1.4 … +9.7 %  |       +7.8 % |
-
-No row moves outside its spread in both runs except `content-python`,
-the layout-sensitive row (§Bench note 2.6.2; run 2's IQR there was
-−13 … +29 %). That matches the change: a single feed meets the drain
-once, at finish, and the scanner's additions run only when asked — the
-heredoc line index in heredoc grammars, group collection when the drain
-sets it. 2.8.0's wins are in chunked streaming, which this bench does not
-exercise; they are in the CHANGELOG's 2.8.0 table (512 KB tokens in
-64-byte chunks 3–18 s → 0.01–0.05 s; a 540 KB `<style>` and a 550 KB
-fence in 4 KB chunks 12.8 s and > 300 s → 0.25 and 0.26 s).
-
-**The latency table is not refreshed for this minor.** Under this load
-the best-run absolutes sit 6–27 % above the 2.7.0 table (captured at
-load 1.2) for both versions alike, so they would record the host, not
-vyakarana. The 2.7.0 table stays the baseline; re-capture it on a quiet
-host.
-
-## Bench note (2.7.1, 2026-10-20) — grammar polish, A/B'd
-
-Paired protocol, 2.7.0 and 2.7.1 alternated for 10 rounds, host load
-≈ 3.6 (a second run at load 11–19 agreed within its wider spread):
-
-| Benchmark                  | Median 2.7.1 / 2.7.0 | IQR             |
-|----------------------------|---------------------:|-----------------|
-| detect/content-python      |               −9.7 % | −10.6 … −6.2 %  |
-| detect/path-shell          |               −2.8 % | −2.9 … +0.0 %   |
-| tokenize/json-small        |               +1.0 % | −0.6 … +2.2 %   |
-| detect/combined-asm-arm    |               +1.3 % | −0.1 … +3.6 %   |
-| tokenize/html-compose      |               +1.3 % | +1.1 … +3.4 %   |
-| tokenize/shell-small       |               +2.2 % | +1.1 … +2.7 %   |
-| tokenize/rust-small        |               +2.3 % | +1.4 … +4.7 %   |
-| blob/grammar-load-shell    |               +4.8 % | +2.0 … +8.7 %   |
-
-The tokenize rows pay ~2 % for the identifier step's prefix and
-`ident_lead` checks; grammar-load for the extra keys the loader compares
-(the loaded run measured it −0.7 %). `content-python` is the
-layout-sensitive row again. The 2.7.0 latency table stays the baseline.
-
-## Tokenize / detect / load latencies (2.7.0 baseline, 2026-10-20)
-
-Paired protocol (iterations ÷ 10, 2.6.2 and 2.7.0 alternated for 10
-rounds, host load ≈ 1.2), best run:
-
-| Benchmark                  |       Avg |       Min |       Max | Iterations |
-|----------------------------|----------:|----------:|----------:|-----------:|
-| tokenize/shell-small       | 10.849 µs | 10.638 µs | 11.281 µs | 100,000 × 10 runs |
-| tokenize/rust-small        | 16.103 µs | 15.866 µs | 18.000 µs | 100,000 × 10 runs |
-| tokenize/json-small        |  3.774 µs |  3.694 µs |  4.021 µs | 100,000 × 10 runs |
-| tokenize/html-compose      |  7.359 µs |  7.195 µs |  7.769 µs | 100,000 × 10 runs |
-| detect/path-shell          |     32 ns |     31 ns |     36 ns | 1,000,000 × 10 runs |
-| detect/content-python      |    188 ns |    186 ns |    197 ns | 1,000,000 × 10 runs |
-| detect/combined-asm-arm    |  5.265 µs |  5.229 µs |  5.569 µs | 100,000 × 10 runs |
-| blob/grammar-load-shell    | 30.292 µs | 29.885 µs | 32.242 µs | 10,000 × 10 runs |
-
-**Median per-round ratio 2.7.0 / 2.6.2:** content-python −13.8 %,
-path-shell −4.2 %, html-compose −2.8 %, combined-asm-arm −0.9 %,
-shell-small −0.7 %, rust-small +0.2 %, json-small +1.5 %,
-grammar-load-shell +1.5 %. Number scanning costs nothing measurable:
-`json-small` and `rust-small` carry floats and are within 2 %.
-`content-python` moved −13.8 % with no change on its path — the same
-row moved +13 % in 2.6.2 from code placement alone (§Bench note 2.6.2);
-it is back where 2.6.1 had it. Over 4,500 real files, 773 tokenize
-differently from 2.6.2 — every change is to a number token (ADR 0026).
-
-## Tokenize / detect / load latencies (2.6.0 baseline, 2026-10-20 — superseded by 2.7.0 above)
+### Tokenize / detect / load latencies (2.6.0 baseline, 2026-10-20 — superseded by 2.7.0 above)
 
 Same paired protocol as 2.5.2 below (iterations ÷ 10, 2.5.2 and 2.6.0
 alternated for 10 rounds, host load 1.8–2.6), best run:
@@ -431,7 +447,7 @@ both are now net improvements or within noise. Output equivalence: all
 2,840 non-shell real files in the sweep sample tokenize byte-identically
 to 2.5.2.
 
-## Tokenize / detect / load latencies (2.5.2 baseline, 2026-10-20 — superseded by 2.6.0 above)
+### Tokenize / detect / load latencies (2.5.2 baseline, 2026-10-20 — superseded by 2.6.0 above)
 
 **Captured on a loaded host, by a protocol that holds there.** An idle
 machine is not available (cyrius release work runs alongside), and two
@@ -460,7 +476,7 @@ Against the `2.3.0` table below: every tokenize row is faster
 9.3 µs), grammar load 33.2 → 28.9 µs, and `detect/content-python`
 is back to 198 ns from ~250 ns at 2.5.0 (2.5.1's shebang rewrite).
 
-## Bench note (2.6.2, 2026-10-20) — detection routes + audit fixes, A/B'd
+### Bench note (2.6.2, 2026-10-20) — detection routes + audit fixes, A/B'd
 
 Same paired protocol as 2.5.2 (below): bench built with iterations
 ÷ 10, 2.6.1 and the final 2.6.2 alternated for 10 rounds, median of the
@@ -490,7 +506,7 @@ to 2.6.1's 0.195 µs. It is the row 2.5.1 already found sensitive to
 small shifts; treat a move of this size in it as layout until a
 same-tree padding test says otherwise.
 
-## Bench note (2.5.2, 2026-10-20) — the audit's fixes, A/B'd
+### Bench note (2.5.2, 2026-10-20) — the audit's fixes, A/B'd
 
 Paired protocol above; median of the ten per-round 2.5.2 / 2.5.1
 ratios, with the interquartile range:
@@ -511,7 +527,7 @@ bigger wins: streaming heap no longer grows with input (8 MB fed: 195 MB
 → 105 KB), and compose openers without a closer are linear (1 MiB of
 `<style>`: > 300 s → 1.7 s) — both in the audit report.
 
-## Tokenize / detect / load latencies (2.3.0 baseline, 2026-07-31 — superseded by the 2.5.2 table above)
+### Tokenize / detect / load latencies (2.3.0 baseline, 2026-07-31 — superseded by the 2.5.2 table above)
 
 Per-call wall-clock averages from
 `cyrius bench tests/bcyr/vyakarana.bcyr` (8 benchmarks, each
@@ -561,8 +577,6 @@ Notes on shape:
   drain optimization is still the obvious lever — the
   small-input rows show the constant factor most starkly — and
   is the roadmap's 2.8.0 streaming-engine entry.
-
-## History
 
 ### 2.2.1 — refresh after streaming-wave (2026-05-08)
 

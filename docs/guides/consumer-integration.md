@@ -4,7 +4,7 @@ How to integrate vyakarana into a downstream Cyrius project
 (owl, cyim, vidya, or anything else that needs to tokenize
 source code).
 
-> **Last updated:** 2026-07-31 (2.3.0)
+> **Last updated:** 2026-10-21 (2.9.1)
 >
 > Audience: implementers writing the *renderer*, *editor*,
 > *theme*, or *content pipeline* that sits on top of vyakarana.
@@ -17,7 +17,7 @@ source code).
 ## What you depend on
 
 vyakarana ships a single concatenated distfile,
-`dist/vyakarana.cyr`, that bundles the public API **and the 45
+`dist/vyakarana.cyr`, that bundles the public API **and the 46
 grammars themselves** (inlined as Cyrius string literals — see
 [ADR 0014](../adr/0014-embedded-grammar-blobs.md)). Add to your
 project's `cyrius.cyml`:
@@ -25,27 +25,31 @@ project's `cyrius.cyml`:
 ```toml
 [deps.vyakarana]
 git     = "https://github.com/MacCracken/vyakarana.git"
-tag     = "2.3.0"
+tag     = "2.9.1"
 modules = ["dist/vyakarana.cyr"]
 ```
 
 `cyrius deps` will fetch the tag and copy the bundle in as
-`lib/vyakarana.cyr`. Pin to a tag, not a branch — the bundle
-changes per release. Moving an existing 2.2.3 pin up to 2.3.0 is
-free: the 2.3.0 bundle is byte-identical to 2.2.3's apart from
-its version header line. 2.3.0 is a toolchain catch-up on
-vyakarana's side, not an API cut — it puts no new compiler
-floor on yours.
+`lib/vyakarana.cyr`. The bundle `include`s the four stdlib modules
+it needs (`alloc`, `string`, `vec`, `io`), which the
+`dist/vyakarana.deps` sidecar names for `cyrius deps`. Pin to a
+tag, not a branch — the bundle changes per release. Moving a 2.x
+pin up changes what your renderer shows (tokenization fixes), not
+the API; [state.md](../development/state.md)'s Consumers section
+records each consumer's pinned tag and whether it builds against
+the current bundle.
 
-One adjacent trap, surfaced while cutting 2.3.0: `cyrius deps`
-unlinks and re-copies *dep* modules like `lib/vyakarana.cyr` on
-every run, but it treats an already-present *stdlib* module of
-the same size as satisfied and never refreshes it. So bumping
-the vyakarana tag does pick up the new bundle, while bumping
-your own `cyrius = "X.Y.Z"` pin silently leaves `lib/alloc.cyr`
+One adjacent trap, surfaced while cutting 2.3.0 (cyrius 6.5.4):
+`cyrius deps` unlinks and re-copies *dep* modules like `lib/vyakarana.cyr` on
+every run, but it treated an already-present *stdlib* module of
+the same size as satisfied and never refreshed it. So bumping
+the vyakarana tag did pick up the new bundle, while bumping
+your own `cyrius = "X.Y.Z"` pin silently left `lib/alloc.cyr`
 and friends at their old vintage — vyakarana's own tree ran on
-a 6.0.x-vintage `lib/` from 2.2.2 until this cut caught it.
-Re-vendor with `rm -rf lib && cyrius deps`.
+a 6.0.x-vintage `lib/` from 2.2.2 until that cut caught it.
+By cyrius 6.6.20 a plain `cyrius deps` refreshes a stale `lib/`
+(CHANGELOG 2.4.3; re-checked at 6.7.15). On an older pin,
+re-vendor with `rm -rf lib && cyrius deps`.
 
 > **1.11.0 and earlier are broken.** Through 1.11.0 the bundle
 > tried to read `grammars/<name>.cyml` from disk at runtime, but
@@ -90,6 +94,7 @@ fn tokenize_stream_discard_consumed(s)  -> i64            # 2.1.4+; tokens dropp
 
 fn has_grammar(name) -> i64                # 1 if known, 0 otherwise
 fn list_languages_into(out_vec) -> i64     # populates a vec of cstr names
+fn bootstrap_grammars()                    # explicit load (see Lazy loading)
 
 # Language detection (1.11.2+). All three return a language
 # name (cstr) suitable for tokenize_stream_new, or 0 if no match.
@@ -106,7 +111,8 @@ fn lsp_kind_from_standard_index(idx) -> i64    # by integer index in LSP 3.17 le
 These are the **stable** entry points. Their names and arg
 order do not change across the 2.x line — see
 [docs/architecture/overview.md](../architecture/overview.md)
-"Frozen public contracts."
+"Frozen public contracts." The header of `src/tokenize.cyr` is
+the authoritative list of the stream and registry symbols.
 
 ### Tokenbuf accessors
 
@@ -152,7 +158,7 @@ that kind. Pseudocode:
 
 ```cyrius
 var s = tokenize_stream_new("rust");
-if (s == 0) { return; }        # unknown grammar
+if (s == 0) { return 0; }      # unknown grammar
 var tb = tokenbuf_new();
 tokenize_stream_feed(s, src, strlen(src));
 tokenize_stream_finish(s, tb);
@@ -180,7 +186,7 @@ intermediate tokenbuf to manage:
 
 ```cyrius
 var s = tokenize_stream_new("rust");
-if (s == 0) { return; }        # unknown grammar
+if (s == 0) { return 0; }      # unknown grammar
 tokenize_stream_feed(s, src, strlen(src));
 tokenize_stream_finish(s, 0);   # 0 = drain into internal staging
 
@@ -218,9 +224,12 @@ implementation.
 
 ### Zero-copy
 
-The `(start, len)` pair indexes into the **caller's** source
-buffer. You own the buffer; vyakarana never copies bytes out of
-it. Don't free `src` until you're done reading the tokens.
+The `(start, len)` pair indexes into the **caller's** source —
+offsets from the first byte fed to the stream. `tokenize_stream_feed`
+copies each chunk into the stream's own rolling buffer to scan it
+([ADR 0017](../adr/0017-streaming-api.md)), but no token points
+there: slice your own bytes to render, and don't free `src` until
+you're done reading the tokens.
 
 ## Lazy loading
 
@@ -246,18 +255,24 @@ var s = tokenize_stream_new("unknown-lang");
 if (s == 0) {
     # No grammar matched. Render `src` as plain text.
     your_renderer_write_plain(src, strlen(src));
-    return;
+    return 0;
 }
 ```
 
 `tokenize_stream_feed` returns:
 - `VYK_OK` (0) — bytes accepted.
 - `VYK_ERR_OVERFLOW` (-1) — buffer cap (`VYK_STREAM_CAP`,
-  16 MB) would be exceeded. Since 2.0.1's rolling buffer
+  16 MiB) would be exceeded. Since 2.0.1's rolling buffer
   compacts after every drain, this bounds the longest
   *in-progress* span — one block comment, string, or fence
-  body — not the total bytes you feed. Total input is
-  unbounded.
+  body — not the total bytes you feed. Total input is capped at
+  4 GiB per stream (`VYK_OFFSET_CAP`, 2.3.4,
+  [ADR 0021](../adr/0021-token-span-width-ceiling.md)): past it
+  `feed` returns this code rather than wrap token offsets. A
+  still-open compose region or heredoc group is held for at most
+  `VYK_COMPOSE_HOLD_MAX` (8 MiB) / `VYK_HEREDOC_HOLD_MAX` (1 MiB)
+  before its bytes commit ([ADR 0028](../adr/0028-streaming-holds-watches-groups.md);
+  state.md has the exact bounds).
 - `VYK_ERR_FINISHED` (-2) — `tokenize_stream_finish` already
   ran on this stream; create a fresh one for new input.
 
@@ -287,11 +302,13 @@ manual re-sync step.
   2.5.1 this line said "No O(n²) paths" without qualification. It
   was false: a compose opener with no closer — `<style>` with no
   `</style>`, a stray fence — re-scanned to EOF per opener, and 1 MiB
-  of them ran past 300 s. 2.5.2 makes those paths linear.)* One
-  known super-linear case remains in the **streaming** API: a single
-  very long non-pair token (a line comment or identifier hundreds of
-  KB long) fed in small chunks is re-scanned on every drain. Bounded
-  by `VYK_STREAM_CAP`; tracked on the roadmap.
+  of them ran past 300 s. 2.5.2 makes those paths linear.)* The
+  **streaming** drain's quadratic cases — a very long comment,
+  identifier, whitespace or digit run, or a long fence or `<style>`
+  body, fed in small chunks — are linear since 2.8.0
+  ([ADR 0028](../adr/0028-streaming-holds-watches-groups.md)). What
+  remains is latency: a still-open compose region is held whole until
+  it closes (state.md, Known limits).
 - `tokenbuf` allocates by doubling, not per-token (ADR 0002).
   For an N-byte input expect ≤ log₂(N) allocations.
 - Public API has no syscalls beyond what your project's stdlib
@@ -315,7 +332,7 @@ manual re-sync step.
 If you're building a renderer in tandem with vyakarana
 development, the project tracks consumer-side coordination in
 [docs/development/state.md](../development/state.md)'s
-"Consumer pressure" line. The consumers that actually declare
+"Consumers" section. The consumers that actually declare
 `[deps.vyakarana]` are owl, cyim, and vidya; they should expect
 their pinned tag to be valid for the entire 2.x line — public
 API doesn't break across minors.

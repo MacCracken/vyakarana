@@ -34,9 +34,12 @@
 # tokenization.
 #
 # Filename dispatch: `filenames` below. A path ending in one of
-# them matches, and so does `<name>.<anything>` when no extension
-# claims it first — `Makefile.am`, `Makefile.in` (2.6.2, ADR 0025).
-# `.mk` include files route here too (2.6.2).
+# them matches where the name starts the path or follows `/ . - _`
+# (not `notaMakefile`, 2.9.1), and so does `<name>.<suffix>` when no
+# extension claims it first — `Makefile.am`, `Makefile.in` (2.6.2,
+# ADR 0025) — for a suffix that starts with a letter and is not a
+# compression, patch or tool one (`Makefile.rej`, `Makefile.cmake`
+# are not, 2.9.1). `.mk` include files route here too (2.6.2).
 #
 # Known gaps (not triggered by the stand-in):
 #   - `define VAR …` … `endef` multi-line variable bodies

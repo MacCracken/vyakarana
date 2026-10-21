@@ -1,11 +1,12 @@
 # 0014 — Embedded grammar blobs in the dist bundle
 
-- **Status:** Accepted
+- **Status:** Accepted — blob encoding amended by [ADR 0029](0029-compacted-blobs-posix-generator-size-budget.md) (2.9.0)
 - **Date:** 2026-05-08
 - **Deciders:** RM (proposed during the 1.11.1 cut after surfacing
   the integration-path bug in `lib/vyakarana.cyr`)
 - **Relates to:** ADR 0001 (single dist bundle as the consumer
-  contract), `dist/vyakarana.cyr`, `src/grammar.cyr` `grammar_load`,
+  contract — *amended 2.9.1: ADR 0001 is the corpus sync policy and
+  says nothing about the bundle*), `dist/vyakarana.cyr`, `src/grammar.cyr` `grammar_load`,
   `src/grammar_blobs.cyr` (generated), `scripts/embed-grammars.sh`,
   `docs/guides/consumer-integration.md`
 
@@ -85,6 +86,10 @@ true.
 - The grammar-author dev loop is unchanged. Edit
   `grammars/python.cyml`, run `vyk python.cyml input.py` — the
   file-load fallback handles it, no regeneration needed.
+  *(Amended 2.9.2: not so — see the 2.5.2 note under Decision. A
+  bundled path resolves to its blob, so an edited grammar needs
+  `scripts/embed-grammars.sh`, and `vyk` takes one FILE, no grammar
+  argument.)*
 - The blob format is opaque to the bundle consumer. A future
   optimization (pre-compiled grammar tables, gzipped blobs,
   alternate encodings) is a generator change only.
@@ -105,7 +110,8 @@ true.
   file path duplicate the buffer-copy + parse shape. The file
   path is justifiable (grammar-author workflow) but is now
   exercised only by hand, not by gates — risk of silent
-  regression.
+  regression. *(Amended 2.9.2: since 2.5.2 the blob is parsed in
+  place; only the file path reads into a buffer.)*
 - **Generator drift.** The script encodes assumptions about
   Cyrius string-literal escapes (`\\ \" \n \t \r`). If a future
   grammar uses some control byte the script doesn't escape, the
@@ -127,7 +133,9 @@ true.
 - The file-load fallback path is observed to be unused for a
   full milestone window. Then we can simplify `grammar_load`
   to blob-only and drop the `GRAMMAR_FILE_CAP` allocation in
-  the hot path.
+  the hot path. *(Amended 2.9.2: it is in use — owl and cyim load
+  their own `.cyml` files through `grammar_load`'s file path — and
+  since 2.5.2 the blob path allocates no buffer.)*
 - A future grammar-format change moves us off `.cyml` entirely
   (the grammar-format-stability section of ADR 0005 owns this
   question). At that point the embedded format follows the new

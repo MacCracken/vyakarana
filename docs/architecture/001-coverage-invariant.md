@@ -18,9 +18,9 @@ produces satisfies two properties:
 
 Together: **`sum(token.len for token in tokenbuf) == src_len`**,
 with each token contiguous to its predecessor. This is the
-property `scripts/smoke.sh` checks per language ("coverage
-N/N"); it's also the invariant the per-grammar test probes in
-`tests/vyakarana.tcyr` rely on.
+property `scripts/smoke.sh` checks for every corpus (token `len`
+sum against file bytes); it's also the invariant the per-grammar
+test probes in `tests/vyakarana.tcyr` rely on.
 
 ## Why it's not derivable from code
 
@@ -60,7 +60,9 @@ violates that assumption hangs the scanner.
 
 - **A pair rule with `start = ""`.** `_ds_try_pair_rules` would
   match every cursor position with zero advance and the loop
-  hangs. Guard at grammar-load time, not in the scanner.
+  hangs. Guard at grammar-load time, not in the scanner — since
+  2.5.2 `grammar_load` rejects an empty `start` (and an empty
+  operator or punctuation entry).
 - **A new `[defaults]` flag whose handler doesn't set `len`
   before exiting step 6+.** The pipeline expects `len > 0` from
   any branch that sets `kind`; a typo that leaves `len = 0` after
@@ -74,8 +76,11 @@ violates that assumption hangs the scanner.
 
 ## Where to verify
 
-- `scripts/smoke.sh` prints `coverage N/N` per language pair.
-  Anything other than `N/N` is a bug.
+- `scripts/smoke.sh` sums the token lengths for every
+  `lang:corpus` pair and fails with `<lang> coverage: token len
+  sum X != file bytes Y` on any mismatch. Any mismatch is a bug.
+  `fuzz/tokenize.fcyr` checks it on random input, and
+  `fuzz/chunk_invariance.fcyr` on every corpus file fed in chunks.
 - `tests/vyakarana.tcyr` includes per-grammar probes that walk
   the tokenbuf and assert contiguous spans.
 - `vyk --language=<lang> file | jq '.start + .len'` (one per

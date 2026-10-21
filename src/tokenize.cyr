@@ -17,9 +17,11 @@
 #
 # Cost: O(buf_len) scan per drain. For many small chunks that's
 # O(N²) total work over an N-byte stream — accept for 2.0.1's
-# minimal-state-machine implementation. A future optimization
-# would track scanner state explicitly so drain only scans new
-# bytes since the previous commit.
+# minimal-state-machine implementation. The watches since (2.0.3's
+# pending pair, 2.6.0's heredoc watch, 2.8.0's run and compose
+# watches — ADR 0028) skip that re-scan while the buffer's tail is
+# still waiting; a resumable scanner was considered there and
+# rejected.
 #
 # The pull adapter (`tokenize_stream_next` + the `_kind` / `_start`
 # / `_len` accessors) shipped in 2.0.2 and lives at the bottom of
@@ -177,11 +179,14 @@ var VYK_OFFSET_CAP = 4294967295;
 # to half-consume a compose rule whose end marker has not arrived,
 # so a `<style>` body cannot route to the css grammar until
 # `</style>` does. So bound it instead of removing it: past this
-# many bytes, give up on compose routing for that opener and let the
-# bytes tokenize with the OUTER grammar. Coverage and the zero-error
-# bar still hold; only the inner-grammar routing is lost, which is
-# the same degradation the scanner already applies when an inner
-# grammar is missing.
+# many bytes, stop holding and commit the bytes as that drain's scan
+# read them — with the OUTER grammar for a `compose` or
+# `compose_fenced` opener whose end has not arrived; a still-running
+# `compose_region` is read with its inner grammar to the buffer's
+# end. Coverage and the zero-error bar still hold; what is lost is
+# agreement with a single feed from there on. (This said "give up on
+# compose routing … with the OUTER grammar" for every rule type until
+# 2.9.1.)
 #
 # 8 MiB is deliberately generous: every real embedded stylesheet or
 # fenced block is orders of magnitude smaller, so this only fires on
@@ -352,7 +357,7 @@ fn tokenize_stream_new(lang) {
     store64(s + 80, 0);                # scan_resume
     store64(s + 88, scratch);          # scratch_tb, reused per drain (2.5.2)
     store64(s + 96, (0 - 1));          # last committed byte, -1 = none (2.6.0)
-    store64(s + 104, 0);               # heredoc watch: 1 = active (2.6.0)
+    store64(s + 104, 0);               # watch mode, 0 = off (2.6.0)
     store64(s + 112, 0);               #   delimiter offset in buf
     store64(s + 120, 0);               #   delimiter length
     store64(s + 128, 0);               #   indent (tab-stripped terminator) flag
@@ -437,21 +442,6 @@ fn tokenize_stream_feed(s, chunk, n) {
     return VYK_OK;
 }
 
-# Longest marker in the grammar's operator + punctuation tables.
-#
-# Needed because those tables are matched LONGEST-FIRST, which makes
-# the drain's "token ends before buf_len, so it is settled" rule
-# false for them. `tests/corpus/concept.md` at chunk=7: a table rule
-# `|---|` arriving as `|--` scans to `|`, `-`, `-` — `--` is not a
-# markdown operator but `---` is. Both `-` tokens end strictly before
-# buf_len, so both were committed, and the third `-` in the next feed
-# became a fourth token. One 3-byte `---` came back as three 1-byte
-# operators.
-#
-# An operator token starting at `p` can only grow into a marker that
-# starts at `p`, so `p + max_marker <= buf_len` is exactly the point
-# where the buffer is known to hold every candidate. Markers are 1-4
-# bytes in practice, so this holds back almost nothing.
 # Mode-3 marker checks (2.9.1). 1 if the marker at buf[p] starts a line
 # — `lead` 1 — or follows only bytes of cstr `lead` since one: the
 # byte before that run is a line break. Reaching the buffer's start is
@@ -563,6 +553,23 @@ fn _stream_num_lookahead(g) {
     return la;
 }
 
+# Longest marker in the grammar's operator + punctuation tables.
+#
+# Needed because those tables are matched LONGEST-FIRST, which makes
+# the drain's "token ends before buf_len, so it is settled" rule
+# false for them. `tests/corpus/concept.md` at chunk=7: a table rule
+# `|---|` arriving as `|--` scans to `|`, `-`, `-` — `--` is not a
+# markdown operator but `---` is. Both `-` tokens end strictly before
+# buf_len, so both were committed, and the third `-` in the next feed
+# became a fourth token. One 3-byte `---` came back as three 1-byte
+# operators.
+#
+# An operator token starting at `p` can only grow into a marker that
+# starts at `p`, so `p + max_marker <= buf_len` is exactly the point
+# where the buffer is known to hold every candidate. Operators are 1-4
+# bytes in practice; the rule markers and char literals measured below
+# reach 12 (`<![CDATA[`, `</script>`, DS_CHAR_LITERAL_MAX), so this
+# holds back at most a few bytes per drain.
 fn _stream_max_marker(g) {
     var best = 1;
     var ops = grammar_operators(g);
@@ -1764,7 +1771,7 @@ fn tokenize_stream_free(s) {
     store64(s + 64, 0);   # next_idx
     store64(s + 88, 0);   # scratch_tb (2.5.2)
     store64(s + 96, 0);   # last committed byte (2.6.0)
-    store64(s + 104, 0);  # heredoc watch (2.6.0)
+    store64(s + 104, 0);  # watch mode (2.6.0)
     store64(s + 112, 0);
     store64(s + 120, 0);
     store64(s + 128, 0);
@@ -1775,6 +1782,9 @@ fn tokenize_stream_free(s) {
     store64(s + 168, 0);
     store64(s + 176, 0);
     store64(s + 184, 0);
+    store64(s + 192, 0);  # delimiter copy (2.9.1)
+    store64(s + 200, 0);  # mode-3 lead (2.9.1)
+    store64(s + 208, 0);  # mode-3 escape (2.9.1)
     # pending_idx's "none" sentinel is -1, NOT 0 — 0 is a valid
     # pair-rule index. Every other field here poisons safely to 0,
     # and two call sites lean on that ("_free zeroes every field"

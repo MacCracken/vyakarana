@@ -2,8 +2,8 @@
 #
 # Rule scheme per ADR 0005. TypeScript is JavaScript syntax plus a
 # type-annotation layer; at the token level they're near-identical
-# (see also grammars/javascript.cyml — same defaults, smaller
-# keyword list).
+# (see also grammars/javascript.cyml — same defaults but `shebang`,
+# smaller keyword list).
 #
 # Corpus: tests/corpus/typescript.ts (vidya-backed).
 #

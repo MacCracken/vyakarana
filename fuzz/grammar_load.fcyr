@@ -9,8 +9,8 @@
 #   1. Empty / truncated / NUL-bombed CYML returns a non-null
 #      grammar handle (parser is forgiving — missing fields stay
 #      defaulted) or 0 (clean failure mode), never crashes.
-#   2. Embedded blobs round-trip: every bundled grammar still
-#      parses cleanly, names and extensions populate.
+#   2. Embedded blobs round-trip: there are 46, and eight bundled
+#      paths parse to a grammar with a name.
 #   3. Pathological CYML shapes (deeply nested arrays, runaway
 #      strings, headers without bodies) don't blow stack or
 #      heap.
@@ -47,11 +47,11 @@ fn fuzz_main(data, n) {
     # 1. Bundled blobs round-trip (46; the count check below). Triggers
     # bootstrap_grammars via has_grammar.
     if (has_grammar("shell") == 0) {
-        eprint("FAIL: shell didn't bootstrap\n", 30);
+        eprint("FAIL: shell didn't bootstrap\n", 29);
         return 1;
     }
     if (_grammar_blob_count() != 46) {
-        eprint("FAIL: blob count drifted from 46\n", 34);
+        eprint("FAIL: blob count drifted from 46\n", 33);
         return 1;
     }
 
@@ -63,21 +63,21 @@ fn fuzz_main(data, n) {
     while (load8(p) != 0) {
         var g = grammar_load(p);
         if (g == 0) {
-            eprint("FAIL: blob round-trip null for ", 32);
+            eprint("FAIL: blob round-trip null for ", 31);
             eprint(p, strlen(p));
             eprint("\n", 1);
             return 1;
         }
         var name = grammar_name(g);
         if (name == 0) {
-            eprint("FAIL: parsed grammar has null name\n", 36);
+            eprint("FAIL: parsed grammar has null name\n", 35);
             return 1;
         }
         checks = checks + 1;
         p = p + strlen(p) + 1;
     }
     if (checks != 8) {
-        eprint("FAIL: expected 8 round-trip checks\n", 36);
+        eprint("FAIL: expected 8 round-trip checks\n", 35);
         return 1;
     }
 
@@ -108,7 +108,7 @@ fn fuzz_main(data, n) {
                 if (nm != 0) {
                     var nl = strlen(nm);
                     if (nl > 256) {
-                        eprint("FAIL: parsed name longer than 256 bytes\n", 41);
+                        eprint("FAIL: parsed name longer than 256 bytes\n", 40);
                         return 1;
                     }
                 }
@@ -255,7 +255,7 @@ fn _gl_mutate_bundled() {
 
 fn _harness_main() {
     if (fuzz_main("x", 1) != 0) {
-        eprint("grammar_load fuzz: FAIL\n", 25);
+        eprint("grammar_load fuzz: FAIL\n", 24);
         return 1;
     }
     print("grammar_load fuzz: OK\n", 22);

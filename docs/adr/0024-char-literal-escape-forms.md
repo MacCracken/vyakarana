@@ -16,7 +16,7 @@ ADR 0010 made `char_literal = true` recognise four shapes: `'C'`,
 
 - C's octal escapes — `'\033'` (ESC, in every ANSI-colour helper),
   `'\0'` is fine but `'\177'` is not;
-- Java / Kotlin `'A'`, C / C++ `'\U0001F600'`;
+- Java / Kotlin `'\u0041'`, C / C++ `'\U0001F600'`;
 - Rust `'\u{2026}'` (the 2.5.2 real-file sweep found it emitting
   `TK_ERROR`, making `vyk` exit 1).
 
@@ -46,9 +46,11 @@ beside the scanner.
 
 ### Positive
 
-- `'\033'`, `'A'`, `'\U0001F600'`, `'\u{2026}'` are one string
+- `'\033'`, `'\u0041'`, `'\U0001F600'`, `'\u{2026}'` are one string
   token in every char-literal grammar (c, cpp, java, kotlin, rust, go,
   zig, ocaml, julia, crystal, csharp, swift, cyrius, asm).
+  *(Amended 2.9.2: `'\u0041'` here and in the Context read `'A'` —
+  the escape had been decoded.)*
 
 ### Negative
 

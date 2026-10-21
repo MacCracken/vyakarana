@@ -19,7 +19,7 @@
 # Adding a theme means adding a clause to `theme_color()` and
 # a name to `theme_resolve()`.
 #
-# Theme *export* shipped in 1.12.1 / 1.13.0 — see
+# Theme *export* shipped in 1.11.1 (vscode) and 1.12.1 (helix, iterm) — see
 # `src/theme_export.cyr` and `vyk --export-theme=vscode|helix|
 # iterm`. There is still no theme *import* format: themes are
 # compiled in, not loaded from disk, and nothing has asked for
@@ -29,9 +29,9 @@
 # was doubly stale.)
 #
 # Theme handle: a plain i64 tag. 0 = none, 1 = default,
-# 2 = dark. Direct integer because Cyrius enums consume
-# `gvar_toks` slots (see CLAUDE.md gotcha) and we don't need
-# more than three.
+# 2 = dark. Literal `var`s, like the TK_* kinds — neither they
+# nor an enum take a `gvar_toks` slot (CLAUDE.md gotcha; this
+# used to say enums do) — and we don't need more than three.
 
 include "src/token.cyr"
 

@@ -87,6 +87,12 @@ file) and remove the stand-in marker.
 - Stand-ins: same path shape but file contents begin with the
   marker comment cited above. `git log` on the file will show a
   vyakarana-side creation commit (no vidya upstream).
+  *(Amended 2.9.2: seven carry no marker — `concept.cr`, `.jl`,
+  `.nix`, `.ps1`, `.svelte` and `.tf` open with a "Vidya — Lexing
+  and Parsing in …" title though vidya ships none of them, and
+  `concept.vue` has no header. The corpus column of the
+  [architecture overview](../architecture/overview.md)'s "Bundled
+  grammars" table names every file's source.)*
 
 ### When to revisit
 
@@ -94,4 +100,5 @@ file) and remove the stand-in marker.
   remove marker, done.
 - **M7 (RC / v1.0).** If any stand-in is still live at RC, the
   polish pass should either upstream the file to vidya or note the
-  stand-in status in the release notes.
+  stand-in status in the release notes. *(Amended 2.9.2: 1.0.0's
+  notes did; at 2.9.1, 33 of the 48 corpus files are stand-ins.)*

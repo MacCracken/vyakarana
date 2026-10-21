@@ -115,6 +115,9 @@ captured from the input bytes.
 offset 168 (`GRAMMAR_SIZE` 168 → 176). New struct
 `ComposeFencedRule` (16 bytes: start, end). Loader handles
 `match = "compose_fenced"` → mt = 5 in `_gp_close_rule`.
+*(Amended 2.9.2: the record is 40 bytes now — a no-closer
+watermark at +16 / +24 since 2.5.2, and `end_indent` at +32 since
+2.9.1.)*
 
 ## Consequences
 
