@@ -77,9 +77,10 @@ char_literal  = false
 #   `->` — implication.
 #   `?`  — has-attribute test (`set ? path`).
 #   `@`  — `@`-pattern in function args.
-#   `$`  — start of `${...}` interpolation; tokenizes as 1-byte
-#          op when not followed by `{` (interpolation body
-#          stays inside the surrounding string in 2.1.x).
+#   `$`  — start of `${...}` interpolation; outside a string it
+#          tokenizes as a 1-byte op (inside one, the whole
+#          interpolation stays part of the string token — see
+#          Known gaps).
 operators = [
     "//", "++", "->",
     "==", "!=", "<=", ">=",

@@ -32,15 +32,25 @@ Trust boundary:
   ship in the repo and are part of the library's trusted
   surface. A consumer that loads its own `.cyml` from an
   attacker-controlled path is responsible for that path's
-  trust — the parser still bounds-checks, but the surface there
-  is "library trusts the caller's choice of grammar."
-- **`vyk` CLI** reads files up to `VYK_SRC_CAP` (1 MB at 1.1.0)
-  via `file_read_all`. Larger files are silently truncated to the
-  first 1 MB — FINDING-003, accepted as-is. M5's streaming
-  tokenizer landed in 2.0.0 without lifting that ceiling; it
-  bounds the live buffer separately through `VYK_STREAM_CAP`
-  (16 MB), which caps the longest in-progress span rather than
-  total input.
+  trust — the parser still bounds-checks, and since 2.5.2 it
+  also REJECTS (returns 0 for) a grammar whose rules are
+  incomplete or inconsistent, which before then loaded and
+  crashed the scanner later.
+- **`vyk` CLI** reads files up to `VYK_SRC_CAP` (1 MiB) via
+  `file_read_all`. A larger file is refused loudly — exit 3 with
+  an error on stderr — since 2.3.4 (P1-1 of that audit; through
+  2.3.3 it was silently truncated, and this paragraph said that
+  was "accepted"). The streaming API bounds its live buffer
+  separately through `VYK_STREAM_CAP` (16 MiB), which caps the
+  longest in-progress span rather than total input.
+- **Terminal output.** `vyk --theme=<name>` writes source bytes to
+  a terminal. Since 2.5.2 every control byte a terminal would act
+  on — C0 controls other than TAB / LF, a bare CR, DEL, and C1
+  controls in either encoding — is written as a visible escape
+  (`^[`, `^M`, `\x9b`); through 2.5.1 a file holding
+  `ESC ] 0 ; … BEL` retitled the window and `ESC [ 2 J` cleared
+  the screen, under every theme including `none`. Valid UTF-8 is
+  unchanged. NDJSON output never contains source bytes.
 
 ## What's in scope
 
@@ -51,8 +61,16 @@ Trust boundary:
   tokens, or token spans that overlap / leave gaps.
 - Unbounded allocation traceable to attacker-controlled input
   (input size, token count, grammar shape).
-- ANSI-escape injection through CLI error messages — sanitised
-  in 1.0.1 (FINDING-006); regressions in scope.
+- Terminal-escape injection through CLI error messages
+  (sanitised in 1.0.1, FINDING-006; C1 controls added in 2.5.2)
+  or through `--theme` source rendering (escaped since 2.5.2);
+  regressions in scope.
+- Super-linear time on adversarial input — e.g. compose openers
+  with no closer were quadratic until 2.5.2 (1 MiB of `<style>`
+  ran past 300 s). Known remaining case: in the STREAMING API, a
+  single very long non-pair token (a line comment or identifier
+  hundreds of KB long) fed in small chunks is re-scanned per
+  drain; tracked on the roadmap.
 - Adversarial `.cyml` grammar files crashing or hanging the
   loader.
 - Public-API misuse that produces undefined behaviour rather

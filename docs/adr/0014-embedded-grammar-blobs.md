@@ -53,13 +53,18 @@ generated module that lives in the dist bundle.**
   sequence in CLAUDE.md). It's also listed in `[lib] modules` so
   `cyrius distlib` concatenates it into `dist/vyakarana.cyr`.
 - `grammar_load(path)` consults `_grammar_blob_data(path)` first.
-  When the blob is present, the bytes are copied into a writable
-  buffer (the parser writes NUL terminators in place — can't hand
-  it the read-only literal directly) and parsed exactly like a
-  file read.
-- The file-load path stays as a fallback. `vyk grammars/foo.cyml`
-  on the command line — used by grammar authors to test edits
-  without regenerating the blob file — still reads from disk.
+  When the blob is present it is parsed in place, exactly like a
+  file read. *(Amended 2.5.2: this bullet said the bytes were
+  copied into a writable buffer because "the parser writes NUL
+  terminators in place". The parser never writes to its input, so
+  the copy was dropped — it cost a never-freed 32 KiB per grammar.)*
+- The file-load path stays as a fallback for paths that are not
+  bundled grammars. *(Amended 2.5.2: this bullet claimed grammar
+  authors could edit `grammars/foo.cyml` and test it via `vyk
+  grammars/foo.cyml` without regenerating the blobs. Neither half
+  held — a bundled path always resolves to its blob, and `vyk` on
+  a `.cyml` path tokenizes it as CYML source. After editing a
+  bundled grammar, re-run `scripts/embed-grammars.sh`.)*
 
 Scope: **dist bundle correctness only.** This isn't a new feature;
 it's the implementation that makes the existing consumer contract

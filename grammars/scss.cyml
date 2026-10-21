@@ -51,6 +51,14 @@ unicode_ident = true
 char_literal  = false
 
 operators = [
+    # Comparison operators for `@if` / `@else if` / `@while`; through
+    # 2.5.1 `$a == $b` came out `=` + `=` (2.5.2 audit P3-a). Listed
+    # first — the scanner takes the first entry that matches.
+    "==", "!=", "<=", ">=",
+    # `$=` and `-` never fire: `$` and `-` are in `ident_start`, and
+    # the ident step (6) runs before operators (8) — `[href$=x]`
+    # gives ident `$` + `=`, and the minus in `$a - $b` is a 1-byte
+    # ident. Unreachable but harmless.
     "^=", "$=", "*=", "~=", "|=",
     "::",
     "+", "-", "*", "/",

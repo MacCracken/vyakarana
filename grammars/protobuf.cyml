@@ -20,10 +20,10 @@
 #     as ident + `=` + value.
 #   - Numeric literal suffixes (`1.5e3`). Same number-scanner
 #     limitation as java.cyml; cosmetic.
-#   - Reserved field tag ranges `reserved 100 to 199;` — the
-#     `reserved` keyword is in the keyword list; `to` is not
-#     (it's an Elixir/SQL keyword but not Protobuf). Adding to
-#     the keyword set if a real corpus needs it.
+#   - (Not a gap.) Reserved field tag ranges `reserved 100 to
+#     199;` / `reserved 5 to max;` — `reserved`, `to` and `max`
+#     are all in the keyword list, so these tokenize as keyword,
+#     number, keyword, then a number or `max` keyword.
 
 [grammar]
 name = "protobuf"

@@ -22,10 +22,10 @@
 # `<script>` blocks, and the `<!-- … -->` comment shape.
 # Replace with a vidya snapshot when one ships.
 #
-# Embedded `<script>` and `<style>` blocks tokenize as plain
-# HTML — body content is just a sequence of idents, operators,
-# strings, etc. **Grammar composition** for routing inner
-# content through JS / CSS grammars is scheduled for 1.11.0.
+# Embedded `<script>` and `<style>` bodies route through the
+# javascript / css grammars via compose rules (ADR 0013; see the
+# Rules section). Only the bare tags match — an attribute-bearing
+# `<script type="module">` body still tokenizes as plain HTML.
 #
 # Known gaps (not triggered by the stand-in):
 #   - DOCTYPE declarations (`<!DOCTYPE …>`). The stand-in
@@ -69,11 +69,11 @@ char_literal  = false
 operators = [
     "<", ">", "=", "/",
     "&", "!", "?",
-    # `#` shows up in embedded CSS hex colors (`#FF6600`),
-    # numeric character references (`&#8212;`), and `id`-style
-    # URL fragments. Listed as a 1-byte op so embedded content
-    # tokenizes cleanly until grammar composition (1.11.0) routes
-    # `<style>` / `<script>` bodies to their own grammars.
+    # `#` shows up in numeric character references (`&#8212;`),
+    # `id`-style URL fragments, and CSS hex colors (`#FF6600`) in
+    # a body the compose rules don't route — an attribute-bearing
+    # `<style media="…">` body is scanned by this grammar. Listed
+    # as a 1-byte op so none of it errors.
     "#",
     # Free text. Element content and attribute values are
     # arbitrary characters — `50% off`, `a | b`, `$5`, `x ~ y`,

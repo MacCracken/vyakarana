@@ -4,6 +4,121 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.5.2] — 2026-10-20
+
+**Closeout audit — the CLAUDE.md hardening step, run in full.** Four
+subsystem reviews, a cross-check of all 46 grammar headers, and empirical
+sweeps over 3,846 real files (2,869 from `~/Repos`, all 977 vidya
+samples), a poison-allocator A/B over 1,577 of them, and an every-offset
+streaming split over all 41 non-compose corpora. **5 P1, 10 P2 and 12 P3
+defects fixed**; the rest are placed in pinned releases on the roadmap.
+Full write-up with reproductions:
+[docs/audit/2026-10-20-2.5.x-closeout-audit.md](docs/audit/2026-10-20-2.5.x-closeout-audit.md).
+
+927/927 tests (+4 assertions, +1 invariant group), smoke OK (new 2.5.2
+group), lint+fmt exit 0 with 0 warnings, fuzz 5/5 — `chunk_invariance` and
+`grammar_load` strengthened, and both new versions fail against 2.5.1.
+No token kind, `Token` layout or public streaming-API change. Toolchain
+unchanged (`6.7.15`).
+
+### Security
+
+- **`vyk --theme` no longer writes the file's terminal control bytes raw.**
+  A file holding `ESC ] 0 ; … BEL` retitled the window and `ESC [ 2 J`
+  cleared the screen, under every theme including `none`. C0 controls
+  other than TAB / LF, a bare CR, DEL and C1 controls (UTF-8 `C2 80`–`9F`
+  or a stray raw `80`–`9F`) now render as visible escapes (`^[`, `^M`,
+  `\x9b`); valid UTF-8 and CRLF are unchanged — all 48 corpora are
+  byte-identical to source under `--theme=none`.
+- **stderr path echoes now replace C1 controls too** (FINDING-006 covered
+  C0 / DEL only).
+- **Compose openers with no closer are no longer quadratic.** 1 MiB of
+  `<style>` with no `</style>` ran past 300 s; 1 MiB of unclosed fence
+  lines took 282 s. Per-call no-closer watermarks: 1.7 s and 2.1 s, output
+  identical to 2.5.1.
+
+### Fixed
+
+- **Streaming: char literals split by a chunk boundary** (`'\n'` fed as
+  `'\n` + `'`) were committed as a `'` operator — the hold-back window
+  ignored `char_literal`. c, ocaml, julia, crystal, asm.
+- **Streaming: strings closed on an escaped quote**, by two paths the
+  2.3.4 fix missed — the first-set pending path had no escape back-off,
+  and `_stream_is_trailing_complete` accepted a buffer ending `…\"` as a
+  closed string. json, toml, csharp, kotlin, php, swift.
+- **Streaming heap no longer grows with every byte fed.** Each drain
+  allocated a fresh scratch tokenbuf the bump allocator never frees:
+  8 MB fed → 195 MB heap (rust). One scratch per stream now; 8 / 16 /
+  32 MB fed → 3.08 MB, flat. ADR 0021's 4 GiB-per-stream contract is
+  reachable again.
+- **Streaming: a `#!` line mid-stream** came back `preprocessor` after the
+  rolling buffer compacted.
+- **Every non-compose grammar is now chunk-invariant at every split
+  offset** — 41/41 corpora, up from 29.
+- **JSON with a decimal number exited 1** — `.` emitted `TK_ERROR`.
+- **`lsp_kind_from_standard_index` returned the wrong kind for indices
+  14–22** (comment → keyword, string → comment, …); now the LSP 3.17
+  order (+ 3.18 `label`). ADR 0012 amended. No consumer calls it yet.
+- **`has_grammar(0)` / `tokenize_stream_new(0)` segfaulted** — so did
+  `tokenize_stream_new(detect_language(path))` for an unknown file type.
+  `tokenize_stream_next` after `_free` too.
+- **Malformed grammars are rejected instead of crashing the scanner
+  later** — `pair` without `end`, `compose` without `inner`, `words` +
+  `inner`, empty `start`, unknown `match`, half-declared ident tables,
+  empty list entries, a compose rule naming its own grammar. A trailing
+  `#` comment holding `"` or `[` no longer swallows the following keys;
+  an unknown `[section]` no longer writes into the previous one.
+- **Unreachable operators** (first match wins in list order): php `===`
+  `!==`, crystal `<<=` `>>=` `&&=` `||=`, ruby `&&=` `||=`, julia `>>>`,
+  powershell `-isnot`. **Missing operators:** OCaml `::` `;;`, Ruby `::`,
+  SCSS `==` `!=` `<=` `>=`.
+- **CYML:** `"""` / `'''` multi-line strings (seven vidya field-note
+  documents exited 1); a body no longer ends at a line starting `[` —
+  only at `[[` (vidya `types.cyml` lost ~14 KB to TOML lexing).
+- **Char literals:** on for the cyrius grammar (`'"'` emitted
+  `TK_ERROR`); `'\033'`, `'\uXXXX'`, `'\U…'` and `'\u{…}'` are one token
+  in every char-literal grammar. ADR 0010 amended.
+- **`.zsh` files are detected as shell** (they exited 4).
+- **`vyk --handcoded` covers bytes after a NUL** (it used `strlen`).
+- Unchecked allocations in `tokenize_stream_new` and the compose paths;
+  `emitted` over-counted on the streaming fast path.
+
+### Changed
+
+- **Compose tokenization reuses one inner tokenbuf per nesting depth**
+  instead of allocating per match (1 MB of `<style>a</style>`: 57.8 MB of
+  heap before).
+- **`grammar_load` parses embedded blobs in place.** It copied each into
+  a fresh 32 KiB buffer because "the parser writes NUL terminators in
+  place"; it does not. ~1.5 MB less never-freed heap at bootstrap.
+- `fuzz/chunk_invariance.fcyr` covers all 41 non-compose corpora (was
+  15), adds two-feed splits every 37 bytes and every-offset audit repros.
+  `fuzz/grammar_load.fcyr`'s size table was truncated by `store8` (16 of
+  24 iterations parsed nothing); it now also tokenizes line-deletion
+  mutants of all 46 grammars with a coverage check.
+- Tests: LSP index assertions follow the spec (they pinned the bug) and
+  cross-check the name path; a grammar invariant fails on any shadowed
+  operator / punctuation entry in any loaded grammar.
+
+### Docs
+
+- ~45 stale or false statements corrected: grammar headers contradicting
+  their bodies (30+ sites), `SECURITY.md` (oversize "silently truncated —
+  accepted"), ADR 0014 and `grammar_load` ("parser writes NULs in place",
+  "edit a `.cyml` without regenerating"), `consumer-integration.md` ("No
+  O(n²) paths"), the shell oracle's `$0..9` claim, version-stale counts.
+
+### Performance
+
+Paired A/B, 10 alternating short runs on a loaded host (`performance.md`
+§2.5.2, which also refreshes the latency baseline last captured at
+2.3.0): grammar load **−14.5 %** (blobs parsed in place), content
+detection −2.7 %, tokenize rows +0.4 to +2.6 %, json-small +6.2 % (`.`
+is now a JSON operator), path detection +9.4 % (32 → 35 ns, the `.zsh`
+check). Nothing near the 20 % watch line. Binary 423,480 → 444,032 B
+(DCE 337,464 → 353,920), +8.4 KB of it the corrected grammar comments,
+which the embedded blobs carry verbatim.
+
 ## [2.5.1] — 2026-10-20
 
 Toolchain `6.7.9` → `6.7.15`, a leaner stdlib footprint, and the `detect/content-python`

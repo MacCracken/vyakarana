@@ -25,10 +25,10 @@
 # semantics.)
 #
 # Filename dispatch: Dockerfile uses no extension. `detect_language`
-# in `src/main.cyr` matches the literal name `Dockerfile` (and
-# common variants like `Containerfile`, `*.Dockerfile`,
-# `Dockerfile.*`). Users with non-standard names pass
-# `--language=dockerfile` explicitly.
+# in `src/detect.cyr` matches a path ending in `Dockerfile` or
+# `Containerfile` (so `*.Dockerfile` too). `Dockerfile.*` variants
+# (`Dockerfile.dev`) are NOT matched; users with those or other
+# non-standard names pass `--language=dockerfile` explicitly.
 #
 # Known gaps (not triggered by the stand-in):
 #   - Heredoc syntax (`COPY <<EOT`, etc.). Variable-length
@@ -66,6 +66,8 @@ operators = [
     "=", "+", "-", "*", "/",
     "<", ">",
     "&", "|", "^", "~",
+    # `#` never fires: the `#` line-comment rule (step 2) claims
+    # every `#` first. Unreachable but harmless.
     "!", "?", "@", "$", "#",
     "\\",
     # `%` appears in `RUN` bodies (shell `${x%%y}`, `printf` specs)
@@ -119,7 +121,8 @@ words = [
     "SHELL",
     # Build modifiers
     "ONBUILD",
-    # `AS` for `FROM x AS name`; `--from=` is operator + ident
+    # `AS` for `FROM x AS name`. `--from=` is `-` `-` operators +
+    # `from` + `=`, and `from` folds to the FROM keyword (ADR 0011).
     "AS",
 ]
 

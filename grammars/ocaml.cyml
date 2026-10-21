@@ -3,8 +3,8 @@
 # Rule scheme per ADR 0005. OCaml's surface differs from the
 # C-family on several axes:
 #   - `(* … *)` block comments. Nestable per spec; the pair-rule
-#     scanner is greedy so nested forms close at the first `*)`
-#     — same documented gap as Rust.
+#     scanner closes at the first `*)`, so after a nested comment
+#     the rest of the outer one tokenizes as code — known gap.
 #   - No line comments. `//` and `#` are not comment markers.
 #   - `'a` type variables AND `'c'` char literals share the same
 #     opening byte. The char_literal helper's lifetime-preservation
@@ -13,8 +13,9 @@
 #     2) falls through to operator + ident; `'a'` matches the
 #     char-literal shape.
 #   - Rich operator surface: `|>` (pipe), `<-` (mutable assign),
-#     `:=` (ref assign), `->` (function arrow), `;;` (REPL
-#     terminator), `[|…|]` (array literal), `**` (power).
+#     `:=` (ref assign), `->` (function arrow), `::` (list cons),
+#     `;;` (toplevel terminator), `[|…|]` (array literal), `**`
+#     (power). `::` / `;;` are operators since 2.5.2.
 #
 # Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
 # vidya doesn't ship an OCaml reference sample yet. The local
@@ -54,10 +55,15 @@ char_literal  = true
 
 # Operators in longest-match order. OCaml-specific: `|>` (pipe),
 # `<-` (mutable record-field assignment), `:=` (ref assignment),
-# `->` (function arrow), `;;` (REPL terminator), `**` (power),
+# `->` (function arrow), `::` (list cons), `;;` (toplevel
+# terminator), `**` (power),
 # `@@` (function application without precedence), `@` (list
 # concat). `<>` is structural inequality (not equal).
 operators = [
+    # `::` (list cons) and `;;` (toplevel terminator) are core
+    # OCaml; through 2.5.1 neither was listed and both split into
+    # two punctuation bytes (2.5.2 audit P3-a).
+    "::", ";;",
     "<<=", ">>=",
     "<<", ">>",
     "&&", "||",
@@ -81,8 +87,9 @@ operators = [
     "`", "$",
 ]
 
-# Punctuation. `;` is statement separator; `;;` (REPL terminator)
-# is matched as 2-byte operator above. `::` not used in OCaml.
+# Punctuation. `;` is statement separator; `;;` (toplevel
+# terminator) and `::` (list cons) match as 2-byte operators
+# above, which run before punctuation.
 punctuation = [
     "(", ")", "{", "}", "[", "]",
     ";", ",", ":", ".",
@@ -93,7 +100,7 @@ punctuation = [
 
 # `(* … *)` block comments. Non-nestable in this implementation;
 # the spec allows nesting but the pair-rule scanner closes at the
-# first `*)`. Same gap as Rust.
+# first `*)` (see grammar header).
 [[rules]]
 kind = "comment"
 match = "pair"

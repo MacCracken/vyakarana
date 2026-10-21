@@ -31,7 +31,7 @@
 #     (`1_000_000`). Tokenize as number + ident or fragment at the
 #     `_` — cosmetic; coverage holds.
 #   - Float literals (`3.14`). The number scanner stops at `.`;
-#     `3.14` becomes `number(3) + .(operator) + number(14)`.
+#     `3.14` becomes `number(3) + .(punct) + number(14)`.
 #     Cosmetic; coverage holds.
 
 [grammar]
@@ -73,10 +73,10 @@ operators = [
     "!", "~", "&", "|", "^",
     "<", ">",
     "?",
-    # `'` / `\` fallbacks for char-literal escape forms outside
-    # ADR 0010's `'C'` / `'\C'` / `'\xHH'` set — `'\u0041'` — and
-    # for Java's `\uXXXX` source escapes, which are legal anywhere
-    # in a compilation unit.
+    # `'` / `\` fallbacks for a `'` that doesn't close a char
+    # literal, and for Java's `\uXXXX` source escapes, which are
+    # legal anywhere in a compilation unit. (`'\u0041'` itself is
+    # one char-literal token since 2.5.2 — ADR 0010.)
     "'", "\\",
 ]
 

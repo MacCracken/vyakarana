@@ -133,6 +133,18 @@ was removed in 2.0.0 (ADR 0017).
 
 ## Status
 
+**2.5.2** (2026-10-20) — the 2.5.x closeout audit. `vyk --theme` no
+longer passes a file's terminal escape sequences through to your
+terminal; streaming is chunk-invariant at every split offset for all
+41 non-compose grammars and no longer grows its heap with every byte
+fed; unclosed `<style>` / code fences no longer make tokenization
+quadratic; malformed grammars are rejected instead of crashing. JSON
+decimals, CYML `"""` strings, PHP `===`, OCaml / Ruby `::` and `.zsh`
+files all tokenize correctly now. 927/927 tests. Details in
+[docs/audit/2026-10-20-2.5.x-closeout-audit.md](docs/audit/2026-10-20-2.5.x-closeout-audit.md);
+what comes next is pinned in
+[docs/development/roadmap.md](docs/development/roadmap.md).
+
 **2.5.1** (2026-10-20) — toolchain pinned at `cyrius 6.7.15`.
 **46** bundled grammars, 923/923 tests, 5/5 fuzz harnesses. `vyk`
 is 33 KB smaller (an unused stdlib module dropped), shebang

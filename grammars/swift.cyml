@@ -18,6 +18,9 @@
 # [ADR 0008](../docs/adr/0008-toml-triple-quoted-strings.md) for
 # TOML).
 #
+# Attributes (`@available`, `@objc`, `@MainActor`): `@` is in
+# `ident_start`, so each tokenizes as one ident.
+#
 # Known gaps (not triggered by the stand-in):
 #   - String interpolation `\(expr)` stays inside the string-pair
 #     span per [ADR 0003](../docs/adr/0003-string-expansion-not-retokenized.md).
@@ -27,9 +30,8 @@
 #     heredocs, PHP's heredocs — track collectively.
 #   - Nestable block comments (Swift's `/* */` is technically
 #     nestable per the spec; the pair rule closes at the first
-#     `*/`). Same gap as Rust.
-#   - Attribute syntax (`@available`, `@objc`). `@` is in
-#     `ident_start` so `@available` tokenizes as one ident.
+#     `*/`, so after a nested comment the rest of the outer one
+#     tokenizes as code).
 
 [grammar]
 name = "swift"
@@ -155,7 +157,9 @@ words = [
     # Type / generics
     "any", "some", "Any", "Type",
     "inout",
-    # Misc
+    # Misc — both repeat entries above (`import` under Module,
+    # `associatedtype` under Type-declaration heads). Harmless:
+    # first match wins, same kind.
     "import", "associatedtype",
 ]
 

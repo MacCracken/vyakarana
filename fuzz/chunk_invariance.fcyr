@@ -57,6 +57,24 @@ fn _ci_tok(lang, src, n, chunk) {
     return tb;
 }
 
+# Feed `src`/`n` as TWO pieces split at `p` — drain after each — then
+# finish. Fixed chunk sizes alone missed two 2.5.2 P1s: a char literal
+# and an escaped quote split by the boundary only fail when the cut
+# lands on one exact byte, and no chunk size in the list happened to
+# put a boundary there.
+fn _ci_split(lang, src, n, p) {
+    var s = tokenize_stream_new(lang);
+    if (s == 0) { return 0; }
+    var tb = tokenbuf_new();
+    tokenize_stream_feed(s, src, p);
+    tokenize_stream_drain(s, tb);
+    tokenize_stream_feed(s, src + p, n - p);
+    tokenize_stream_drain(s, tb);
+    tokenize_stream_finish(s, tb);
+    tokenize_stream_free(s);
+    return tb;
+}
+
 # Compare two tokenbufs for exact (kind, start, len) equality.
 # Returns 1 on match, 0 on mismatch (and reports).
 fn _ci_same(a, b, lang, chunk) {
@@ -151,30 +169,104 @@ fn _ci_one(path, lang) {
         }
         k = k + 1;
     }
+    # Two-feed splits every 37 bytes (prime, so the cuts drift through
+    # every alignment the chunk sizes above repeat).
+    var sp = 1;
+    while (sp < n) {
+        var stb = _ci_split(lang, buf, n, sp);
+        if (stb == 0) { rc = 1; }
+        if (stb != 0) {
+            if (_ci_same(whole, stb, lang, sp) == 0) {
+                eprint("  (two-feed split at the offset above)\n", 39);
+                rc = 1;
+            }
+        }
+        sp = sp + 37;
+    }
     return rc;
 }
 
-# Grammars whose corpus is chunk-invariant today. Every one of these
-# was verified green when 2.4.0 landed.
+# Every-offset two-feed split of a short literal input — the exact
+# shapes the 2.5.2 audit found. Returns 0 on success.
+fn _ci_every(lang, src) {
+    var n = strlen(src);
+    var whole = _ci_tok(lang, src, n, n);
+    if (whole == 0) { return 1; }
+    var rc = 0;
+    var p = 1;
+    while (p < n) {
+        var tb = _ci_split(lang, src, n, p);
+        if (tb == 0) { rc = 1; }
+        if (tb != 0) {
+            if (_ci_same(whole, tb, lang, p) == 0) {
+                eprint("  (every-offset case, split above)\n", 35);
+                rc = 1;
+            }
+        }
+        p = p + 1;
+    }
+    return rc;
+}
+
+# Every non-compose grammar's corpus — 41 since 2.5.2 (it was 15; the
+# other 26 were never listed, and 12 of them failed the every-offset
+# split until the 2.5.2 streaming fixes). Compose grammars (markdown,
+# html, vue, svelte, cyml) stay out by design — see state.md. Then the
+# exact shapes the 2.5.2 audit found, at every split offset.
 fn _ci_main() {
     bootstrap_grammars();
     var rc = 0;
 
-    if (_ci_one("tests/corpus/python.py",      "python")     != 0) { rc = 1; }
-    if (_ci_one("tests/corpus/rust.rs",        "rust")       != 0) { rc = 1; }
-    if (_ci_one("tests/corpus/go.go",          "go")         != 0) { rc = 1; }
-    if (_ci_one("tests/corpus/shell.sh",       "shell")      != 0) { rc = 1; }
-    if (_ci_one("tests/corpus/typescript.ts",  "typescript") != 0) { rc = 1; }
-    if (_ci_one("tests/corpus/cyrius.cyr",     "cyrius")     != 0) { rc = 1; }
-    if (_ci_one("tests/corpus/concept.json",   "json")       != 0) { rc = 1; }
-    if (_ci_one("tests/corpus/concept.yaml",   "yaml")       != 0) { rc = 1; }
-    if (_ci_one("tests/corpus/concept.css",    "css")        != 0) { rc = 1; }
-    if (_ci_one("tests/corpus/concept.toml",   "toml")       != 0) { rc = 1; }
-    if (_ci_one("tests/corpus/concept.js",     "javascript") != 0) { rc = 1; }
-    if (_ci_one("tests/corpus/concept.sql",    "sql")        != 0) { rc = 1; }
-    if (_ci_one("tests/corpus/concept.xml",    "xml")        != 0) { rc = 1; }
-    if (_ci_one("tests/corpus/concept.rb",     "ruby")       != 0) { rc = 1; }
-    if (_ci_one("tests/corpus/openqasm.qasm",  "openqasm")   != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/asm_aarch64.s", "asm_aarch64") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/asm_x86_64.s", "asm_x86_64") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/c.c", "c") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.cpp", "cpp") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.cr", "crystal") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.cs", "csharp") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.css", "css") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/cyrius.cyr", "cyrius") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/Dockerfile", "dockerfile") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.ex", "elixir") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/go.go", "go") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.graphql", "graphql") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.hs", "haskell") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.ini", "ini") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.java", "java") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.js", "javascript") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.json", "json") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.jl", "julia") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.kt", "kotlin") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.ll", "llvm_ir") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.lua", "lua") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/Makefile", "makefile") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.nix", "nix") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.ml", "ocaml") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/openqasm.qasm", "openqasm") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.php", "php") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.ps1", "powershell") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.proto", "protobuf") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/python.py", "python") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.rb", "ruby") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/rust.rs", "rust") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.scss", "scss") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/shell.sh", "shell") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.sql", "sql") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.swift", "swift") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.tf", "terraform") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.toml", "toml") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/typescript.ts", "typescript") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.xml", "xml") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.yaml", "yaml") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/zig.zig", "zig") != 0) { rc = 1; }
+    if (_ci_every("json", "{\"a\":\"x\\\"y\"}") != 0) { rc = 1; }
+    if (_ci_every("toml", "k = \"a \\\\\\\" b\"\n") != 0) { rc = 1; }
+    if (_ci_every("c", "c = '\\n'; d = '\\033'; e = '\\\\';") != 0) { rc = 1; }
+    if (_ci_every("rust", "let a = '\\u{2026}'; let b = 'x';") != 0) { rc = 1; }
+    if (_ci_every("java", "char c = '\\u0041';") != 0) { rc = 1; }
+    if (_ci_every("python", "x = 1\n#!foobar\ny = 2\n") != 0) { rc = 1; }
+    if (_ci_every("shell", "echo a\n#!/bin/sh\necho b\n") != 0) { rc = 1; }
+    if (_ci_every("php", "<?php $a === $b && $c !== $d;") != 0) { rc = 1; }
+    if (_ci_every("ocaml", "let xs = 1 :: 2 :: [];;") != 0) { rc = 1; }
 
     return rc;
 }

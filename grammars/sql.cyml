@@ -5,8 +5,8 @@
 # [ADR 0011](../docs/adr/0011-case-insensitive-keywords-default.md)).
 # `SELECT`, `select`, `Select`, `sElEcT` all match the canonical
 # (upper-case) keyword list — same byte-equality cost as the
-# other 25 grammars when the flag is on, just with an A–Z to a–z
-# fold on each comparison.
+# rest of the 46 bundled grammars, plus an A–Z to a–z fold on
+# each comparison when the flag is on.
 #
 # Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
 # vidya doesn't ship a SQL reference sample yet. The local

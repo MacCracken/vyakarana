@@ -582,4 +582,50 @@ ok_sum=$(grep -oE '"len":[0-9]+' "$TMPDIR/atcap.ndjson" | cut -d: -f2 \
 [ "$ok_sum" = "$ok_bytes" ] \
     || fail "under-cap coverage: token len sum $ok_sum != file bytes $ok_bytes"
 
+# ── 2.5.2 audit regressions ──
+# Terminal safety (P1-1): source bytes reach the terminal under
+# --theme, and through 2.5.1 they went out raw — a file holding an OSC
+# title-set and a screen clear took over the terminal under every
+# theme, `none` included. Control bytes must now arrive as visible
+# escapes, and `none` must emit no ESC at all.
+printf '# t \033]0;PWNED\007\033[2J x\n' > "$TMPDIR/inj.sh"
+"$BIN" --theme=none "$TMPDIR/inj.sh" > "$TMPDIR/inj.none" 2> "$TMPDIR/err" \
+    || fail "--theme=none on control bytes: exit non-zero"
+if grep -q "$(printf '\033')" "$TMPDIR/inj.none"; then
+    fail "--theme=none passed a raw ESC from the source to the terminal"
+fi
+grep -q '\^\[\]0;PWNED\^G' "$TMPDIR/inj.none" \
+    || fail "--theme=none did not render the OSC sequence as visible escapes"
+"$BIN" --theme=default "$TMPDIR/inj.sh" > "$TMPDIR/inj.def" 2> "$TMPDIR/err" \
+    || fail "--theme=default on control bytes: exit non-zero"
+if grep -q "$(printf '\033]0;')" "$TMPDIR/inj.def"; then
+    fail "--theme=default passed the source's OSC title-set through raw"
+fi
+# Valid UTF-8 must pass untouched (its continuation bytes include the
+# 0x80-0x9F range a naive C1 filter would mangle: `€` is E2 82 AC).
+printf 'x = "\342\202\254 \303\251 \346\274\242"\n' > "$TMPDIR/utf8.py"
+"$BIN" --theme=none "$TMPDIR/utf8.py" > "$TMPDIR/utf8.out" 2> "$TMPDIR/err" \
+    || fail "--theme=none on UTF-8: exit non-zero"
+cmp -s "$TMPDIR/utf8.py" "$TMPDIR/utf8.out" \
+    || fail "--theme=none altered valid UTF-8 (must be byte-identical)"
+# JSON decimals (P1-5): `.` emitted TK_ERROR, so any JSON with a
+# fraction exited 1.
+printf '{"t": 0.1, "p": 99.95}\n' > "$TMPDIR/f.json"
+"$BIN" "$TMPDIR/f.json" > /dev/null 2> "$TMPDIR/err" \
+    || fail "JSON with decimal numbers: exit non-zero (error tokens?)"
+# CYML multi-line strings (P2-8): vidya's field notes keep bodies in
+# `content = """…"""`; seven of them exited 1 through 2.5.1.
+printf '[[entries]]\nname = "a"\ncontent = """\nsay "hi" \\"quoted\\" $x\n"""\n' > "$TMPDIR/t.cyml"
+"$BIN" "$TMPDIR/t.cyml" > /dev/null 2> "$TMPDIR/err" \
+    || fail "CYML with a \"\"\" string: exit non-zero (error tokens?)"
+# `.zsh` (P3-b): exited 4 "no grammar matched".
+printf 'alias ll="ls -l"\n' > "$TMPDIR/rc.zsh"
+"$BIN" "$TMPDIR/rc.zsh" > /dev/null 2> "$TMPDIR/err" \
+    || fail ".zsh file not detected as shell (stderr: $(cat "$TMPDIR/err"))"
+# --handcoded must cover bytes after a NUL (P3-d): it used strlen.
+printf 'echo a\000b c\n' > "$TMPDIR/nul.sh"
+hc_sum=$("$BIN" --handcoded "$TMPDIR/nul.sh" | grep -oE '"len":[0-9]+' | cut -d: -f2 \
+    | awk '{s+=$1} END {print s+0}')
+[ "$hc_sum" = "11" ] || fail "--handcoded covered $hc_sum of 11 bytes (stops at NUL?)"
+
 echo "smoke: OK ($v_long) — M0 + M1 + M2 + M3 gates passing"

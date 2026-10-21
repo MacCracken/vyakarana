@@ -65,8 +65,14 @@ fn _te_default_hex(kind) {
     return "";
 }
 
-# Dark-theme palette. Mirrors `theme_dark_color` from
-# src/theme.cyr — bright variants of the default set.
+# Dark-theme palette. Follows the HUES of `theme_dark_color` in
+# src/theme.cyr (bright variants of the default set) but not its exact
+# colours: terminal ANSI codes have no fixed RGB, so these are chosen
+# for an editor background. Comment `#a8a8a8` (ANSI 37 is #e5e5e5 in
+# xterm), error `#ff5555` (91 → #ff0000), operator / punctuation
+# `#e0e0e0` (97 → #ffffff). This comment used to say "Mirrors"
+# (2.5.2 audit). Changing the values would change every exported
+# theme file, so they stay.
 fn _te_dark_hex(kind) {
     if (kind == TK_KEYWORD)      { return "#ff00ff"; }   # bright magenta
     if (kind == TK_STRING)       { return "#00ff00"; }   # bright green

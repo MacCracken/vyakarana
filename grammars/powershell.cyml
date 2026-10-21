@@ -90,7 +90,7 @@ operators = [
     "-band", "-bor", "-bxor", "-bnot",
     "-shl", "-shr",
     "-and", "-or", "-not", "-xor",
-    "-is", "-isnot", "-as",
+    "-isnot", "-is", "-as",   # `-isnot` first — first match wins (2.5.2 audit P2-7)
     "-f",
     "+=", "-=", "*=", "/=", "%=",
     "==", "!=", "<=", ">=",

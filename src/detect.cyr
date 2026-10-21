@@ -72,6 +72,11 @@ fn _detect_short(path, n) {
 
 fn _detect_4byte(path, n) {
     if (n >= 4) {
+        # `.zsh` — shebang detection knew `zsh`, the path table did not,
+        # so zsh dotfiles and completion scripts (no shebang) exited 4
+        # "no grammar matched" through 2.5.1 (2.5.2 audit P3-b: 6 of 6
+        # `.zsh` files in the real-file sweep).
+        if (memeq(path + n - 4, ".zsh", 4) == 1) { return "shell"; }
         if (memeq(path + n - 4, ".exs", 4) == 1) { return "elixir"; }
         if (memeq(path + n - 4, ".mli", 4) == 1) { return "ocaml"; }
         if (memeq(path + n - 4, ".lhs", 4) == 1) { return "haskell"; }
@@ -405,8 +410,11 @@ fn _detect_asm_flavor(src, src_len) {
     return "asm_x86_64";
 }
 
-# Public byte-API content sniff. Strips BOM, then tries shebang →
-# signature peek. Returns 0 if no sniff matches; callers can fall
+# Public byte-API content sniff. Tries shebang → signature peek; the
+# BOM is skipped for the SIGNATURE peek only. A BOM before `#!` is not
+# a shebang — the kernel would not honour it either — so `_detect_shebang`
+# gets the raw `src` on purpose. (The header used to imply the BOM is
+# stripped for every sniff; 2.5.2 audit.) Returns 0 if no sniff matches; callers can fall
 # back to a default. Does NOT do asm flavor scoring on its own —
 # the caller has to know it's asm first (see
 # `detect_language_combined`).

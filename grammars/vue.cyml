@@ -87,13 +87,13 @@ punctuation = [
 # ── Rules ──────────────────────────────────────────────────────────
 
 # Compose rules run at scanner pipeline step 0, before any other
-# tokenization happens. `<script>` / `<style>` / `<template>`
-# bodies route through their inner grammars; markers emit as
+# tokenization happens. `<script>` / `<style>` bodies route
+# through the javascript / css grammars; markers emit as
 # punctuation. See ADR 0013.
 #
-# `<template>` body is HTML — including any nested `<script>` /
-# `<style>` (rare but valid). The recursion in
-# `_ds_try_compose_rules` handles arbitrarily deep nesting.
+# A bare `<script>` / `<style>` nested inside `<template>` (rare
+# but valid) still routes: the outer Vue scan walks the template
+# body and reaches the tag like any other bytes.
 
 # Note: `<template>` is NOT a compose rule. Routing the
 # template body through the html grammar would drop Vue-

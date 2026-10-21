@@ -5,9 +5,19 @@
 # (shebang / ident / number / operator / punctuation / whitespace /
 # special-var).
 #
-# Regression bar: tokens produced from this file must be byte-
-# identical to the hand-coded tokenize_shell in src/grammars/shell.cyr
-# on tests/corpus/shell.sh. The diff check lives in scripts/smoke.sh.
+# Regression bar: on tests/corpus/shell.sh, tokens produced from
+# this file must be byte-identical to the hand-coded tokenize_shell
+# in src/grammars/shell.cyr (the `--handcoded` oracle). The diff
+# check lives in scripts/smoke.sh. The two are NOT equivalent in
+# general: this file adds a backtick pair rule and
+# `unicode_ident = true`, so `` `cmd` `` and UTF-8 words come back
+# as string / ident here where shell.cyr emits TK_ERROR. The corpus
+# has neither shape.
+#
+# Known gap (shared with shell.cyr): a `#` mid-word — `${#arr[@]}`,
+# `${x#p}`, `${x##*/}` — starts a comment that runs to end of line.
+# `special_vars` only rescues `$#`; `${` is `$` + `{`, then the `#`
+# line rule fires. See the roadmap.
 
 [grammar]
 name = "shell"

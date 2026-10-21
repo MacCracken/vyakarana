@@ -84,6 +84,9 @@ operators = [
     "=", "+", "-", "*", "/", "%",
     "!", "~", "&", "|", "^",
     "<", ">",
+    # `@` never fires: it is in `ident_start` (module attributes),
+    # and the ident step (6) runs before operators (8), so a bare
+    # `@` is a 1-byte ident. Unreachable but harmless.
     "?", "@",
 ]
 

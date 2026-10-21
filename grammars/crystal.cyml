@@ -22,8 +22,10 @@
 #     `{{ ... }}` for ECR-style metaprogramming. `{%` and
 #     `{{` markers are short pair rules; we don't model them
 #     yet (would need pair rules).  Documented limitation.
-#   - Instance / class vars: `@var`, `@@var`, `@@@const`.
-#     `@` is in ident_start so `@var` tokenizes as one ident.
+#   - Instance / class vars: `@var`, `@@var`. `@` is in
+#     ident_start so `@var` tokenizes as one ident. `@` is NOT
+#     in ident_cont, so `@@var` splits into ident `@` + ident
+#     `@var` — known gap (see below).
 #
 # Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
 # `tests/corpus/concept.cr` exercises classes, modules,
@@ -36,6 +38,8 @@
 #     part of the surrounding string. Same trade-off as JS
 #     template literals.
 #   - **Macro markers** `{% %}` and `{{ }}`.
+#   - **Class vars** `@@var` come back as two idents (`@` +
+#     `@var`); coverage holds, theme can re-pair.
 
 [grammar]
 name = "crystal"
@@ -45,7 +49,8 @@ extensions = [".cr"]
 shebang = false
 whitespace = true
 
-# `@` in ident_start: instance vars (`@x`, `@@y`).
+# `@` in ident_start: instance vars (`@x`). Not in ident_cont,
+# so a class var `@@y` is `@` + `@y` (header, Known gaps).
 # `?` and `!` in ident_cont: method-name suffixes
 # (`is_a?`, `push!`).
 ident_start = "A-Za-z_@"
@@ -64,10 +69,14 @@ char_literal  = true
 operators = [
     "<=>", "===",
     "==", "!=", "=~", "!~",
+    # The compound assignments on the `**=` line below shadowed
+    # nothing until 2.5.2 moved them here: `<<` / `>>` / `&&` / `||`
+    # matched first and `<<=` came out `<<` + `=` (audit P2-7).
+    "<<=", ">>=", "&&=", "||=",
     "<=", ">=", "<<", ">>",
     "&&", "||",
     "+=", "-=", "*=", "/=", "%=",
-    "**=", "<<=", ">>=", "&&=", "||=",
+    "**=",
     "**",
     "->", "=>",
     "...", "..",

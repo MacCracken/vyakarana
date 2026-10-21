@@ -283,7 +283,15 @@ manual re-sync step.
 
 ## Performance expectations
 
-- Tokenization is linear in input bytes. No O(n²) paths.
+- Whole-buffer tokenization is linear in input bytes. *(Through
+  2.5.1 this line said "No O(n²) paths" without qualification. It
+  was false: a compose opener with no closer — `<style>` with no
+  `</style>`, a stray fence — re-scanned to EOF per opener, and 1 MiB
+  of them ran past 300 s. 2.5.2 makes those paths linear.)* One
+  known super-linear case remains in the **streaming** API: a single
+  very long non-pair token (a line comment or identifier hundreds of
+  KB long) fed in small chunks is re-scanned on every drain. Bounded
+  by `VYK_STREAM_CAP`; tracked on the roadmap.
 - `tokenbuf` allocates by doubling, not per-token (ADR 0002).
   For an N-byte input expect ≤ log₂(N) allocations.
 - Public API has no syscalls beyond what your project's stdlib

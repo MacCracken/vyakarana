@@ -6,8 +6,8 @@
 #     unlike Lua where `--[[` shared the prefix; see
 #     [architecture note 003](../docs/architecture/003-pair-rule-ordering.md)).
 #   - `{- … -}` block comments. Nestable per spec; the pair-rule
-#     scanner closes at the first `-}` — same documented gap as
-#     Rust and OCaml.
+#     scanner closes at the first `-}`, so after a nested comment
+#     the rest of the outer one tokenizes as code — known gap.
 #   - Rich symbol-operator surface (`>>=`, `<$>`, `<*>`, `<>`,
 #     `<-`, `->`, `=>`, `::`, `..`, `++`, `:`, `\`, `||`, `&&`,
 #     and arbitrary user-defined operators using punctuation
@@ -83,6 +83,8 @@ operators = [
     "==", "/=", "<=", ">=",
     "->", "<-", "=>", "::", "..",
     "++", "**",
+    # `/=` here repeats the not-equal entry above — harmless
+    # (first match wins, same kind).
     "+=", "-=", "*=", "/=",
     "=", "+", "-", "*", "/", "%",
     "!", "~", "&", "|", "^",
@@ -115,8 +117,8 @@ punctuation = [
 
 # ── Rules ──────────────────────────────────────────────────────────
 
-# `{- … -}` block comments. Pair rule. Nestable in spec — closes
-# at first `-}` per architecture note 003 (same gap as Rust).
+# `{- … -}` block comments. Pair rule. Nestable in spec, but the
+# pair rule closes at the first `-}` (see grammar header).
 [[rules]]
 kind = "comment"
 match = "pair"

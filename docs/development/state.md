@@ -4,8 +4,19 @@
 > (1.x and 2.x cuts), plus any session that shifts the gates'
 > colour or the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.5.1 are
-> shipped. **2.5.1** — pin 6.7.9 → 6.7.15; `hashmap` dropped and
+> **Read this file before doing anything.** 1.0.0–2.5.2 are
+> shipped. **2.5.2 is the 2.5.x closeout audit** — the full CLAUDE.md
+> hardening step. 5 P1 / 10 P2 / 12 P3 fixed, among them terminal-
+> escape injection through `vyk --theme`, three streaming bugs (char
+> literals and escaped quotes split by a chunk boundary; heap growing
+> 12-24x the input), quadratic compose scans (1 MiB of `<style>` ran
+> past 300 s), and malformed grammars crashing the scanner. Every
+> non-compose grammar is now chunk-invariant at every split offset
+> (41/41, was 29). Report:
+> [`../audit/2026-10-20-2.5.x-closeout-audit.md`](../audit/2026-10-20-2.5.x-closeout-audit.md).
+> **The roadmap is now a pinned release train** (2.6.0 shell
+> correctness → 2.9.0 size/tooling) — see §Next up.
+> **2.5.1** — pin 6.7.9 → 6.7.15; `hashmap` dropped and
 > `assert` moved to `[test] stdlib` (`vyk` −33,160 bytes, output
 > byte-identical); the `detect/content-python` drift bisected to
 > 2.3.4's shebang fix and mostly recovered (−13.6 %, every answer
@@ -136,7 +147,7 @@
 
 ## Current status (2026-10-20)
 
-- **Version:** `2.5.1` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `2.5.2` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`.
 - **Toolchain pin:** `cyrius = "6.7.15"` (bumped from 6.7.9 in
   2.5.1; 6.7.9 came from 6.6.20 in 2.5.0, 6.6.20 from 6.6.2 in
@@ -149,7 +160,7 @@
   fmt, io, fs, str, string, vec, args; `[test] stdlib` = assert.
   `lib/` is 28 files. `tests/vyakarana.tcyr` also includes
   `lib/assert.cyr` directly so editors (build-scope resolve) see it.
-- **Gates (re-run 2026-10-20 on 6.7.15):** build OK · **923/923** tests · smoke OK · **lint+fmt
+- **Gates (re-run 2026-10-20 on 6.7.15, 2.5.2):** build OK, 0 warnings · **927/927** tests · smoke OK · **lint+fmt
   exit 0, 0 warnings** (enforced via `--exit-with-count` since 2.5.1
   — before that a warning still exited 0) · fuzz **5/5** · 0 untracked deferrals. **46 grammars.** `scripts/smoke.sh`
   gained two regression groups in 2.3.4 (oversize input must fail
@@ -194,6 +205,31 @@
   rows — the hot path consumers actually run — are all
   fractionally *faster*. Table not refreshed: the documented
   cadence is minor-release boundaries, and this is a patch.
+- **What 2.5.2 changed (closeout audit):**
+  - **Method worth reusing.** Four read-only subsystem reviews plus a
+    46-grammar header cross-check, then sweeps that don't depend on
+    reading code right: real-file coverage over 2,869 `~/Repos` files
+    and all 977 vidya samples; `vyk` built twice under
+    `CYRIUS_POISON` (fill A / B) over 1,577 of them; an every-offset
+    two-feed split over all 41 non-compose corpora; adjacent-operator
+    and list-order scans. The scripts live in the session scratchpad
+    only — folding them into `scripts/` is a 2.9.0 roadmap item.
+  - **Fixed** — see the audit and CHANGELOG. Headlines: `--theme`
+    terminal injection; streaming char-literal / escaped-quote splits
+    and unbounded heap; compose quadratic; grammar validation; LSP
+    index table; php / crystal / ruby / julia / powershell shadowed
+    operators; JSON decimals; CYML `"""` strings and `[[`
+    terminator; cyrius char literals; `.zsh`.
+  - **Gates that could not fail, fixed:** `chunk_invariance` (15 of 41
+    corpora, 8 sizes → all 41 + splits; 48 failures on 2.5.1),
+    `grammar_load` (size table truncated by `store8`; never ran the
+    scanner — now SIGSEGVs on 2.5.1), LSP tests pinning the bug, smoke
+    lacking the CLI cases. Fourth instance of the gates-too-narrow
+    pattern (2.3.0, 2.3.3, 2.5.1 lint, now this).
+  - **Known remaining:** shell `#` mid-word, streaming rescans of one
+    very long non-pair token, no float token, compose chunk
+    invariance — all pinned on the roadmap.
+
 - **What 2.5.1 changed (toolchain 6.7.9 → 6.7.15 + cleanup):**
   - **Toolchain:** no source change needed; on the bump alone the
     output was byte-identical to 6.7.9 and the binary +4,096.
@@ -1125,36 +1161,28 @@ over an unchanged public API.
 
 ## Next up — open queue
 
-**Priority order after 2.4.0** (2.3.4's audit is
-[here](../audit/2026-08-20-2.3.x-hardening-audit.md)):
+**The queue is the roadmap's pinned release train** —
+[`./roadmap.md`](./roadmap.md) §Forward plan. In order:
 
-1. **Chunk-invariance for the compose grammars** — markdown, html,
-   vue, svelte, cyml. Everything else is clean and gated by
-   `fuzz/chunk_invariance.fcyr`; these five are excluded because the
-   marker window in `tokenize_stream_drain` is applied only when the
-   grammar has no compose rules. The blocker is that the compose
-   machinery reads the commit list as state: `skip_prefix_hold`
-   asks "was the last *committed* token a compose close marker?",
-   so holding a token back makes that guard miss and prefix-hold
-   drops the close token. Three attempts (exempting compose markers
-   from the window; keying the guard to a pre-window commit
-   boundary) each regressed the markdown/fence-rust fuzz case. The
-   real fix is probably to give prefix-hold its own view of the
-   tokenization instead of inferring it from `commit_count` — that
-   is a refactor, not a patch. Move the five grammars into
-   `chunk_invariance.fcyr` as they land.
-2. **Residual O(N²) in compose drains.** `VYK_COMPOSE_HOLD_MAX`
-   stopped the permanent overflow, and 2.3.4's two fixes took a
-   4 KB document from 11.4 s to 69 ms, but growth is still ~O(N^1.6)
-   because the buffer cannot compact while a compose opener is held.
-   Bounded and no longer fatal; worth revisiting with item 1, since
-   both want prefix-hold restructured.
-3. **`openqasm` float literals / a `number_float` default.**
-   `OPENQASM 2.0;` is three tokens. The scanner has no float support
-   at all (`number_decimal` / `_0x` / `_0b` / `_0o`), so css, scss,
-   protobuf, java, graphql and openqasm all carry it. Cross-grammar
-   scanner change → wants an ADR.
-4. **Consumers** — the user is handling this.
+1. **2.6.0 — shell correctness** (minor): `#` only at word start
+   (`${#v}`, `${x#p}`), heredocs, `\"` outside quotes, `$0`-`$9`; oracle
+   in lockstep. ADRs 0022 / 0023.
+2. **2.6.1 — CLI hardening**: write failures exit non-zero, clear
+   bad-value errors, `--export-theme` flag order, stdin.
+3. **2.6.2 — detection from grammar data** (ADR), then the 2.6.x
+   closeout audit.
+4. **2.7.0 — `number_float`** (minor, ADR); **2.7.1 — grammar polish**
+   from the 2.5.2 header cross-check, then the 2.7.x closeout audit.
+5. **2.8.0 — streaming engine**: long non-pair tokens re-scanned per
+   drain (512 KB line comment in 64 B chunks: 4 s); compose-grammar
+   chunk invariance (the 2.4.0 open item — three attempts regressed
+   the markdown/fence-rust fuzz case; needs prefix-hold restructured);
+   residual O(N^1.6) compose drains.
+6. **2.9.0 — size and tooling**: binary cap, `[embed]` instead of the
+   gawk-only embed script, real-corpus fuzz, the 2.5.2 sweep scripts
+   moved into `scripts/`.
+
+Toolchain catch-ups slot in as patches whenever the user directs one.
 
 Closed waves:
 

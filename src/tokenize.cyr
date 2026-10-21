@@ -102,7 +102,11 @@ var VYK_STREAM_INIT_CAP = 4096;
 # point. 2.0.1's rolling buffer compacts after every drain, so
 # the cap effectively bounds the longest in-progress span (block
 # comment, multi-line string, fence body) rather than the total
-# input size. Total input can exceed this freely.
+# input size. Total input can exceed this freely. One byte of the cap
+# is the NUL terminator the drain writes, so the largest live window
+# — and the largest single feed into an empty stream — is
+# `VYK_STREAM_CAP - 1` bytes (a feed of exactly the cap returns
+# VYK_ERR_OVERFLOW; 2.5.2 audit, documentation only).
 var VYK_STREAM_CAP = 16777216;
 
 # Hard ceiling on a stream's TOTAL input, distinct from the live-
@@ -152,7 +156,7 @@ var VYK_OFFSET_CAP = 4294967295;
 # used to wedge the stream permanently.
 var VYK_COMPOSE_HOLD_MAX = 8388608;
 
-var STREAM_REC_SIZE = 88;
+var STREAM_REC_SIZE = 96;   # +8 in 2.5.2: scratch_tb at s + 88
 
 # Error codes returned by tokenize_stream_feed.
 var VYK_OK            = 0;
@@ -275,8 +279,18 @@ fn tokenize_stream_new(lang) {
     bootstrap_grammars();
     var g = registry_find_by_name(lang);
     if (g == 0) { return 0; }
+    # Every allocation is checked (2.5.2 audit P3): unchecked, a failed
+    # `alloc` stored NULL and the first feed / drain / `_next` wrote
+    # or read through it. A 0 return is already this function's
+    # "could not create" answer.
     var s = alloc(STREAM_REC_SIZE);
+    if (s == 0) { return 0; }
     var buf = alloc(VYK_STREAM_INIT_CAP);
+    if (buf == 0) { return 0; }
+    var staging = tokenbuf_new();
+    if (staging == 0) { return 0; }
+    var scratch = tokenbuf_new();
+    if (scratch == 0) { return 0; }
     store64(s,      buf);
     store64(s + 8,  0);
     store64(s + 16, VYK_STREAM_INIT_CAP);
@@ -284,10 +298,11 @@ fn tokenize_stream_new(lang) {
     store64(s + 32, 0);
     store64(s + 40, 0);
     store64(s + 48, 0);
-    store64(s + 56, tokenbuf_new());   # staging_tb (pull adapter)
+    store64(s + 56, staging);          # staging_tb (pull adapter)
     store64(s + 64, 0);                # next_idx
     store64(s + 72, (0 - 1));          # pending_idx — none (2.0.3)
     store64(s + 80, 0);                # scan_resume
+    store64(s + 88, scratch);          # scratch_tb, reused per drain (2.5.2)
     return s;
 }
 
@@ -448,6 +463,16 @@ fn _stream_max_marker(g) {
         var rl = strlen(compose_region_rule_start(vec_get(crr, rri)));
         if (rl > best) { best = rl; }
         rri = rri + 1;
+    }
+    # Char literals are markers too: up to DS_CHAR_LITERAL_MAX bytes.
+    # A `'\n'` whose feed ended after `'\n` failed the literal shape,
+    # fell through to the `'` operator, and that operator — shorter
+    # than every other marker — was committed as settled. Broke
+    # chunk invariance on c, ocaml, julia, crystal and both asm
+    # corpora; through 2.5.1 this function measured only operators
+    # and rule markers. 2.5.2 audit P1-2.
+    if (grammar_char_literal(g) == 1) {
+        if (DS_CHAR_LITERAL_MAX > best) { best = DS_CHAR_LITERAL_MAX; }
     }
     return best;
 }
@@ -623,7 +648,31 @@ fn _stream_is_trailing_complete(g, buf, buf_len, temp_tb, idx) {
             # fuzz/streaming.fcyr c/string-with-escape case.
             if ((oelen > 0) && (t_len >= oslen + oelen)) {
                 if (memeq(buf + t_start + t_len - oelen, oendp, oelen) == 1) {
-                    return 1;
+                    # ...and the close marker must not itself be
+                    # ESCAPED. A buffer ending `"…\"` holds a string
+                    # the scanner left unterminated (the `\` eats the
+                    # `"`), yet its tail matches the close marker, so
+                    # through 2.5.1 it was committed as a finished
+                    # 19-byte string and the rest of the stream had
+                    # its quotes inverted — json / toml / csharp /
+                    # kotlin / php / swift corpora at the split right
+                    # after `\"`. The scanner applies escapes left to
+                    # right, so the marker is escaped exactly when an
+                    # ODD run of escape bytes sits before it inside
+                    # the body. 2.5.2 audit P1-3.
+                    var oesc = pair_rule_escape(owner);
+                    var escaped = 0;
+                    if (oesc != 0) {
+                        var q = t_start + t_len - oelen;
+                        var body_lo = t_start + oslen;
+                        var erun = 0;
+                        while ((q > body_lo) && (load8(buf + q - 1) == oesc)) {
+                            erun = erun + 1;
+                            q = q - 1;
+                        }
+                        if ((erun & 1) == 1) { escaped = 1; }
+                    }
+                    if (escaped == 0) { return 1; }
                 }
             }
             # Owned by a pair rule but not closed — it can still grow.
@@ -904,6 +953,9 @@ fn tokenize_stream_drain(s, out_tb) {
     # (`tokenize_stream_finish(s, 0)` followed by `_next`) work
     # without the caller having to fish the staging out.
     if (out_tb == 0) { out_tb = load64(s + 56); }
+    # A freed stream has a 0 staging tokenbuf; pushing into it wrote
+    # through NULL (2.5.2 audit P3).
+    if (out_tb == 0) { return 0; }
     var buf = load64(s);
     var buf_len = load64(s + 8);
     var g = load64(s + 24);
@@ -933,8 +985,12 @@ fn tokenize_stream_drain(s, out_tb) {
         var close_pos = _stream_scan_close(buf, buf_len, resume, endp, elen, escape);
         if (close_pos >= 0) {
             var pair_total = close_pos + elen;
+            # Count the token only if the push landed — a push the
+            # tokenbuf could not grow for is dropped (FINDING-002).
+            # The P2-6 fix (2.3.4) covered the main commit loop only.
+            var fp_before = tokenbuf_count(out_tb);
             tokenbuf_push(out_tb, pair_rule_kind(rule), abs_offset, pair_total);
-            emitted = emitted + 1;
+            emitted = emitted + (tokenbuf_count(out_tb) - fp_before);
             store64(s + 72, (0 - 1));
             store64(s + 80, 0);
             var k0 = pair_total;
@@ -989,12 +1045,13 @@ fn tokenize_stream_drain(s, out_tb) {
             if (new_resume < slen) { new_resume = slen; }
             store64(s + 80, new_resume);
             if (finishing == 1) {
+                var fin_before = tokenbuf_count(out_tb);
                 tokenbuf_push(out_tb, pair_rule_kind(rule), abs_offset, buf_len);
                 store64(s + 72, (0 - 1));
                 store64(s + 80, 0);
                 store64(s + 8, 0);
                 store64(s + 48, abs_offset + buf_len);
-                return emitted + 1;
+                return emitted + (tokenbuf_count(out_tb) - fin_before);
             }
             return emitted;
         }
@@ -1003,7 +1060,16 @@ fn tokenize_stream_drain(s, out_tb) {
     # NUL-terminate the live buffer so the inner scanner's
     # strlen-shaped checks see the correct end.
     store8(buf + buf_len, 0);
-    var temp_tb = tokenbuf_new();
+    # One scratch tokenbuf per stream, emptied and reused each drain.
+    # Through 2.5.1 every drain allocated a fresh one, and the bump
+    # allocator never frees, so a stream's heap grew with every byte
+    # ever fed — 12-24x the input (rust 23.8x, json 11.8x, 8 MB fed in
+    # 4 KB or 64 KB chunks alike) — which made ADR 0021's 4 GiB-per-
+    # stream contract unreachable in practice. 2.5.2 audit P1-4.
+    var temp_tb = load64(s + 88);
+    if (temp_tb == 0) { return 0; }
+    _tokenbuf_reset(temp_tb);
+    if (abs_offset > 0) { _ds_not_file_start = 1; }
     tokenize_with_grammar(g, buf, buf_len, temp_tb);
     var n_temp = tokenbuf_count(temp_tb);
     var commit_count = n_temp;
@@ -1238,6 +1304,20 @@ fn tokenize_stream_drain(s, out_tb) {
                 if (elen_r > 0) {
                     if (new_resume2 > elen_r - 1) { new_resume2 = new_resume2 - (elen_r - 1); }
                 }
+                # Same escape-run back-off as the still-pending branch
+                # above. Through 2.5.1 only that branch had it, so a
+                # string whose FIRST pending drain ended on `\` resumed
+                # past the backslash and closed on the escaped quote:
+                # json `{"a":"x\"y"}` split after the `\` came back as
+                # `"x\"` + `y` + a string running to EOF. 2.3.4's
+                # P1-3 fix by a second path; 2.5.2 audit P1-3.
+                var esc_r = pair_rule_escape(rule_r);
+                if (esc_r != 0) {
+                    while ((new_resume2 > slen_r) &&
+                      (load8(buf + p_start + new_resume2 - 1) == esc_r)) {
+                        new_resume2 = new_resume2 - 1;
+                    }
+                }
                 if (new_resume2 < slen_r) { new_resume2 = slen_r; }
             }
         }
@@ -1310,6 +1390,10 @@ fn tokenize_stream_finish(s, out_tb) {
 fn tokenize_stream_next(s) {
     if (s == 0) { return 0; }
     var staging = load64(s + 56);
+    # After `_free` the staging tokenbuf is 0; this read it (2.5.2
+    # audit P3 — the `_stream_cur_ok` note below said `_next` was
+    # already guarded; it guarded `s` only).
+    if (staging == 0) { return 0; }
     var idx = load64(s + 64);
     if (idx >= tokenbuf_count(staging)) {
         # Try to refill via drain. If finish has run, drain is a
@@ -1395,9 +1479,21 @@ fn tokenize_stream_discard_consumed(s) {
 # 2.0+ API surface — diagnostics only.
 
 fn tokenize_source_handcoded(src, lang) {
+    return _vyk_handcoded(src, strlen(src), lang);
+}
+
+# Length-taking form for callers that hold the byte count. The CLI
+# uses this: `tokenize_source_handcoded` measures with `strlen`, so
+# `vyk --handcoded` on a file with a NUL byte covered only the bytes
+# before it and still exited 0 — 6 of 11 bytes for `echo a\0b c\n`
+# (2.5.2 audit P3-d). The 2-arg form keeps its signature: it ships in
+# the bundle, diagnostics-only or not.
+fn _vyk_handcoded(src, n, lang) {
+    if (lang == 0) { return 0; }
     if (streq(lang, "shell") == 1) {
         var tb = tokenbuf_new();
-        tokenize_shell(src, strlen(src), tb);
+        if (tb == 0) { return 0; }
+        tokenize_shell(src, n, tb);
         return tb;
     }
     return 0;
@@ -1420,6 +1516,7 @@ fn tokenize_stream_free(s) {
     store64(s + 48, 0);
     store64(s + 56, 0);   # staging_tb (2.0.2)
     store64(s + 64, 0);   # next_idx
+    store64(s + 88, 0);   # scratch_tb (2.5.2)
     # pending_idx's "none" sentinel is -1, NOT 0 — 0 is a valid
     # pair-rule index. Every other field here poisons safely to 0,
     # and two call sites lean on that ("_free zeroes every field"

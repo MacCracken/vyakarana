@@ -12,8 +12,9 @@
 # vidya snapshot when one ships.
 #
 # Annotations: `@` is in `ident_start` so `@Override`,
-# `@JvmStatic`, `@file:JvmName`, etc. tokenize as a single ident.
-# Same call as java.cyml.
+# `@JvmStatic`, etc. tokenize as a single ident. Same call as
+# java.cyml. A use-site target splits at the `:` punctuation —
+# `@file:JvmName` is `@file` + `:` + `JvmName`.
 #
 # Identifier dollar: `$` is in `ident_start` so `$variable`
 # string interpolation references can be tokenized as part of an
@@ -69,8 +70,8 @@ operators = [
     "!", "~", "&", "|", "^",
     "<", ">",
     "?",
-    # `'` / `\` fallbacks for char-literal escape forms
-    # `char_literal` does not model (`'\u0041'`).
+    # `'` / `\` fallbacks for stray quote / backslash bytes outside
+    # a literal. (`'\u0041'` is one char-literal token since 2.5.2.)
     "'", "\\",
 ]
 

@@ -27,14 +27,24 @@ land in the same palette. The 10 vyakarana token kinds
 (`docs/architecture/004-theme-palette-contract.md`) are the
 target; LSP's semantic-token taxonomy is the source.
 
-LSP 3.17 defines **23 standard token types**:
+LSP 3.17 defines **23 standard token types**, in this order
+(`SemanticTokenTypes`; 3.18 appends `label` as index 23):
 
 ```
-namespace, type, class, enum, interface, struct,
-typeParameter, parameter, variable, property, enumMember,
-event, function, method, modifier, macro, decorator,
-keyword, comment, string, regexp, number, operator
+ 0 namespace   1 type        2 class       3 enum
+ 4 interface   5 struct      6 typeParameter
+ 7 parameter   8 variable    9 property   10 enumMember
+11 event      12 function   13 method     14 macro
+15 keyword    16 modifier   17 comment    18 string
+19 number     20 regexp     21 operator   22 decorator
 ```
+
+*(Amended 2.5.2. This list originally read `…, method, modifier,
+macro, decorator, keyword, comment, string, regexp, number,
+operator` — not the spec's order — and `lsp_kind_from_standard_index`
+was written from a third ordering, so every index from 14 to 22
+returned the wrong kind. Names were always mapped correctly; only
+the index path was wrong. See the 2.5.2 audit, P2-1.)*
 
 Plus servers can extend the legend with custom types beyond the
 standard list. And **modifiers** (`declaration`, `definition`,
@@ -141,11 +151,14 @@ The interesting decisions, with a one-line rationale each:
   see architecture note 004), the bridge mapping changes and
   consumers must rebuild. Mitigation: the mapping is stable
   precisely because the palette is stable.
-- **The "reserved" slot quirk in the LSP standard index.** The
-  spec's standard-legend numeric ordering has shifted across
-  3.16 → 3.17 (decorator was added, the indices renumbered).
-  We hardcode the **3.17** order. Servers using older spec
-  versions should resolve by name, not by index.
+- **The standard index is append-only.** 3.17 added `decorator`
+  at the end (22) and 3.18 added `label` (23); no existing index
+  moved. *(Amended 2.5.2: this bullet used to claim 3.17
+  "renumbered" the indices and that a "reserved" slot sat at 15 —
+  neither is true, and that belief is how the wrong table got
+  written.)* The index path is still only correct for servers
+  that use the standard order; anything with a custom legend
+  should resolve by name.
 
 ### When to revisit
 

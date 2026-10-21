@@ -6,9 +6,13 @@
 #   vyk --version
 #   vyk --help / -h
 #   vyk --list-kinds        prints the ten token kinds
-#   vyk --list-languages    prints loaded grammars (11 starter set)
+#   vyk --list-languages    prints the bundled grammars (46)
 #   vyk <file>              tokenize a file, NDJSON on stdout
-#   vyk --language=<lang>   override detection (M1: only `shell`)
+#   vyk --language=<lang>   override detection (any listed grammar)
+#   vyk --theme=<name>      ANSI-coloured source; control bytes in the
+#                           source are escaped (`_tty_print_safe`)
+#   vyk --export-theme=<f>  emit a theme file and exit
+#   vyk --handcoded         shell only: the M1 hand-coded oracle
 
 include "src/token.cyr"
 include "src/grammar.cyr"
@@ -132,24 +136,168 @@ fn print_list_languages() {
     return 0;
 }
 
+# Terminal-safety classifier for one byte unit of `src[p..n)`.
+# Returns `(len << 1) | unsafe`: `len` (1..4) is how many bytes the
+# unit spans, `unsafe` is 1 when a terminal would act on it rather
+# than print it. Unsafe: C0 controls other than TAB / LF, a CR not
+# followed by LF (a bare CR rewrites the line; CRLF stays intact),
+# DEL, and C1 controls in either form — UTF-8 `C2 80`..`C2 9F`
+# (U+0080..U+009F; xterm-class terminals act on them) or a stray
+# raw byte 0x80..0x9F (CSI 0x9B in 8-bit mode). A valid multi-byte
+# UTF-8 sequence is one safe unit, so continuation bytes in
+# 0x80..0x9F (`€` is E2 82 AC) are never mistaken for C1. Overlong
+# E0 / F0 forms are not treated as sequences, so an overlong C1
+# falls apart into stray bytes and is caught. 2.5.2 audit P1-1.
+fn _tty_unit(src, n, p) {
+    var b = load8(src + p);
+    if (b < 128) {
+        if ((b == 9) || (b == 10)) { return 2; }
+        if (b == 13) {
+            if ((p + 1 < n) && (load8(src + p + 1) == 10)) { return 2; }
+            return 3;
+        }
+        if ((b < 32) || (b == 127)) { return 3; }
+        return 2;
+    }
+    var need = 0;
+    if ((b >= 194) && (b <= 223)) { need = 1; }
+    if ((b >= 224) && (b <= 239)) { need = 2; }
+    if ((b >= 240) && (b <= 244)) { need = 3; }
+    if (need == 0) {
+        # Stray continuation byte or invalid lead (0x80..0xC1, 0xF5..).
+        if (b <= 159) { return 3; }
+        return 2;
+    }
+    if (p + need >= n) { return 2; }       # truncated: lead alone
+    var k = 1;
+    var ok = 1;
+    while ((k <= need) && (ok == 1)) {
+        var c = load8(src + p + k);
+        if ((c < 128) || (c > 191)) { ok = 0; }
+        k = k + 1;
+    }
+    if (ok == 0) { return 2; }
+    var c1 = load8(src + p + 1);
+    if ((b == 224) && (c1 < 160)) { return 2; }   # overlong 3-byte
+    if ((b == 240) && (c1 < 144)) { return 2; }   # overlong 4-byte
+    if ((b == 194) && (c1 <= 159)) { return 5; }  # C1 control, 2 bytes
+    return (need + 1) * 2;
+}
+
+var _tty_hex = "0123456789abcdef";
+var _tty_esc_buf = 0;
+
+# Write the visible stand-in for an unsafe unit at `src + p` of
+# `len` bytes: caret notation for C0 / DEL (`^[`, `^M`, `^?`), and
+# `\xHH` (the code point) for a C1 control. One 4-byte buffer,
+# allocated once — the bump allocator never frees, and a file can
+# hold a million control bytes.
+fn _tty_put_escape(src, p, len) {
+    var b = load8(src + p);
+    var cp = b;
+    if (len == 2) { cp = load8(src + p + 1); }    # C2 xx → U+00xx
+    if (_tty_esc_buf == 0) { _tty_esc_buf = alloc(4); }
+    var out = _tty_esc_buf;
+    if (cp < 32) {
+        store8(out, 94); store8(out + 1, cp + 64);
+        print(out, 2);
+        return 0;
+    }
+    if (cp == 127) {
+        store8(out, 94); store8(out + 1, 63);
+        print(out, 2);
+        return 0;
+    }
+    store8(out, 92); store8(out + 1, 120);
+    store8(out + 2, load8(_tty_hex + (cp >> 4)));
+    store8(out + 3, load8(_tty_hex + (cp & 15)));
+    print(out, 4);
+    return 0;
+}
+
+# Bytes of a unit that ran past the end of the previous token. The
+# next token must not re-judge them: a valid UTF-8 tail is written
+# unchanged (`_tty_carry_drop == 0`), and the tail of a C1 pair that
+# was already escaped is dropped (`== 1`). Reset per render.
+var _tty_carry = 0;
+var _tty_carry_drop = 0;
+
+# Write `src[s..s+l)` to the terminal, replacing every unsafe unit
+# (see `_tty_unit`) with a visible escape. Safe runs go out in one
+# `print`. `src_len` lets a UTF-8 sequence that straddles the token
+# end be validated against the bytes that follow.
+fn _tty_print_safe(src, src_len, s, l) {
+    var end = s + l;
+    var p = s;
+    var run = s;
+    if (_tty_carry > 0) {
+        var take = _tty_carry;
+        if (take > l) { take = l; }
+        p = p + take;
+        _tty_carry = _tty_carry - take;
+        if (_tty_carry_drop == 1) { run = p; }
+    }
+    while (p < end) {
+        var u = _tty_unit(src, src_len, p);
+        var ulen = u >> 1;
+        if ((u & 1) == 1) {
+            if (p > run) { print(src + run, p - run); }
+            _tty_put_escape(src, p, ulen);
+            # A `C2 9B` split across two tokens is escaped once, here;
+            # the next token must skip the `9B` it starts with.
+            if (p + ulen > end) {
+                _tty_carry = p + ulen - end;
+                _tty_carry_drop = 1;
+            }
+            p = p + ulen;
+            run = p;
+        }
+        if ((u & 1) == 0) {
+            if (p + ulen > end) {
+                _tty_carry = p + ulen - end;
+                _tty_carry_drop = 0;
+            }
+            p = p + ulen;
+        }
+    }
+    if (p > end) { p = end; }
+    if (p > run) { print(src + run, p - run); }
+    return 0;
+}
+
 # Sanitize an externally-supplied cstr for echo on stderr: replace
 # bytes < 0x20 (including the 0x1B ESC that anchors every ANSI
-# escape sequence) and 0x7F DEL with `?`. UTF-8 bytes (>= 0x80)
-# pass through so non-ASCII paths still echo legibly.
-# See docs/audit/2026-04-23-audit.md FINDING-006.
+# escape sequence) and 0x7F DEL with `?`, and — since 2.5.2 — C1
+# controls in either form (`C2 80`..`C2 9F`, or a stray raw
+# 0x80..0x9F) too, judged by `_tty_unit` so valid UTF-8 paths still
+# echo legibly. See docs/audit/2026-04-23-audit.md FINDING-006 and
+# the 2.5.2 audit P2-2.
 fn _sanitize_for_stderr(s) {
     var n = strlen(s);
     var out = alloc(n + 1);
     var i = 0;
+    var o = 0;
     while (i < n) {
         var b = load8(s + i);
-        var c = b;
-        if (b < 32)   { c = 63; }   # ? replaces C0 controls (incl. ESC)
-        if (b == 127) { c = 63; }   # ? replaces DEL
-        store8(out + i, c);
-        i = i + 1;
+        var step = 1;
+        var bad = 0;
+        if ((b < 32) || (b == 127)) { bad = 1; }   # every C0 + DEL
+        if (b >= 128) {
+            var u = _tty_unit(s, n, i);
+            step = u >> 1;
+            bad = u & 1;
+        }
+        if (bad == 1) {
+            store8(out + o, 63);
+            o = o + 1;
+        }
+        if (bad == 0) {
+            memcpy(out + o, s + i, step);
+            o = o + step;
+        }
+        i = i + step;
     }
-    store8(out + n, 0);
+    store8(out + o, 0);
     return out;
 }
 
@@ -240,15 +388,22 @@ fn too_large_error(path) {
 # Emit ANSI-themed source bytes per the chosen theme (see
 # src/theme.cyr). Walks the tokenbuf in order; for each token,
 # writes the theme's ANSI prefix (if non-empty), then the source
-# bytes from `[start, start+len)`, then the reset escape.
+# bytes from `[start, start+len)` through `_tty_print_safe`, then
+# the reset escape. The source is untrusted: through 2.5.1 its
+# bytes went out raw, so a file holding `ESC ] 0 ; … BEL` retitled
+# the window and `ESC [ 2 J` cleared the screen, under every theme
+# including `none` (2.5.2 audit P1-1). Control bytes now render as
+# visible escapes (`^[`, `\x9b`); every other byte is unchanged.
 # Returns 1 if any TK_ERROR token was emitted, else 0 — same
 # convention as emit_ndjson so the exit-code path is shared.
-fn emit_themed(tb, src, theme) {
+fn emit_themed(tb, src, src_len, theme) {
     var count = tokenbuf_count(tb);
     var i = 0;
     var any_error = 0;
     var reset = theme_reset();
     var rlen = strlen(reset);
+    _tty_carry = 0;
+    _tty_carry_drop = 0;
     while (i < count) {
         var k = tokenbuf_kind(tb, i);
         var s = tokenbuf_start(tb, i);
@@ -259,7 +414,7 @@ fn emit_themed(tb, src, theme) {
         if (clen > 0) {
             print(color, clen);
         }
-        print(src + s, l);
+        _tty_print_safe(src, src_len, s, l);
         if (clen > 0) {
             print(reset, rlen);
         }
@@ -310,7 +465,7 @@ fn emit_ndjson(tb) {
 fn tokenize_buf(buf, n, path, lang, handcoded, theme) {
     var tb = 0;
     if (handcoded == 1) {
-        tb = tokenize_source_handcoded(buf, lang);
+        tb = _vyk_handcoded(buf, n, lang);
     }
     if (handcoded != 1) {
         # 2.0+ streaming entry: feed the whole buffer in one shot
@@ -330,7 +485,7 @@ fn tokenize_buf(buf, n, path, lang, handcoded, theme) {
     }
     var had_error = 0;
     if (theme >= 0) {
-        had_error = emit_themed(tb, buf, theme);
+        had_error = emit_themed(tb, buf, n, theme);
     } else {
         had_error = emit_ndjson(tb);
     }

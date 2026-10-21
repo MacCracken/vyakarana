@@ -6,9 +6,11 @@
 #   - `<![CDATA[ … ]]>` data sections — body is uninterpreted.
 #   - `<!DOCTYPE …>` declarations.
 #
-# The pair-rule scanner handles each via a `match = "pair"`
-# entry. Element tags, attributes, entity references, and
-# strings are all the same shape as html.cyml.
+# Processing instructions and CDATA sections each get a
+# `match = "pair"` entry. DOCTYPE has no rule: `<!DOCTYPE …>`
+# tokenizes as `<` op + `!` op + idents / strings + `>` op —
+# coverage holds. Element tags, attributes, entity references,
+# and strings are all the same shape as html.cyml.
 #
 # Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
 # vidya doesn't ship an XML reference sample yet. The local

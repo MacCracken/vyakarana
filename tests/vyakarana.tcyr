@@ -2031,17 +2031,46 @@ fn main() {
 
     # Index-based path covers the same surface, addressed by the
     # spec's standard-legend ordering.
-    assert_eq(lsp_kind_from_standard_index(17), TK_KEYWORD,      "idx 17 (keyword)");
-    assert_eq(lsp_kind_from_standard_index(18), TK_COMMENT,      "idx 18 (comment)");
-    assert_eq(lsp_kind_from_standard_index(19), TK_STRING,       "idx 19 (string)");
-    assert_eq(lsp_kind_from_standard_index(20), TK_NUMBER,       "idx 20 (number)");
-    assert_eq(lsp_kind_from_standard_index(21), TK_STRING,       "idx 21 (regexp)");
-    assert_eq(lsp_kind_from_standard_index(22), TK_OPERATOR,     "idx 22 (operator)");
-    assert_eq(lsp_kind_from_standard_index(14), TK_KEYWORD,      "idx 14 (modifier)");
-    assert_eq(lsp_kind_from_standard_index(15), TK_PREPROCESSOR, "idx 15 (macro)");
-    assert_eq(lsp_kind_from_standard_index(16), TK_PREPROCESSOR, "idx 16 (decorator)");
+    # Spec order (LSP 3.17 `SemanticTokenTypes`, + 3.18 `label`). Through
+    # 2.5.1 these assertions pinned the code's own wrong table (idx 17
+    # "keyword", 18 "comment", …); 2.5.2 audit P2-1.
+    assert_eq(lsp_kind_from_standard_index(14), TK_PREPROCESSOR, "idx 14 (macro)");
+    assert_eq(lsp_kind_from_standard_index(15), TK_KEYWORD,      "idx 15 (keyword)");
+    assert_eq(lsp_kind_from_standard_index(16), TK_KEYWORD,      "idx 16 (modifier)");
+    assert_eq(lsp_kind_from_standard_index(17), TK_COMMENT,      "idx 17 (comment)");
+    assert_eq(lsp_kind_from_standard_index(18), TK_STRING,       "idx 18 (string)");
+    assert_eq(lsp_kind_from_standard_index(19), TK_NUMBER,       "idx 19 (number)");
+    assert_eq(lsp_kind_from_standard_index(20), TK_STRING,       "idx 20 (regexp)");
+    assert_eq(lsp_kind_from_standard_index(21), TK_OPERATOR,     "idx 21 (operator)");
+    assert_eq(lsp_kind_from_standard_index(22), TK_PREPROCESSOR, "idx 22 (decorator)");
+    assert_eq(lsp_kind_from_standard_index(23), TK_IDENT,        "idx 23 (label, 3.18)");
     assert_eq(lsp_kind_from_standard_index(0),  TK_IDENT,        "idx 0 (namespace)");
     assert_eq(lsp_kind_from_standard_index(12), TK_IDENT,        "idx 12 (function)");
+
+    # The index path must agree with the name path for every standard
+    # index — the two used to disagree on nine of them.
+    var lsp5_names = vec_new();
+    vec_push(lsp5_names, "namespace"); vec_push(lsp5_names, "type");
+    vec_push(lsp5_names, "class"); vec_push(lsp5_names, "enum");
+    vec_push(lsp5_names, "interface"); vec_push(lsp5_names, "struct");
+    vec_push(lsp5_names, "typeParameter"); vec_push(lsp5_names, "parameter");
+    vec_push(lsp5_names, "variable"); vec_push(lsp5_names, "property");
+    vec_push(lsp5_names, "enumMember"); vec_push(lsp5_names, "event");
+    vec_push(lsp5_names, "function"); vec_push(lsp5_names, "method");
+    vec_push(lsp5_names, "macro"); vec_push(lsp5_names, "keyword");
+    vec_push(lsp5_names, "modifier"); vec_push(lsp5_names, "comment");
+    vec_push(lsp5_names, "string"); vec_push(lsp5_names, "number");
+    vec_push(lsp5_names, "regexp"); vec_push(lsp5_names, "operator");
+    vec_push(lsp5_names, "decorator"); vec_push(lsp5_names, "label");
+    var lsp5_bad = 0;
+    var lsp5_i = 0;
+    while (lsp5_i < vec_len(lsp5_names)) {
+        if (lsp_kind_from_standard_index(lsp5_i) != lsp_kind_from_token_type(vec_get(lsp5_names, lsp5_i))) {
+            lsp5_bad = lsp5_bad + 1;
+        }
+        lsp5_i = lsp5_i + 1;
+    }
+    assert_eq(lsp5_bad, 0, "standard index agrees with name mapping for all 24 types");
 
     # Out-of-range → TK_IDENT (servers with extended legends).
     assert_eq(lsp_kind_from_standard_index(99),       TK_IDENT, "out-of-range → TK_IDENT");
@@ -3572,6 +3601,64 @@ fn main() {
     # test doesn't drift on every bump.
     assert(strlen(VYK_VERSION) > 4, "version string is longer than 4 chars");
     assert_eq(memeq(VYK_VERSION, "vyk ", 4), 1, "version string starts with 'vyk '");
+
+    test_group("2.5.2 grammar invariants — no shadowed operator / punctuation");
+    # The scanner returns the FIRST list entry that matches, so an entry
+    # listed before a longer entry it prefixes makes the longer one
+    # unreachable. 2.5.2's audit found ten (php `==` before `===`,
+    # crystal / ruby compound assignments, julia `>>>`, powershell
+    # `-isnot`). Checked over every loaded grammar so a new grammar
+    # cannot reintroduce it. An operator also shadows any longer
+    # punctuation entry it prefixes (operators are tried first).
+    var ord5_names = vec_new();
+    list_languages_into(ord5_names);
+    var ord5_bad = 0;
+    var ord5_gi = 0;
+    while (ord5_gi < vec_len(ord5_names)) {
+        var ord5_g = registry_find_by_name(vec_get(ord5_names, ord5_gi));
+        var ord5_lists = vec_new();
+        vec_push(ord5_lists, grammar_operators(ord5_g));
+        vec_push(ord5_lists, grammar_punctuation(ord5_g));
+        var ord5_li = 0;
+        while (ord5_li < 2) {
+            var ord5_v = vec_get(ord5_lists, ord5_li);
+            var ord5_a = 0;
+            while (ord5_a < vec_len(ord5_v)) {
+                var ord5_sa = vec_get(ord5_v, ord5_a);
+                var ord5_la = strlen(ord5_sa);
+                # Later entries of the same list, then (for operators)
+                # every punctuation entry.
+                var ord5_scan = vec_new();
+                var ord5_b = ord5_a + 1;
+                while (ord5_b < vec_len(ord5_v)) { vec_push(ord5_scan, vec_get(ord5_v, ord5_b)); ord5_b = ord5_b + 1; }
+                if (ord5_li == 0) {
+                    var ord5_pv = grammar_punctuation(ord5_g);
+                    var ord5_pi = 0;
+                    while (ord5_pi < vec_len(ord5_pv)) { vec_push(ord5_scan, vec_get(ord5_pv, ord5_pi)); ord5_pi = ord5_pi + 1; }
+                }
+                var ord5_k = 0;
+                while (ord5_k < vec_len(ord5_scan)) {
+                    var ord5_sb = vec_get(ord5_scan, ord5_k);
+                    if (strlen(ord5_sb) > ord5_la) {
+                        if (memeq(ord5_sb, ord5_sa, ord5_la) == 1) {
+                            ord5_bad = ord5_bad + 1;
+                            print("    shadowed: ", 14);
+                            print(vec_get(ord5_names, ord5_gi), strlen(vec_get(ord5_names, ord5_gi)));
+                            print(" ", 1); print(ord5_sa, ord5_la);
+                            print(" before ", 8); print(ord5_sb, strlen(ord5_sb));
+                            print("\n", 1);
+                        }
+                    }
+                    ord5_k = ord5_k + 1;
+                }
+                ord5_a = ord5_a + 1;
+            }
+            ord5_li = ord5_li + 1;
+        }
+        ord5_gi = ord5_gi + 1;
+    }
+    assert_eq(ord5_bad, 0, "no grammar lists a prefix before a longer operator / punctuation entry");
+    assert_eq(vec_len(ord5_names), 46, "all 46 bundled grammars loaded (none rejected by 2.5.2 validation)");
 
     return assert_summary();
 }

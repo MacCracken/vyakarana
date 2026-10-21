@@ -7,14 +7,16 @@
 #
 # Corpus: tests/corpus/concept.md is a hand-rolled stand-in (ADR 0006).
 #
-# Pair-rule ordering matters: `` ``` `` (fenced code, 3 bytes) must
-# come before `` ` `` (inline code, 1 byte) or the scanner will match
-# the single-backtick first and bail on the next backtick.
+# Fences vs inline code: `` ``` `` fences are a `compose_fenced`
+# rule (ADR 0016), which runs at scanner step 0b — ahead of every
+# pair rule — so the `` ` `` inline-code pair never sees a fence
+# opener. No pair-rule ordering is involved.
 #
 # Known gaps for future ADRs (cosmetic; coverage holds):
-#   - Setext heading underlines (`===`, `---`) are tokenized as three
-#     separate `=` / `-` operators. A theme can't color them
-#     distinctly from a horizontal rule or plain emphasis.
+#   - Setext heading underlines (`===`, `---`) come back as 3-byte
+#     `===` / `---` operators (a longer run splits into 3-byte
+#     chunks, then single bytes) — the same token a `---`
+#     horizontal rule gets, so a theme can't color them distinctly.
 #   - Tables don't get a distinguished kind — pipes are operators,
 #     dashes are operators.
 #   - Prose tokenizes as ident runs, not a distinguished `prose`
@@ -88,8 +90,8 @@ punctuation = [
 # or the tag doesn't match a registered grammar (graceful
 # degradation; same shape as the prior 1.7.0 behaviour). The
 # scanner pipeline runs `compose_fenced` at step 0b, ahead of
-# step 2 pair rules — the 3-byte ` ``` ` start would otherwise be
-# eaten as three separate ` ` ` (inline code) opens.
+# step 3 pair rules — the 3-byte ` ``` ` start would otherwise be
+# eaten by the 1-byte ` ` ` inline-code pair rule.
 [[rules]]
 match = "compose_fenced"
 start = "```"

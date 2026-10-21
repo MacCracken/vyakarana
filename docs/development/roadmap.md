@@ -261,57 +261,152 @@ drifted, then stayed drifted). Brief shape:
   `[test]`; `vyk` −33 KB), the `detect/content-python` drift
   bisected to 2.3.4's shebang fix and mostly recovered, `#! /bin/sh`
   detecting again, and the lint gate made to fail on warnings.
+  2.5.2: the full closeout audit — 5 P1 / 10 P2 / 12 P3 fixed
+  (terminal-escape injection through `--theme`, three streaming
+  correctness bugs and unbounded streaming heap, quadratic compose
+  scans, malformed-grammar crashes), every non-compose grammar
+  chunk-invariant at every split offset, two fuzz harnesses
+  strengthened until they fail on 2.5.1.
 
-### Forward plan
+### Forward plan — pinned releases (2.6.x – 2.x.x)
 
-**Nothing scheduled, as of 2.5.0.** The 2.1.5 audit queue
-drained at 2.2.1 and has stayed drained. Most cuts since
-(2.2.2, 2.2.3, 2.3.0, 2.3.3, 2.4.1, 2.4.3, 2.5.0) were the
-upstream-toolchain forcing function firing, not planned work —
-the model below is holding; that one trigger just fires more
-often than the old "empty / TBD" framing implied. The rest were
-audit- or consumer-driven: 2.3.1 / 2.3.2 (CYML compose,
-`TK_ERROR` sweep), 2.3.4 (hardening audit), 2.3.5 (vidya's
-`openqasm` gap), 2.4.0 (streaming fixes), 2.4.2 (owl's symbol
-collision).
+**Re-planned 2026-10-20, at the 2.5.2 closeout audit.** The roadmap
+used to hold "nothing scheduled; the next cut waits on a forcing
+function". The audit turned that queue into concrete, scoped work, so
+the remaining work and the backlog are now pinned to releases. The
+rule that retired the old 1.3.x – 1.13.x pre-schedule still applies to
+*content*: each release below is defined by defects and gaps already
+found and reproduced, not by guesses at future demand. Sources are the
+[2.5.2 audit](../audit/2026-10-20-2.5.x-closeout-audit.md) §Scheduled
+and `state.md` §Next up.
 
-The next cut waits on a forcing function — a real consumer
-asking for a grammar, a profiler complaining about a hot
-path, an upstream toolchain refresh, or an audit finding.
-No speculative batches; the previous cycle of pre-scheduling
-1.3.x – 1.13.x ahead of consumer demand drifted out of
-sync with reality and was cut.
+**Versioning, as practiced.** A minor when token boundaries change for
+some input (a consumer can see the difference) or a feature is added;
+a patch otherwise. Every minor closes with the CLAUDE.md hardening
+step as its `.y.last` closeout patch, as 2.5.2 did for 2.5.x.
+Toolchain catch-ups stay user-directed patch releases at any point in
+the train (pin → re-vendor → gates → byte-identical output A/B, the
+2.4.3 – 2.5.1 protocol); they never carry other work.
 
-**One known follow-up, not owned here.** As of 2.5.0 the
-consumers pin `owl` → `2.4.2` (cyrius `6.6.2`), `cyim` →
-`2.4.0` (cyrius `6.7.9`), `vidya` → `2.4.0` (cyrius `6.6.2`).
-`dist/vyakarana.cyr` at 2.5.0 differs from 2.4.3 only in its
-version header, and from 2.4.2 only by that plus the
-`# Requires` block, so re-pinning costs a one-liner and forces
-no toolchain move: the bundle builds at the pins they run
-today. owl and vidya taking 2.4.3+ get the 4-leaf sidecar, so
-anything they reached only through vyakarana's old 11-name
-sidecar belongs in their own `[deps] stdlib`. Whether to take
-the tag is their call, not vyakarana's.
+#### 2.6.0 — Shell correctness *(minor: shell token boundaries change)*
 
-`docs/development/state.md` has a §Next up section listing
-candidate directions if work resumes (state-machine drain
-optimization, real-corpus fuzz harness, more grammars,
-binary-size cap revisit). None are committed; the live state
-file is the right place for that conversation, not this
-roadmap.
+- **`#` starts a comment only at word start.** `${#arr[@]}`, `${x#p}`,
+  `${x##*/}` and `a#b` comment out the rest of the line today — in the
+  shipped corpus. Needs a line-rule boundary option (ADR 0022) applied
+  in `grammars/shell.cyml`, with `src/grammars/shell.cyr` (the M1
+  oracle) changed in lockstep so the smoke M1/M2 byte-identical diff
+  keeps holding.
+- **Heredoc bodies** (`<<EOF`, `<<-EOF`, `<<'EOF'`): an apostrophe in a
+  body opens a string that runs to EOF. A new rule shape (ADR 0023).
+- `\"` outside quotes (becomes a `\` operator, then a string to EOF);
+  `$0`–`$9` as special variables.
+- Exit: a vidya-synced corpus addition per shape; every shell file in
+  the real-file sweep zero-error.
 
-### Backlog (parked, no forcing function yet)
+#### 2.6.1 — CLI hardening *(patch)*
 
-- **Incremental retokenization** — only retokenize edited
-  lines; enables cyim and other live editors. Likely additive
-  (a `retokenize_range` API alongside the streaming one), in
-  which case it slots into a 2.x cut. May be breaking, in
-  which case 3.0.0. Reopen when a real editor pushes for it.
+- Write failures exit non-zero: `vyk a.sh > /dev/full`, a closed
+  stdout and `--export-theme > /dev/full` all exit 0 today (stdlib
+  `print` ignores short writes) — a checked writer, exit 3.
+- Clear errors: empty `--language=` / `--theme=` / `--export-theme=`
+  report "unknown option"; `--language=bogus` exits 4 "no grammar
+  matched" instead of 2 "bad value".
+- `--export-theme` independent of flag order (`--export-theme=vscode
+  --theme=dark` exports `default`); refuse a stray FILE with it.
+- `-` / stdin input.
+
+#### 2.6.2 — Detection from grammar data *(patch, ADR)*
+
+- Every grammar's `extensions` array is documentation only — detection
+  is hard-coded in `src/detect.cyr`, and `.asm`, `.hh`, `.csx`,
+  `.properties`, `.phtml`, `Dockerfile.*` are listed but never routed.
+  Either drive detection from the arrays or prune them; decide in an
+  ADR. Close with the 2.6.x closeout audit.
+
+#### 2.7.0 — Number literals *(minor: token boundaries change)*
+
+- **`[defaults] number_float`** — fraction and exponent as one number
+  token (ADR). Today `0.1` is `0` `.` `1` everywhere (JSON's `.` was a
+  `TK_ERROR` until 2.5.2) and `1e5` is `1` + ident `e5`. Opt in json,
+  python, javascript, typescript, rust, go, c, cpp, java, kotlin,
+  csharp, swift, zig, lua, julia, css / scss, protobuf, graphql,
+  openqasm (`OPENQASM 2.0;` is three tokens). TOML floats and
+  datetimes (scoped out by ADR 0008).
+- Per-grammar digit separators (`1_000`) where the language has them.
+
+#### 2.7.1 — Grammar polish *(patch)*
+
+From the 2.5.2 header cross-check and the out-of-scope list:
+
+- PHP 8 `#[attr]` (swallowed by the `#` comment rule); ruby / crystal
+  `@@x` class variables; makefile `$<` `$^` `$%` `$+` `$|`; css `-`
+  unreachable as an operator; harmless duplicates (haskell `/=`, llvm
+  `uwtable`, swift words).
+- Rust byte chars `b'\n'`; Python f / r / b string prefixes; Cyrius
+  `#ifdef` / `#define` lines as preprocessor, not comments.
+- Close with the 2.7.x closeout audit.
+
+#### 2.8.0 — Streaming engine *(minor)*
+
+- **Long non-pair tokens are re-scanned on every drain.** Only pair
+  rules have the pending fast path; a 512 KB line comment in 64-byte
+  chunks takes 4 s, a 512 KB identifier 10 s. Generalise the fast path
+  to line rules, identifiers, whitespace and numbers — or replace the
+  rescan-and-commit drain with a state machine that scans only new
+  bytes (the long-standing "scanner state-machine optimization").
+- **Compose-grammar chunk invariance** — markdown, html, vue, svelte,
+  cyml. Needs prefix-hold restructured so it stops reading the commit
+  list as state (three patch attempts in 2.4.0 regressed). Fixes the
+  residual O(N^1.6) compose drains with it.
+- Exit: `fuzz/chunk_invariance.fcyr` covers all 46 corpora; the
+  every-offset split is clean on all 46.
+
+#### 2.9.0 — Size and tooling *(minor)*
+
+- Binary size: the default `vyk` is 444,032 B, the DCE build (what
+  releases ship) 353,920 B, against 1.13.0's 300 KB soft cap. The
+  cheapest lever: strip comments when embedding — the blobs carry each
+  `.cyml` verbatim and most of their ~231 KB is comment text (2.5.2's
+  header fixes alone added 8.4 KB). Then revisit the cap or the blob
+  encoding (ADR 0014).
+- Replace `scripts/embed-grammars.sh` — its escaping is gawk-only
+  (`gsub` backslash doubling is a no-op under POSIX awk) — with
+  cyrius's `[embed]` manifest section (6.6.19) or a POSIX rewrite.
+- Real-corpus mutation fuzz over vidya snapshots (recommended since the
+  2026-05-09 audit); fold the 2.5.2 audit's sweep scripts (real-file
+  coverage sweep, poison A/B) into `scripts/` so the next audit reruns
+  them instead of rebuilding them.
+- Script the loaded-host latency protocol 2.5.2 used by hand (short
+  runs, alternating versions, best-of-10 + paired ratios —
+  `performance.md` §2.5.2) so every refresh uses it.
+
+#### 2.x — Consumer-driven, no fixed slot
+
+Taken only when a consumer asks; each becomes a pinned minor when it
+does.
+
+- **Incremental retokenization** (`retokenize_range`) for live editors
+  (cyim). Additive → a 2.x minor; breaking → 3.0.0.
+- **New grammars** — MDX, Lean 4, shell variants beyond
+  bash / zsh / sh / dash, Zig macros, whatever a consumer needs.
 - **Regex rule type** — reopens
-  [ADR 0005](../adr/0005-m2-rule-type-scope.md) only if a
-  grammar genuinely cannot be expressed via the current rule
-  set. None of the 46 bundled grammars have hit that wall.
+  [ADR 0005](../adr/0005-m2-rule-type-scope.md) only if a grammar
+  genuinely cannot be expressed with the current rule set. None of the
+  46 has hit that wall.
+
+#### 3.0.0
+
+Only for a consumer-driven contract break (token kinds, `Token`
+layout, the streaming API). None is planned.
+
+**Consumers, not owned here.** As of 2.5.2 the consumers pin `owl` →
+`2.4.2` (cyrius `6.6.2`), `cyim` → `2.4.0` (`6.7.9`), `vidya` → `2.4.0`
+(`6.6.2`), and all three build and pass their tests against the 2.5.2
+bundle at those pins. 2.5.2 changes what they render — fixed operator
+splits, chunk-invariant streaming, JSON decimals, CYML `"""` strings —
+with no API change; whether to take the tag is their call. vidya in
+particular gains its seven field-note documents (they emitted error
+tokens through 2.5.1).
 
 ---
 
@@ -324,6 +419,7 @@ roadmap.
 | 2026-04-23 | Include regex rules in M2?             | No              | Performance cliffs, debugging tax; add only if forced    |
 | 2026-04-23 | Library-first or binary-first?         | Library-first   | Consumers (owl, cyim) drive shape; `vyk` is diagnostic   |
 | 2026-04-23 | Corpus source?                         | `vidya/content/lexing_and_parsing/*` | Already exists, curated, and creates reciprocal relationship |
+| 2026-10-20 | Keep "nothing scheduled" after 2.5.x? | No — pinned releases 2.6.0 – 2.9.0 | The 2.5.2 audit produced a reproduced, scoped queue; pinning it beats re-deriving it each session. Content stays evidence-driven. |
 
 ---
 

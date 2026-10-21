@@ -8,8 +8,12 @@
 #   2. `#` (not shebang)                 → comment to end of line
 #   3. `"..."` (backslash escape aware)  → string
 #   4. `'...'` (no escapes)              → string
-#   5. `$X` where X is #?@!*$-0..9       → operator, length 2
-#      (shell special variable refs; prevents `$#` starting a comment)
+#   5. `$X` where X is #?@!*$-           → operator, length 2
+#      (shell special variable refs; prevents `$#` starting a comment).
+#      Digits are NOT in the set — `$1` is `$` + number `1`; this line
+#      used to list `0..9` (2.5.2 audit). Known gap shared with
+#      shell.cyml: a `#` mid-word (`${#arr[@]}`, `${x#p}`) still
+#      starts a comment — see the roadmap.
 #   6. `$`                               → operator, length 1
 #   7. identifier start [A-Za-z_]        → keyword-lookup, else ident
 #   8. digit                             → number (decimal, hex, bin, oct)

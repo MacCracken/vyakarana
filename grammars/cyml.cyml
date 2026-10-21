@@ -40,7 +40,7 @@
 # came back as TOML comments, and a ``` fence opened a backtick
 # pair rule that swallowed the whole code block into one string.
 # The bundled corpus had neither shape, so the gates stayed green
-# across twelve minor releases.
+# across nine minor releases (1.9 through 2.3).
 #
 # Stand-in corpus: NOT a stand-in! `tests/corpus/dependencies.cyml`
 # is a real vidya snapshot from
@@ -49,18 +49,21 @@
 # language.
 #
 # Known gaps:
-#   - Multi-line TOML strings `"""…"""`. Not in the sample.
-#     If a real CYML uses them, add the same pair rule
-#     [ADR 0008](../docs/adr/0008-toml-triple-quoted-strings.md)
-#     introduced for TOML.
-#   - A body line beginning with `[` ends the region early —
-#     `end_before` is a literal `\n[`, not a line-anchored TOML
-#     header match. In practice that means a markdown link-
-#     reference definition (`[1]: https://…`) at column 0 hands
-#     the rest of the body back to the header rules. Same class
-#     of documented literal-prefix limit as html's `<script>`
-#     vs `<script type="module">` (ADR 0013 §When to revisit).
-#     Indented or inline `[` is unaffected.
+#   - Multi-line TOML strings `"""…"""` / `'''…'''` are handled
+#     since 2.5.2 (the ADR 0008 rules toml uses) — this used to be a
+#     "not in the sample" gap, and vidya's field notes hit it hard.
+#   - The body ends at a line starting `[[` (`end_before = "\n[["`).
+#     Through 2.5.1 it was `\n[`, so ANY body line starting `[` — a
+#     link, a reference definition, `[base, base+size)` in prose —
+#     ended the body and handed the rest to the TOML header rules,
+#     where a prose apostrophe opened a `'` string running to the
+#     next `'` (vidya `types.cyml`: ~14 KB mis-lexed). Across 35
+#     real CYML files a body was followed by `[[` 663 times and by a
+#     single-bracket `[table]` header 0 times, while 21 body lines
+#     began with `[`. Trade-off, documented: a single-bracket
+#     `[table]` header directly after a body now reads as body text
+#     until the next `[[`. A line-anchored header match would need
+#     scanner support. 2.5.2 audit P2-9.
 #   - Setext-heading underlines `===` (markdown-body level).
 #     The `---` separator would also match a setext underline,
 #     but the convention is that `---` lives between header
@@ -90,10 +93,12 @@ special_vars = false
 unicode_ident = true
 char_literal  = false
 
-# Operators in longest-match order. CYML-specific: `---` (3-byte
-# separator between TOML header and markdown body), `**` (markdown
-# bold marker — body level), plus the standard TOML / markdown
-# punctuation surface.
+# Operators in longest-match order. `---` never fires: the
+# compose_region rule below (step 0c) claims every `---` before
+# the operator step runs — unreachable but harmless. `**` (markdown
+# bold) dates from the 1.9.0–2.3.0 union rule set, when this
+# grammar also scanned the bodies; bodies route to the markdown
+# grammar since 2.3.1, so here it can only match in header text.
 operators = [
     "---",
     "**",
@@ -105,8 +110,8 @@ operators = [
     "@",
 ]
 
-# Punctuation. `[[` and `[` need to come before `[` in the
-# longest-match order — they're matched in declaration order.
+# Punctuation. `[[` and `]]` need to come before `[` and `]` in
+# the longest-match order — they're matched in declaration order.
 punctuation = [
     "[[", "]]",
     "(", ")", "{", "}", "[", "]",
@@ -116,19 +121,19 @@ punctuation = [
 
 # ── Rules ──────────────────────────────────────────────────────────
 
-# Markdown body. Opens at `---` and runs to the next TOML header
-# line or EOF, whichever comes first. `end_before` is a lookahead:
-# the `\n[` stays behind so `[[entries]]` tokenizes as the TOML it
-# is. Runs at scanner step 0c, ahead of the `#` line rule below —
-# which is the whole point, since a body's `# Heading` is markdown,
-# not a TOML comment.
+# Markdown body. Opens at `---` and runs to the next line starting
+# `[[` or EOF, whichever comes first (see Known gaps for why not
+# `[`). `end_before` is a lookahead: the `\n[[` stays behind so
+# `[[entries]]` tokenizes as the TOML it is. Runs at scanner step
+# 0c, ahead of the `#` line rule below — which is the whole point,
+# since a body's `# Heading` is markdown, not a TOML comment.
 #
 # `---` inside a header comment or string is safe: the scanner
 # advances token-by-token, so the cursor never lands inside one.
 [[rules]]
 match = "compose_region"
 start = "---"
-end_before = "\n["
+end_before = "\n[["
 inner = "markdown"
 
 
@@ -136,6 +141,27 @@ inner = "markdown"
 kind = "comment"
 match = "line"
 start = "#"
+
+
+# Multi-line TOML strings, ahead of the single-quote rules (first
+# match wins). Same rules ADR 0008 gave toml. Since 2.5.2: vidya's
+# `field_notes` documents carry their bodies in `content = """…"""`
+# (148 of them in gotchas.cyml alone), and without these rules the
+# opener split into `""` + `"…`, every quote inside flipped string
+# parity, and seven vidya files exited 1 (2.5.2 audit P2-8).
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\"\"\""
+end = "\"\"\""
+escape = "\\"
+
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "'''"
+end = "'''"
 
 
 [[rules]]
@@ -153,10 +179,10 @@ start = "'"
 end = "'"
 
 
-# Markdown inline code: `…`. Backticks are common in CYML
-# bodies (referring to commands, file paths, identifiers).
-# Pair rule with no escape — backtick spans don't have
-# embedded escape handling.
+# Backtick span `…`, no escape. Dates from the union rule set,
+# when it served inline code in bodies; bodies route to the
+# markdown grammar since 2.3.1, so this now only fires on a
+# backtick in header text (not valid TOML outside a string).
 [[rules]]
 kind = "string"
 match = "pair"

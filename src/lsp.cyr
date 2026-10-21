@@ -20,7 +20,7 @@
 #     index → kind translation.
 #   - The standard LSP 3.17 legend is hardcoded by index. Servers
 #     that ship custom legends (a handful of token types beyond
-#     the standard 22) should resolve the name themselves.
+#     the standard 23) should resolve the name themselves.
 #
 # Available via the distlib bundle (`[lib] modules` includes
 # this module).
@@ -30,7 +30,7 @@ include "src/token.cyr"
 # Convert an LSP token-type NAME (e.g. "keyword", "function",
 # "variable", "string") to a vyakarana TK_* kind.
 #
-# The 22 standard LSP token types map as follows:
+# The 23 standard LSP token types (3.17) map as follows:
 #   "namespace"      → TK_IDENT
 #   "type"           → TK_IDENT       (type names are idents)
 #   "class"          → TK_IDENT
@@ -98,50 +98,39 @@ fn lsp_kind_from_token_type(name) {
 }
 
 # Convert an LSP token-type INDEX (0-based into the legend's
-# `tokenTypes` array) to a vyakarana TK_* kind. Uses the
-# standard LSP 3.17 legend order. Servers that ship a custom
-# legend (with extra tokenTypes appended after the standard 22)
-# should resolve the name first via their legend's `tokenTypes[idx]`
-# and call `lsp_kind_from_token_type(name)` instead.
+# `tokenTypes` array) to a vyakarana TK_* kind, assuming the server
+# uses the standard `SemanticTokenTypes` order. Servers that ship a
+# custom legend should resolve the name via their legend's
+# `tokenTypes[idx]` and call `lsp_kind_from_token_type(name)`.
 #
-# Standard 3.17 order:
-#   0  namespace      8  variable        16 macro
-#   1  type           9  property        17 keyword
-#   2  class         10  enumMember      18 modifier
-#   3  enum          11  event           19 comment
-#   4  interface     12  function        20 string
-#   5  struct        13  method          21 number
-#   6  typeParameter 14  decorator       22 regexp
-#   7  parameter     15  (reserved)      23 operator
+# Standard order (LSP 3.17 `SemanticTokenTypes`; `label` is 3.18):
+#   0  namespace      8  variable       16 modifier
+#   1  type           9  property       17 comment
+#   2  class         10  enumMember     18 string
+#   3  enum          11  event          19 number
+#   4  interface     12  function       20 regexp
+#   5  struct        13  method         21 operator
+#   6  typeParameter 14  macro          22 decorator (3.17)
+#   7  parameter     15  keyword        23 label     (3.18)
 #
-# The "reserved" slot at 15 is a quirk of the spec history; the
-# common form has decorator at 14 and operator at 22. We follow
-# the *current* (3.17) order, which lists decorator as the most
-# recent addition at the end of the standard set. Out-of-range
-# indices return TK_IDENT.
+# Through 2.5.1 this table, the code below it and ADR 0012 gave three
+# different orderings, none of them the spec's: indices 14-22 all
+# mapped wrong (a comment came back TK_KEYWORD, a string TK_COMMENT,
+# …), and the tests pinned the code's values rather than the spec's.
+# 2.5.2 audit P2-1. Each index now maps exactly as
+# `lsp_kind_from_token_type` maps its name — tests/vyakarana.tcyr
+# checks the two agree for all 24. Out-of-range indices return
+# TK_IDENT.
 fn lsp_kind_from_standard_index(idx) {
-    if (idx == 0)  { return TK_IDENT; }         # namespace
-    if (idx == 1)  { return TK_IDENT; }         # type
-    if (idx == 2)  { return TK_IDENT; }         # class
-    if (idx == 3)  { return TK_IDENT; }         # enum
-    if (idx == 4)  { return TK_IDENT; }         # interface
-    if (idx == 5)  { return TK_IDENT; }         # struct
-    if (idx == 6)  { return TK_IDENT; }         # typeParameter
-    if (idx == 7)  { return TK_IDENT; }         # parameter
-    if (idx == 8)  { return TK_IDENT; }         # variable
-    if (idx == 9)  { return TK_IDENT; }         # property
-    if (idx == 10) { return TK_IDENT; }         # enumMember
-    if (idx == 11) { return TK_IDENT; }         # event
-    if (idx == 12) { return TK_IDENT; }         # function
-    if (idx == 13) { return TK_IDENT; }         # method
-    if (idx == 14) { return TK_KEYWORD; }       # modifier
-    if (idx == 15) { return TK_PREPROCESSOR; }  # macro
-    if (idx == 16) { return TK_PREPROCESSOR; }  # decorator (LSP 3.17 addition)
-    if (idx == 17) { return TK_KEYWORD; }       # keyword
-    if (idx == 18) { return TK_COMMENT; }       # comment
-    if (idx == 19) { return TK_STRING; }        # string
-    if (idx == 20) { return TK_NUMBER; }        # number
-    if (idx == 21) { return TK_STRING; }        # regexp
-    if (idx == 22) { return TK_OPERATOR; }      # operator
-    return TK_IDENT;
+    if ((idx >= 0) && (idx <= 13)) { return TK_IDENT; }   # namespace..method
+    if (idx == 14) { return TK_PREPROCESSOR; }  # macro
+    if (idx == 15) { return TK_KEYWORD; }       # keyword
+    if (idx == 16) { return TK_KEYWORD; }       # modifier
+    if (idx == 17) { return TK_COMMENT; }       # comment
+    if (idx == 18) { return TK_STRING; }        # string
+    if (idx == 19) { return TK_NUMBER; }        # number
+    if (idx == 20) { return TK_STRING; }        # regexp
+    if (idx == 21) { return TK_OPERATOR; }      # operator
+    if (idx == 22) { return TK_PREPROCESSOR; }  # decorator
+    return TK_IDENT;                            # label (23), out of range
 }

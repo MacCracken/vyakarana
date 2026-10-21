@@ -153,6 +153,43 @@ fn _ds_try_line_rules(g, src, src_len, i) {
 # (HTML <script> with a JS template literal containing CSS, say).
 #
 # See ADR 0013 for the design.
+# ── Per-call scanner state (2.5.2) ─────────────────────────────────
+# `_ds_cur_gen` names the `tokenize_with_grammar` call in progress:
+# every call takes a fresh number on entry and restores its caller's
+# on exit, so a compose body tokenized recursively has its own. The
+# no-closer watermarks below are trusted only when stamped with the
+# CURRENT generation — never across calls, where the same buffer
+# pointer can hold different bytes (the streaming drain re-scans one
+# rolling buffer that compacts between calls).
+var _ds_gen_counter = 0;
+var _ds_cur_gen = 0;
+var _ds_depth = 0;
+var _ds_inner_pool = 0;
+var _ds_nolf_gen = 0;
+var _ds_nolf_from = 0;
+
+# Scratch tokenbuf for a compose body's inner tokens at the current
+# nesting depth, emptied for reuse; 0 if it cannot be allocated.
+# Each compose match used to allocate a fresh one, and the bump
+# allocator never frees: `<style>a</style>` x 65,000 (1 MB) took
+# 57.8 MB of heap (2.5.2 audit P3-e). Safe to reuse because every
+# caller copies the inner tokens out before returning, and a nested
+# call runs one depth deeper, on its own slot.
+fn _ds_inner_tb() {
+    if (_ds_inner_pool == 0) {
+        _ds_inner_pool = vec_new();
+        if (_ds_inner_pool == 0) { return 0; }
+    }
+    while (vec_len(_ds_inner_pool) <= _ds_depth) {
+        var t = tokenbuf_new();
+        if (t == 0) { return 0; }
+        vec_push(_ds_inner_pool, t);
+    }
+    var itb = vec_get(_ds_inner_pool, _ds_depth);
+    _tokenbuf_reset(itb);
+    return itb;
+}
+
 fn _ds_try_compose_rules(g, src, src_len, i, tb) {
     var rules = grammar_compose_rules(g);
     if (rules == 0) { return 0; }
@@ -166,6 +203,14 @@ fn _ds_try_compose_rules(g, src, src_len, i, tb) {
             var endp = compose_rule_end(r);
             var elen = strlen(endp);
             var body_start = i + slen;
+            # A search from an earlier body already found no closer
+            # anywhere after it in this buffer, so none exists after
+            # this one either. Through 2.5.1 every opener re-scanned
+            # to EOF: `<style>` x 150k with no `</style>` (1 MiB html)
+            # ran past 300 s (2.5.2 audit P2-5).
+            if ((load64(r + 24) == _ds_cur_gen) && (body_start >= load64(r + 32))) {
+                return 0;
+            }
             var j = body_start;
             while (j < src_len) {
                 if ((j + elen <= src_len) && (memeq(src + j, endp, elen) == 1)) {
@@ -175,11 +220,12 @@ fn _ds_try_compose_rules(g, src, src_len, i, tb) {
                     if (body_len > 0) {
                         var inner_name = compose_rule_inner(r);
                         var inner_g = registry_find_by_name(inner_name);
-                        if (inner_g != 0) {
+                        var inner_tb = 0;
+                        if (inner_g != 0) { inner_tb = _ds_inner_tb(); }
+                        if (inner_tb != 0) {
                             # Inner grammar found — tokenize body
-                            # in a fresh buf, copy with shifted
-                            # offsets.
-                            var inner_tb = tokenbuf_new();
+                            # in the depth's scratch buf, copy with
+                            # shifted offsets.
                             tokenize_with_grammar(inner_g, src + body_start, body_len, inner_tb);
                             var k = 0;
                             var nk = tokenbuf_count(inner_tb);
@@ -191,8 +237,10 @@ fn _ds_try_compose_rules(g, src, src_len, i, tb) {
                                 k = k + 1;
                             }
                         } else {
-                            # Inner grammar missing — graceful
-                            # degrade: body is one string span.
+                            # Inner grammar missing (or no scratch
+                            # tokenbuf — out of memory; was a NULL
+                            # write through 2.5.1) — graceful degrade:
+                            # body is one string span.
                             tokenbuf_push(tb, TK_STRING, body_start, body_len);
                         }
                     }
@@ -201,8 +249,15 @@ fn _ds_try_compose_rules(g, src, src_len, i, tb) {
                 }
                 j = j + 1;
             }
-            # End marker not found — fall through (next compose
-            # rule, or normal pipeline). Don't half-consume.
+            # End marker not found. Record it for this call, then hand
+            # the opener back to the normal pipeline. NOTE: this
+            # returns from the whole compose step — later compose
+            # rules are not tried at this cursor. The comment here
+            # used to say "fall through (next compose rule …)"; it
+            # never did, and it only matters for two rules whose
+            # starts share a prefix (no bundled grammar).
+            store64(r + 24, _ds_cur_gen);
+            store64(r + 32, body_start);
             return 0;
         }
         r_i = r_i + 1;
@@ -255,8 +310,10 @@ fn _ds_try_compose_region_rules(g, src, src_len, i, tb) {
             if (body_len > 0) {
                 var inner_name = compose_region_rule_inner(r);
                 var inner_g = registry_find_by_name(inner_name);
-                if (inner_g != 0) {
-                    var inner_tb = tokenbuf_new();
+                var rinner_tb = 0;
+                if (inner_g != 0) { rinner_tb = _ds_inner_tb(); }
+                if (rinner_tb != 0) {
+                    var inner_tb = rinner_tb;
                     tokenize_with_grammar(inner_g, src + body_start, body_len, inner_tb);
                     var k = 0;
                     var nk = tokenbuf_count(inner_tb);
@@ -268,8 +325,8 @@ fn _ds_try_compose_region_rules(g, src, src_len, i, tb) {
                         k = k + 1;
                     }
                 } else {
-                    # Inner grammar missing — same graceful degrade
-                    # as `compose`: body becomes one string span.
+                    # Inner grammar missing (or out of memory) — same
+                    # graceful degrade as `compose`: one string span.
                     tokenbuf_push(tb, TK_STRING, body_start, body_len);
                 }
             }
@@ -343,12 +400,23 @@ fn _ds_scan_tag(src, src_len, start) {
 
 # Walk forward from `start` until LF or end-of-buffer. Returns
 # the LF offset, or `src_len` if no LF before EOF.
+#
+# Watermarked per scanner call (2.5.2 audit P2-5): once a scan from
+# `start` reaches EOF with no LF, any later `start` must too. Without
+# it, a final line full of fence openers re-scanned to EOF per opener.
 fn _ds_scan_to_lf(src, src_len, start) {
+    if ((_ds_nolf_gen == _ds_cur_gen) && (start >= _ds_nolf_from)) {
+        return src_len;
+    }
     var p = start;
     var done = 0;
     while ((p < src_len) && (done == 0)) {
         if (load8(src + p) == 10) { done = 1; }
         if (load8(src + p) != 10) { p = p + 1; }
+    }
+    if (p >= src_len) {
+        _ds_nolf_gen = _ds_cur_gen;
+        _ds_nolf_from = start;
     }
     return p;
 }
@@ -396,8 +464,24 @@ fn _ds_try_compose_fenced_rules(g, src, src_len, i, tb) {
                 var body_start = nl_pos + 1;
                 var endp = compose_fenced_rule_end(r);
                 var elen = strlen(endp);
-                var close_pos = _ds_find_fenced_close(src, src_len,
-                  body_start, endp, elen);
+                # Same no-closer watermark as `compose` (2.5.2 audit
+                # P2-5): every body starts just after an LF, so a later
+                # body's line-start candidates are a subset of an
+                # earlier failed body's. `x```a` lines x 175k (1 MiB
+                # markdown) took 282 s through 2.5.1.
+                var close_pos = (0 - 1);
+                var fen_known_none = 0;
+                if ((load64(r + 16) == _ds_cur_gen) && (body_start >= load64(r + 24))) {
+                    fen_known_none = 1;
+                }
+                if (fen_known_none == 0) {
+                    close_pos = _ds_find_fenced_close(src, src_len,
+                      body_start, endp, elen);
+                    if (close_pos < 0) {
+                        store64(r + 16, _ds_cur_gen);
+                        store64(r + 24, body_start);
+                    }
+                }
                 if (close_pos >= 0) {
                     # Resolve inner grammar from captured tag.
                     var tag_len = tag_end - tag_start;
@@ -405,13 +489,16 @@ fn _ds_try_compose_fenced_rules(g, src, src_len, i, tb) {
                     if (tag_len > 0) {
                         var tag_buf = alloc(tag_len + 1);
                         var tk = 0;
+                        if (tag_buf == 0) { tk = tag_len; }   # OOM: no lookup (2.5.2)
                         while (tk < tag_len) {
                             store8(tag_buf + tk,
                               load8(src + tag_start + tk));
                             tk = tk + 1;
                         }
-                        store8(tag_buf + tag_len, 0);
-                        inner_g = registry_find_by_name(tag_buf);
+                        if (tag_buf != 0) {
+                            store8(tag_buf + tag_len, 0);
+                            inner_g = registry_find_by_name(tag_buf);
+                        }
                     }
 
                     # Emit: open-marker (incl. info + LF), body,
@@ -421,8 +508,11 @@ fn _ds_try_compose_fenced_rules(g, src, src_len, i, tb) {
 
                     var body_len = close_pos - body_start;
                     if (body_len > 0) {
+                        var finner_tb = 0;
+                        if (inner_g != 0) { finner_tb = _ds_inner_tb(); }
+                        if (finner_tb == 0) { inner_g = 0; }   # OOM degrade
                         if (inner_g != 0) {
-                            var inner_tb = tokenbuf_new();
+                            var inner_tb = finner_tb;
                             tokenize_with_grammar(inner_g,
                               src + body_start,
                               body_len, inner_tb);
@@ -488,13 +578,27 @@ fn _ds_try_pair_rules(g, src, src_len, i) {
     return 0;
 }
 
+# Longest char literal `_ds_try_char_literal` accepts, quotes
+# included: `'\u{10FFFF}'` / `'\U0001F600'` are 12 bytes. The
+# streaming drain's marker window (`_stream_max_marker`) holds back
+# at least this many bytes for a char_literal grammar, so a literal
+# split by a feed boundary is never committed half-seen.
+var DS_CHAR_LITERAL_MAX = 12;
+
 # Char literal at the cursor when `[defaults] char_literal = true`.
-# Recognises four shapes:
-#   'C'      → 3 bytes  (any non-`\`, non-`'` byte)
-#   '\C'     → 4 bytes  (any single-byte escape — \n, \0, \\, \', etc.)
-#   '\xHH'   → 6 bytes  (hex escape; we don't validate the hex digits
-#                        — the scanner trusts the closing quote)
-#   '<UTF-8>'→ 4/5/6 bytes for 2/3/4-byte UTF-8 leading byte ranges
+# Recognises:
+#   'C'       → 3 bytes  (any non-`\`, non-`'` byte)
+#   '\…'      → 4..12 bytes: `\` plus the escaped byte, then up to
+#               the closing quote within DS_CHAR_LITERAL_MAX — so
+#               `'\n'`, `'\''`, `'\\'`, `'\xHH'`, `'\033'` (octal),
+#               `'\uXXXX'`, `'\UXXXXXXXX'` and `'\u{H…H}'`. Escape
+#               digits are not validated; the closing quote is trusted.
+#               A newline or a second `\` before the quote means no
+#               literal. (Through 2.5.1 only `'\C'` and `'\xHH'` were
+#               accepted: C's ubiquitous `'\033'` split into
+#               operators + a number, and Rust's `'\u{2026}'` emitted
+#               TK_ERROR. 2.5.2 audit P3-c; ADR 0010 amended.)
+#   '<UTF-8>' → 4/5/6 bytes for 2/3/4-byte UTF-8 leading byte ranges
 #
 # Returns the matched length, or 0 if no shape fits. A 0 return lets
 # the leading `'` fall through to the operator step — that's how
@@ -510,16 +614,18 @@ fn _ds_try_char_literal(g, src, src_len, i) {
     var b1 = load8(src + i + 1);
     if (b1 == 39) { return 0; }                # `''` — never valid
     if (b1 == 92) {                            # `\` escape forms
-        if (i + 3 >= src_len) { return 0; }
-        # `'\xHH'` — 6 bytes
-        if (load8(src + i + 2) == 120) {       # `x`
-            if (i + 5 < src_len) {
-                if (load8(src + i + 5) == 39) { return 6; }
-            }
+        # src[i+2] is the escaped byte — always part of the escape, so
+        # `'\''` and `'\\'` close at i+3. Search on from there.
+        var j = i + 3;
+        var lim = i + DS_CHAR_LITERAL_MAX;
+        var found = 0;
+        while ((j < src_len) && (j < lim) && (found == 0)) {
+            var c = load8(src + j);
+            if (c == 39) { found = j - i + 1; }
+            if ((c == 10) || (c == 13) || (c == 92)) { j = lim; }
+            if (found == 0) { j = j + 1; }
         }
-        # `'\C'` — 4 bytes
-        if (load8(src + i + 3) == 39) { return 4; }
-        return 0;
+        return found;
     }
 
     # `'C'` — 3-byte ASCII body
@@ -706,7 +812,23 @@ fn _ds_scan_whitespace(src, src_len, i) {
 
 # ── Entry point ─────────────────────────────
 
+# Set by the streaming drain (src/tokenize.cyr) when the buffer it is
+# about to scan does NOT start at stream offset 0. Read and cleared on
+# entry, so it covers this one call — not compose bodies tokenized
+# recursively inside it. A shebang is a property of a file's first
+# line; after the rolling buffer compacts, the buffer's offset 0 is
+# just wherever the last commit stopped, and a `#!...` comment line
+# landing there came back TK_PREPROCESSOR where a single feed gives
+# TK_COMMENT (python / shell / ruby; 2.5.2 audit P2-6).
+var _ds_not_file_start = 0;
+
 fn tokenize_with_grammar(g, src, src_len, tb) {
+    var not_file_start = _ds_not_file_start;
+    _ds_not_file_start = 0;
+    _ds_gen_counter = _ds_gen_counter + 1;
+    var saved_gen = _ds_cur_gen;
+    _ds_cur_gen = _ds_gen_counter;
+    _ds_depth = _ds_depth + 1;
     var i = 0;
     while (i < src_len) {
         var b = load8(src + i);
@@ -747,8 +869,8 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
             continue;
         }
 
-        # 1. Shebang
-        if (len == 0) {
+        # 1. Shebang — only where the buffer starts the file.
+        if ((len == 0) && (not_file_start == 0)) {
             len = _ds_try_shebang(g, src, src_len, i);
             if (len > 0) { kind = TK_PREPROCESSOR; }
         }
@@ -874,5 +996,7 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
         tokenbuf_push(tb, kind, i, len);
         i = i + len;
     }
+    _ds_depth = _ds_depth - 1;
+    _ds_cur_gen = saved_gen;
     return tokenbuf_count(tb);
 }

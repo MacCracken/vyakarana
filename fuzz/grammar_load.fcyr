@@ -1,7 +1,7 @@
 # vyakarana — fuzz harness for the CYML grammar parser
 #
 # `grammar_load(path)` either resolves to an embedded blob (the
-# 38 bundled paths via _grammar_blob_data) or falls through to
+# bundled paths via _grammar_blob_data, 46 as of 2.5.2) or falls through to
 # file_read_all. The blob path is hot — every consumer depends
 # on it in bootstrap_grammars. This harness exercises the parser
 # directly with corrupted inputs to confirm:
@@ -44,7 +44,7 @@ fn _gl_fill_printable(buf, n) {
 }
 
 fn fuzz_main(data, n) {
-    # 1. All 38 bundled blobs round-trip. Triggers
+    # 1. Bundled blobs round-trip (46; the count check below). Triggers
     # bootstrap_grammars via has_grammar.
     if (has_grammar("shell") == 0) {
         eprint("FAIL: shell didn't bootstrap\n", 30);
@@ -84,19 +84,23 @@ fn fuzz_main(data, n) {
     # 2. Random printable-ASCII blobs through the parser. The CYML
     # parser is tolerant of unknown keys; assertion is just "no
     # crash".
+    # store64, not store8: through 2.5.1 these were byte stores, so
+    # 256 and 1024 truncated to 0 and 16 of the 24 iterations parsed
+    # an EMPTY buffer (2.5.2 audit P3-g).
     var sizes_buf = alloc(48);
-    store8(sizes_buf,      32);
-    store8(sizes_buf + 8,  256);
-    store8(sizes_buf + 16, 1024);
+    store64(sizes_buf,      32);
+    store64(sizes_buf + 8,  256);
+    store64(sizes_buf + 16, 1024);
     var rbuf = alloc(8192);
     var s = 0;
     while (s < 3) {
-        var sz = load8(sizes_buf + (s * 8));
+        var sz = load64(sizes_buf + (s * 8));
         var iter = 0;
         while (iter < 8) {
             _gl_fill_printable(rbuf, sz);
-            # _gp_parse mutates the buffer in place. Returns 0 or
-            # a grammar handle; either is acceptable.
+            # Returns 0 or a grammar handle; either is acceptable.
+            # (The parser never writes to its input — this comment
+            # used to say it "mutates the buffer in place".)
             var g = _gp_parse(rbuf, sz);
             # If non-null, name must be a valid cstr or 0.
             if (g != 0) {
@@ -146,6 +150,106 @@ fn fuzz_main(data, n) {
     var gp2 = _gp_parse(path2, k);
     # No assertion on result; the test is "didn't crash".
 
+    # 4. Structure-aware mutation (2.5.2). Delete one random line from
+    # each bundled grammar's source, 12 times over, and parse it. That
+    # is how the incomplete-rule shapes arise — a `pair` that lost its
+    # `end`, a compose rule that lost its `inner`, an `ident_start`
+    # without `ident_cont` — and through 2.5.1 they loaded fine and
+    # crashed the SCANNER, which sections 1-3 never ran on a fuzzed
+    # grammar. Any mutant that still loads must tokenize a mixed probe
+    # with the coverage invariant intact.
+    if (_gl_mutate_bundled() != 0) { return 1; }
+
+    return 0;
+}
+
+var _gl_probe = "fn main() { x = 'a' + '\\n'; s = \"t\\\"u\"; /* c */ // c\n# h\n\xc3\xa9 \xe6\xbc\xa2 \xff <style>a</style> ```rs\nlet y;\n``` 0x1F 3.14 $x ${y} `z` }\n";
+
+# Copy `blob` (n bytes) into `out` with line number `drop` removed.
+# Returns the new length.
+fn _gl_drop_line(blob, n, drop, out) {
+    var line = 0;
+    var o = 0;
+    var i = 0;
+    while (i < n) {
+        var b = load8(blob + i);
+        if (line != drop) { store8(out + o, b); o = o + 1; }
+        if (b == 10) { line = line + 1; }
+        i = i + 1;
+    }
+    store8(out + o, 0);
+    return o;
+}
+
+fn _gl_count_lines(blob, n) {
+    var c = 1;
+    var i = 0;
+    while (i < n) {
+        if (load8(blob + i) == 10) { c = c + 1; }
+        i = i + 1;
+    }
+    return c;
+}
+
+fn _gl_mutate_bundled() {
+    var names = vec_new();
+    list_languages_into(names);
+    var pathbuf = alloc(128);
+    var out = alloc(40000);
+    var plen = strlen(_gl_probe);
+    var ni = 0;
+    var loaded = 0;
+    var rejected = 0;
+    while (ni < vec_len(names)) {
+        var nm = vec_get(names, ni);
+        var pre = "grammars/";
+        var suf = ".cyml";
+        var o = 0;
+        memcpy(pathbuf, pre, 9); o = 9;
+        memcpy(pathbuf + o, nm, strlen(nm)); o = o + strlen(nm);
+        memcpy(pathbuf + o, suf, 5); o = o + 5;
+        store8(pathbuf + o, 0);
+        var blob = _grammar_blob_data(pathbuf);
+        if (blob != 0) {
+            var bn = strlen(blob);
+            var lines = _gl_count_lines(blob, bn);
+            var m = 0;
+            while (m < 12) {
+                var drop = _gl_rand() % lines;
+                if (drop < 0) { drop = 0 - drop; }
+                var mn = _gl_drop_line(blob, bn, drop, out);
+                var g = _gp_parse(out, mn);
+                if (g == 0) { rejected = rejected + 1; }
+                if (g != 0) {
+                    loaded = loaded + 1;
+                    var tb = tokenbuf_new();
+                    tokenize_with_grammar(g, _gl_probe, plen, tb);
+                    var pos = 0;
+                    var t = 0;
+                    var bad = 0;
+                    while (t < tokenbuf_count(tb)) {
+                        if (tokenbuf_start(tb, t) != pos) { bad = 1; }
+                        if (tokenbuf_len(tb, t) <= 0) { bad = 1; }
+                        pos = tokenbuf_start(tb, t) + tokenbuf_len(tb, t);
+                        t = t + 1;
+                    }
+                    if (pos != plen) { bad = 1; }
+                    if (bad == 1) {
+                        eprint("FAIL: mutated grammar broke coverage: ", 38);
+                        eprint(nm, strlen(nm));
+                        eprint("\n", 1);
+                        return 1;
+                    }
+                }
+                m = m + 1;
+            }
+        }
+        ni = ni + 1;
+    }
+    if (loaded + rejected != 12 * vec_len(names)) {
+        eprint("FAIL: mutation stage skipped grammars\n", 38);
+        return 1;
+    }
     return 0;
 }
 

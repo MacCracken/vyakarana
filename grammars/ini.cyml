@@ -59,6 +59,8 @@ operators = [
     "=", ":", "+", "-", "*", "/",
     "<", ">",
     "&", "|", "@",
+    # `#` never fires: the `#` line-comment rule (step 2) claims
+    # every `#` first. Unreachable but harmless.
     "!", "?", "#", "$",
     "\\",
     # INI values are free-form text to end of line: `%` drives
@@ -69,6 +71,8 @@ operators = [
 
 punctuation = [
     "(", ")", "{", "}", "[", "]",
+    # `;` never fires: the `;` line-comment rule (step 2) claims
+    # every `;` first. Unreachable but harmless.
     ";", ",", ".",
 ]
 

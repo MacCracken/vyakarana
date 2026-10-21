@@ -15,9 +15,11 @@
 # Replace with a vidya snapshot when one ships.
 #
 # Sigil handling:
-#   - `@` and `$` in `ident_start` so `@source`, `@@count`,
+#   - `@` and `$` in `ident_start` so `@source`,
 #     `$PROGRAM_NAME`, etc. tokenize as a single ident. Same call
-#     as PHP for `$` and Java for `@`.
+#     as PHP for `$` and Java for `@`. Neither is in `ident_cont`,
+#     so a class variable `@@count` splits into ident `@` + ident
+#     `@count` — known gap; coverage holds, theme can re-pair.
 #   - `:` for symbols stays as punctuation; `:foo` tokenizes as
 #     `:` + ident (theme reassembles).
 #
@@ -64,16 +66,26 @@ special_vars = false
 unicode_ident = true
 char_literal  = true
 
-# Operators in longest-match order. Ruby-specific: `**=` (power
+# Operators in longest-match order — every multi-byte entry sits
+# ahead of its own prefix (true since 2.5.2; see `||=` below), and
+# the scanner takes the first entry that matches. Ruby-specific:
+# `::` (scope resolution), `**=` (power
 # assign), `<=>` (spaceship), `===` (case equality), `=~` /
 # `!~` (regex match / no-match), `..` / `...` (range / exclusive
 # range), `&.` (safe navigation, Ruby 2.3+), `=>` (hash rocket /
 # rescue), `->` (lambda), `**` (power / double-splat), plus the
 # standard C-family set.
 operators = [
+    # `::` scope resolution (`A::B`, `::Const`); through 2.5.1 it
+    # split into two `:` (2.5.2 audit P3-a).
+    "::",
     "<<=", ">>=", "<=>",
     "**=", "===",
     "...",
+    # `||=` / `&&=` (memoisation idiom) must precede `||` / `&&` —
+    # first match wins; through 2.5.1 they were listed after and
+    # never matched (2.5.2 audit P2-7).
+    "||=", "&&=",
     "<<", ">>",
     "&&", "||",
     "==", "!=", "<=", ">=",
@@ -81,7 +93,7 @@ operators = [
     "->", "=>", "..", "**",
     "&.",
     "+=", "-=", "*=", "/=", "%=",
-    "&=", "|=", "^=", "||=", "&&=",
+    "&=", "|=", "^=",
     "=", "+", "-", "*", "/", "%",
     "!", "~", "&", "|", "^",
     "<", ">",

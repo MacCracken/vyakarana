@@ -19,11 +19,21 @@ host — variance ~±10% between runs.
 
 | Artifact                    | Size (bytes) | Size (KB) | Notes                                         |
 |-----------------------------|-------------:|----------:|-----------------------------------------------|
-| `build/vyk` (CLI binary)    |      423,480 |     413.6 | Includes 46 inlined grammars (~223 KB of text) |
-| `build/vyk`, `CYRIUS_DCE=1` |      337,464 |     329.6 | Same tree, dead fns compacted out — **what releases ship** |
-| `dist/vyakarana.cyr`        |      402,572 |     393.1 | Single-file bundle for `cyrius deps` (4,749 lines) |
+| `build/vyk` (CLI binary)    |      444,032 |     433.6 | Includes 46 inlined grammars (~231 KB of text) |
+| `build/vyk`, `CYRIUS_DCE=1` |      353,920 |     345.6 | Same tree, dead fns compacted out — **what releases ship** |
+| `dist/vyakarana.cyr`        |      429,133 |     419.1 | Single-file bundle for `cyrius deps` (5,097 lines) |
 
-**Re-captured 2026-10-20 at `2.5.1`, on the 6.7.15 toolchain.**
+**Re-captured 2026-10-20 at `2.5.2`, 6.7.15 toolchain.** 423,480 →
+444,032 (+20,552); DCE 337,464 → 353,920. The closeout audit's code —
+the terminal-safe writer, grammar validation, the compose / fence /
+LF watermarks, the per-depth inner tokenbuf pool, the LSP and
+streaming fixes — plus **+8,384 bytes of grammar COMMENT text**: the
+embedded blobs carry each `.cyml` verbatim, so the 2.5.2 header
+corrections ship in the binary. Stripping comments at embed time would
+save far more than that (most of the 231 KB is comments) — a 2.9.0
+roadmap item.
+
+**`2.5.1` capture (same day).**
 452,544 (2.5.0) → 456,640 (+4,096) from the 6.7.15 snapshot alone,
 then → **423,480 (−33,160)** from the stdlib-footprint trim:
 dropping the never-called `hashmap` (and the `hashseed` / `chrono`
@@ -215,7 +225,57 @@ win. The `2.3.0` table was captured on 6.5.4, which does subtract
 it. Table not refreshed: the documented cadence is minor-release
 boundaries, and this is a patch.
 
-## Tokenize / detect / load latencies (2.3.0 baseline, 2026-07-31 — still current at 2.5.0, see the 2.5.0 bench note)
+## Tokenize / detect / load latencies (2.5.2 baseline, 2026-10-20)
+
+**Captured on a loaded host, by a protocol that holds there.** An idle
+machine is not available (cyrius release work runs alongside), and two
+conventional captures this cycle were unusable: the same-code control
+row (`detect/path-shell`) moved +14–37 % because load changed between
+the A and B halves of a ~70 s run. So: build `tests/bcyr/vyakarana.bcyr`
+with every iteration count divided by 10 (one run ≈ 9 s), run 2.5.1 and
+2.5.2 alternately for 10 rounds (host load 2.7–5.2), and report each
+benchmark's **best** run below. Best-of-10 short runs reproduce the
+quiet-host figures seen earlier in the cycle (shell-small 19.5 µs both
+ways); the per-round 2.5.2 / 2.5.1 ratios are in the 2.5.2 bench note.
+
+| Benchmark                  |       Avg |       Min |       Max | Iterations |
+|----------------------------|----------:|----------:|----------:|-----------:|
+| tokenize/shell-small       | 19.477 µs | 19.051 µs | 20.265 µs | 100,000 × 10 runs |
+| tokenize/rust-small        | 27.679 µs | 27.413 µs | 28.577 µs | 100,000 × 10 runs |
+| tokenize/json-small        |  4.445 µs |  4.332 µs |  4.717 µs | 100,000 × 10 runs |
+| tokenize/html-compose      |  9.316 µs |  9.149 µs |  9.705 µs | 100,000 × 10 runs |
+| detect/path-shell          |     35 ns |     32 ns |     38 ns | 1,000,000 × 10 runs |
+| detect/content-python      |    198 ns |    193 ns |    204 ns | 1,000,000 × 10 runs |
+| detect/combined-asm-arm    |  5.479 µs |  5.367 µs |  5.683 µs | 100,000 × 10 runs |
+| blob/grammar-load-shell    | 28.918 µs | 28.322 µs | 30.093 µs | 10,000 × 10 runs |
+
+Against the `2.3.0` table below: every tokenize row is faster
+(shell 20.3 → 19.5, rust 29.0 → 27.7, json 6.1 → 4.4, html 11.5 →
+9.3 µs), grammar load 33.2 → 28.9 µs, and `detect/content-python`
+is back to 198 ns from ~250 ns at 2.5.0 (2.5.1's shebang rewrite).
+
+## Bench note (2.5.2, 2026-10-20) — the audit's fixes, A/B'd
+
+Paired protocol above; median of the ten per-round 2.5.2 / 2.5.1
+ratios, with the interquartile range:
+
+| Benchmark                  | Median 2.5.2 / 2.5.1 | IQR            | Why                                          |
+|----------------------------|---------------------:|----------------|----------------------------------------------|
+| blob/grammar-load-shell    |              −14.5 % | −15.8 … −13.5 % | blobs parsed in place — no 32 KiB copy        |
+| detect/content-python      |               −2.7 % | −4.8 … −2.0 %   |                                              |
+| tokenize/html-compose      |               +0.4 % | −0.7 … +0.9 %   |                                              |
+| tokenize/rust-small        |               +1.3 % | +0.7 … +2.7 %   | per-call scanner bookkeeping (generation, depth) |
+| detect/combined-asm-arm    |               +1.4 % | +1.1 … +2.3 %   |                                              |
+| tokenize/shell-small       |               +2.6 % | +2.0 … +3.0 %   | same                                         |
+| tokenize/json-small        |               +6.2 % | +5.5 … +7.2 %   | `.` joined JSON's operators (the decimal fix): every punctuation byte now tries one more operator first |
+| detect/path-shell          |               +9.4 % | +6.1 … +11.8 %  | one more suffix compare — `.zsh` (32 → 35 ns) |
+
+Nothing near CLAUDE.md's 20 % watch line. Not visible here, and the
+bigger wins: streaming heap no longer grows with input (8 MB fed: 195 MB
+→ 105 KB), and compose openers without a closer are linear (1 MiB of
+`<style>`: > 300 s → 1.7 s) — both in the audit report.
+
+## Tokenize / detect / load latencies (2.3.0 baseline, 2026-07-31 — superseded by the 2.5.2 table above)
 
 Per-call wall-clock averages from
 `cyrius bench tests/bcyr/vyakarana.bcyr` (8 benchmarks, each

@@ -22,7 +22,7 @@
 #
 # Variable-padded forms `[==[ … ]==]` / `--[==[ … ]==]` are NOT
 # supported — variable-length terminators require a new scanner
-# shape. Documented as a 1.x.x backlog item alongside Ruby
+# shape. Documented as a known gap alongside Ruby
 # heredocs, PHP heredocs, and a few other variable-delimiter
 # forms; collectively forces a future ADR if a real corpus
 # surfaces one.

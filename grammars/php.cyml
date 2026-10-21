@@ -22,10 +22,12 @@
 # 2-byte operator.
 #
 # Known gaps (not triggered by the stand-in):
-#   - `#[Attribute]` syntax (PHP 8). Today `#` is in operators,
-#     so `#[Foo]` tokenizes as `#` + `[` + `Foo` + `]` —
-#     coverage holds. A future ADR could promote `#[…]` to a
-#     unified attribute token if a corpus needs it.
+#   - `#[Attribute]` syntax (PHP 8). The `#` line-comment rule
+#     (step 2) claims the `#` first, so `#[Foo]` — and anything
+#     after it on the same line — reads as one TK_COMMENT.
+#     Coverage holds, but the attribute is mis-typed. A future
+#     ADR could promote `#[…]` to a unified attribute token if a
+#     corpus needs it.
 #   - Heredocs / nowdocs (`<<<EOT … EOT;`). Variable-length
 #     terminator. Same scanner-shape gap as Lua's `[==[…]==]`
 #     and Ruby's heredocs — track collectively.
@@ -54,8 +56,10 @@ special_vars = false
 unicode_ident = true
 char_literal  = true
 
-# Operators in longest-match order. PHP-specific: `->` (member
-# access), `=>` (array key/value, match arms), `::` (scope
+# Operators in longest-match order — every multi-byte entry sits
+# ahead of its own prefix (true since 2.5.2; see `===` below), and
+# the scanner takes the first entry that matches. PHP-specific:
+# `->` (member access), `=>` (array key/value, match arms), `::` (scope
 # resolution), `??` / `??=` (null-coalesce), `?->` (null-safe
 # member access, PHP 8), `<=>` (spaceship, PHP 7), `**` (power),
 # `**=` (power-assign), plus the standard C-family set.
@@ -65,8 +69,12 @@ operators = [
     "?->",
     "<<", ">>",
     "&&", "||",
-    "==", "!=", "<=", ">=",
+    # `===` / `!==` must precede `==` / `!=`: the scanner takes the
+    # FIRST entry that matches, so the shorter pair made the strict
+    # forms unreachable — `$a === $b` came out `==` + `=` through
+    # 2.5.1 (2.5.2 audit P2-7).
     "===", "!==",
+    "==", "!=", "<=", ">=",
     "->", "=>", "::", "??", "**",
     "+=", "-=", "*=", "/=", "%=", ".=",
     "&=", "|=", "^=",
@@ -75,6 +83,8 @@ operators = [
     "!", "~", "&", "|", "^",
     "<", ">",
     "?",
+    # `#` never fires: the `#` line-comment rule (step 2) claims
+    # every `#` first. Unreachable but harmless.
     "#",
     "@",
     # `\` is PHP's namespace separator (`Vyakarana\Concept`,

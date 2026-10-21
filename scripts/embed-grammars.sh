@@ -2,7 +2,8 @@
 # embed-grammars.sh — generate src/grammar_blobs.cyr from grammars/*.cyml
 #
 # vyakarana ships dist/vyakarana.cyr as a self-contained bundle. The
-# bundle's bootstrap_grammars() loads 38 grammars; without this step
+# bundle's bootstrap_grammars() loads every bundled grammar (46 as of
+# 2.5.2); without this step
 # it would call file_read_all("grammars/<name>.cyml") at runtime,
 # but cyrius deps doesn't vendor grammars/ — only the bundle. Inlining
 # the .cyml files as Cyrius string literals makes the bundle truly
@@ -13,8 +14,10 @@
 #
 # How the runtime uses it: src/grammar.cyr's grammar_load(path) calls
 # _grammar_blob_data(path) first; if non-zero, parses from memory; else
-# falls back to file_read_all (preserves the dev workflow of editing
-# grammars/foo.cyml and re-running without regenerating blobs).
+# falls back to file_read_all for paths that are not bundled. A bundled
+# path ALWAYS resolves to its blob, so after editing grammars/foo.cyml
+# re-run this script before building — the file is not re-read. (This
+# comment used to say the opposite; corrected 2.5.2.)
 
 set -e
 
@@ -87,7 +90,7 @@ for f in $GRAMMARS; do
     i=$((i + 1))
 done
 
-# Lookup: linear scan. 38 strcmp calls on init-only — fine.
+# Lookup: linear scan, one strcmp per bundled grammar, init-only — fine.
 {
     cat <<'EOF'
 # Returns pointer to the blob's content (cstr) for the given path, or

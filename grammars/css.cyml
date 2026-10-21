@@ -68,14 +68,17 @@ unicode_ident = true
 char_literal  = false
 
 # Operators in longest-match order. CSS-specific: `::` for
-# pseudo-elements (declared before `:` ... wait, `:` is
-# punctuation; `::` is in operators because it's a multi-byte
-# token), `>`/`+`/`~` for combinators, `^=` / `$=` / `*=` /
-# `~=` / `|=` for attribute matchers, `*` for universal
-# selector / multiply.
+# pseudo-elements (`:` itself is punctuation; operators are tried
+# before punctuation, so `::` wins as one token), `>`/`+`/`~` for
+# combinators, `^=` / `$=` / `*=` / `~=` / `|=` for attribute
+# matchers, `*` for universal selector / multiply.
 operators = [
     "^=", "$=", "*=", "~=", "|=",
     "::",
+    # `-` never fires: it is in `ident_start` (custom properties),
+    # and the ident step (6) runs before operators (8), so the
+    # minus in `calc(a - b)` is a 1-byte ident. Unreachable but
+    # harmless.
     "+", "-", "*", "/", "%",
     "<", ">",
     "&", "|", "~",

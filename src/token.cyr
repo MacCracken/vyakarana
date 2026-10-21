@@ -88,6 +88,15 @@ fn tokenbuf_new() {
     return tb;
 }
 
+# Empty a tokenbuf in place, keeping its capacity. Private: the
+# streaming drain reuses one scratch tokenbuf per stream instead of
+# allocating a fresh one per call (2.5.2 audit P1-4).
+fn _tokenbuf_reset(tb) {
+    if (tb == 0) { return 0; }
+    store64(tb + 8, 0);
+    return 0;
+}
+
 fn tokenbuf_count(tb) {
     return load64(tb + 8);
 }
