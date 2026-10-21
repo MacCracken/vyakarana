@@ -3353,10 +3353,10 @@ fn main() {
     # Compose-rule chunk-boundary recognition. A chunk that
     # ends mid-marker (`<sty` of `<style>`, ` `` ` of `` ``` ``)
     # used to commit spurious tokens because the partial marker
-    # fell through to other rules. 2.2.1's prefix-hold helper
-    # holds those bytes back; the next drain re-scans them
-    # against the full grammar. Asserts byte-equivalence vs
-    # single-shot tokenize at the trickiest split positions.
+    # fell through to other rules. The marker window holds those
+    # bytes back (2.2.1–2.7.1: a prefix-hold helper did); the next
+    # drain re-scans them against the full grammar. Asserts
+    # equivalence vs single-shot tokenize at the trickiest splits.
     var ch_html_src = "<style>.x{color:red;}</style>";
     var ch_html_n = strlen(ch_html_src);
 
@@ -3378,9 +3378,9 @@ fn main() {
     assert_eq(tokenbuf_count(ch_html_tb), tokenbuf_count(ch_html_tbb),
               "html mid-`<style>` split: token count matches baseline");
 
-    # Markdown — open and close are both `` ``` ``, so case (b)
-    # of prefix-hold needs `temp_tb` to know an emitted close
-    # marker is not a fresh opener.
+    # Markdown — open and close are both `` ``` ``; a split two
+    # backticks into the opener must not commit them as inline
+    # code (the 2.8.0 trailing-complete marker-window guard).
     var ch_md_src = "before\n```rust\nfn x() {}\n```\nafter";
     var ch_md_n = strlen(ch_md_src);
 

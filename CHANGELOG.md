@@ -4,6 +4,71 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.8.0] — 2026-10-20
+
+**Streaming engine** ([ADR 0028](docs/adr/0028-streaming-holds-watches-groups.md)).
+Every corpus is chunk-invariant now — the five compose grammars (markdown, html,
+vue, svelte, cyml) included — and the drain's quadratic cases are linear. The
+public streaming API is unchanged, and single-feed output is byte-identical to
+2.7.1 on all 4,500 real files in the sweep sample; what changes is what a
+*chunked* stream emits, which now always matches a single feed. 1056/1056 tests,
+smoke OK, lint+fmt exit 0, fuzz 5/5.
+
+### Fixed
+
+- **The compose grammars were not chunk-invariant.** cyml failed at 90 % of
+  two-feed split offsets (its `---` body never counted as open), markdown, html,
+  vue and svelte at 2–10 each. The scanner now reports the lowest compose opener
+  it could not resolve — a `<style>` / `<script>` / fence with no close yet, a
+  fence whose info line has not ended, a cyml region running into the buffer's
+  end — and the drain holds from there; every finished region commits whole. The
+  every-offset split is clean on all 49 corpus files (it was 42 non-compose).
+- **A multi-line prefixed string split at a line break** (`f"""…"""` fed in
+  chunks came back as 14,790 tokens instead of 6): the streaming helpers looked
+  for a string's start marker at its prefix, found none, and committed it like a
+  line comment. They now look past a declared prefix (ADR 0027), and honour a raw
+  prefix's lack of escapes.
+- **Heredoc terminators no longer depend on chunking.** The search budget scaled
+  with the buffer, so a compacted stream gave up sooner than a single feed;
+  20,000 distinct unterminated openers before a real heredoc lost it outright.
+  Terminators are looked up in a per-scan line index instead — no budget.
+
+### Changed
+
+- **The drain's quadratic cases are linear** (512 KB inputs in 64-byte chunks
+  unless noted):
+
+  | Input | 2.7.1 | 2.8.0 |
+  |---|---:|---:|
+  | line comment | 3.29 s | 0.02 s |
+  | identifier | 10.04 s | 0.03 s |
+  | whitespace run | 7.42 s | 0.03 s |
+  | number | 14.33 s | 0.05 s |
+  | `f"…"` string | 18.59 s | 0.01 s |
+  | 550 KB fenced code block, 4 KB chunks | > 300 s | 0.26 s |
+  | 540 KB `<style>` block, 4 KB chunks | 12.78 s | 0.25 s |
+  | 1 MiB one-line heredoc body, 512-byte chunks | 7.00 s | 0.03 s |
+
+  A **run watch** waits out a long comment, identifier, whitespace or digit run
+  by looking only at new bytes; the heredoc **terminator watch** reads line by
+  line instead of re-reading the last partial line; a **marker watch** waits for
+  a compose close (and for the close of a string that keeps a heredoc line
+  open). Each only delays a scan that would have committed nothing, so none can
+  change a token. Single-feed latency is unchanged: the paired bench against
+  2.7.1 is within noise on every row but the layout-sensitive
+  `detect/content-python` (+3.6 %, a path 2.8.0 did not touch;
+  `docs/development/performance.md`).
+- **Compose prefix-hold is gone**, and with it the compose grammars' exemption
+  from the marker window; trailing-complete and pending-pair detection respect
+  the window, so markdown's two backticks before a third are no longer committed
+  as an empty code span.
+- An unresolved compose region now commits only when it closes (or at finish, or
+  past `VYK_COMPOSE_HOLD_MAX`): a cyml body that runs to the end of the document
+  arrives at finish rather than piecemeal. Same tokens, later.
+- The stream record is 192 bytes (internal); `fuzz/chunk_invariance.fcyr` covers
+  all 49 corpus files and 46 every-offset shapes; run against 2.7.1, the added
+  compose corpora and prefixed-string shapes fail.
+
 ## [2.7.1] — 2026-10-20
 
 **Grammar polish.** The gaps the 2.5.2 header cross-check and the 2.6.x audit

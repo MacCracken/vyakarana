@@ -19,11 +19,21 @@ host — variance ~±10% between runs.
 
 | Artifact                    | Size (bytes) | Size (KB) | Notes                                         |
 |-----------------------------|-------------:|----------:|-----------------------------------------------|
-| `build/vyk` (CLI binary)    |      490,560 |     479.1 | Includes 46 inlined grammars (~236 KB of text) |
-| `build/vyk`, `CYRIUS_DCE=1` |      400,448 |     391.1 | Same tree, dead fns compacted out — **what releases ship** |
-| `dist/vyakarana.cyr`        |      496,247 |     484.6 | Single-file bundle for `cyrius deps` (6,428 lines) |
+| `build/vyk` (CLI binary)    |      498,792 |     487.1 | Includes 46 inlined grammars (~236 KB of text) |
+| `build/vyk`, `CYRIUS_DCE=1` |      408,680 |     399.1 | Same tree, dead fns compacted out — **what releases ship** |
+| `dist/vyakarana.cyr`        |      503,205 |     491.4 | Single-file bundle for `cyrius deps` (6,671 lines by `wc -l`) |
 
-**Re-captured 2026-10-20 at `2.7.1`, 6.7.15 toolchain.** 2.7.0 →
+**Re-captured 2026-10-20 at `2.8.0`, 6.7.15 toolchain.** 2.7.1 →
+2.8.0: 490,560 → 498,792 (+8,232; DCE 400,448 → 408,680) — all code,
+the grammar blobs are byte-identical: the scanner's compose holds and
+group list, the heredoc line index (which replaced the search budget and
+its fail cache), the drain's watch modes 3 and 4, the run watch and the
+prefix-aware streaming helpers, less the deleted compose prefix-hold.
+The bundle went 6,462 → 6,671 lines (`wc -l`; 2.7.1's table quoted
+`distlib`'s 6,428, which under-counts — see the 2.3.0 note below). Dead
+functions: the same 399 as 2.7.1, none new.
+
+**`2.7.1` capture (same day).** 2.7.0 →
 2.7.1: 480,144 → 490,560 (+10,416; DCE 390,032 → 400,448) — the
 string-prefix, `ident_lead` and next-byte line-rule paths, the bash-word
 heredoc delimiter parser with its scratch pool, and cyrius's seventeen
@@ -255,6 +265,38 @@ microsecond-scale row by ~1.3 µs and can masquerade as a real
 win. The `2.3.0` table was captured on 6.5.4, which does subtract
 it. Table not refreshed: the documented cadence is minor-release
 boundaries, and this is a patch.
+
+## Bench note (2.8.0, 2026-10-20) — streaming engine, A/B'd
+
+Paired protocol, 2.7.1 and 2.8.0 alternated for 10 rounds, twice. Run 1
+at host load 7.0 → 11.7, run 2 at 7.7 → 11.6 (other builds on the host):
+
+| Benchmark                  | Run 1 median 2.8.0 / 2.7.1 | IQR            | Run 2 median |
+|----------------------------|---------------------------:|----------------|-------------:|
+| detect/path-shell          |                     −1.4 % | −5.1 … +5.6 %  |       −1.9 % |
+| detect/combined-asm-arm    |                     −1.1 % | −8.2 … +1.0 %  |       −3.2 % |
+| tokenize/shell-small       |                     +0.0 % | −3.5 … +2.9 %  |       +4.3 % |
+| blob/grammar-load-shell    |                     +0.2 % | −4.6 … +1.9 %  |       +1.2 % |
+| tokenize/json-small        |                     +0.4 % | −1.2 … +3.9 %  |       +1.5 % |
+| tokenize/html-compose      |                     +1.0 % | −5.4 … +1.7 %  |       −1.6 % |
+| tokenize/rust-small        |                     +1.9 % | −3.2 … +3.2 %  |       −1.3 % |
+| detect/content-python      |                     +3.6 % | +1.4 … +9.7 %  |       +7.8 % |
+
+No row moves outside its spread in both runs except `content-python`,
+the layout-sensitive row (§Bench note 2.6.2; run 2's IQR there was
+−13 … +29 %). That matches the change: a single feed meets the drain
+once, at finish, and the scanner's additions run only when asked — the
+heredoc line index in heredoc grammars, group collection when the drain
+sets it. 2.8.0's wins are in chunked streaming, which this bench does not
+exercise; they are in the CHANGELOG's 2.8.0 table (512 KB tokens in
+64-byte chunks 3–18 s → 0.01–0.05 s; a 540 KB `<style>` and a 550 KB
+fence in 4 KB chunks 12.8 s and > 300 s → 0.25 and 0.26 s).
+
+**The latency table is not refreshed for this minor.** Under this load
+the best-run absolutes sit 6–27 % above the 2.7.0 table (captured at
+load 1.2) for both versions alike, so they would record the host, not
+vyakarana. The 2.7.0 table stays the baseline; re-capture it on a quiet
+host.
 
 ## Bench note (2.7.1, 2026-10-20) — grammar polish, A/B'd
 

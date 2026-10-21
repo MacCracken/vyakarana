@@ -8,14 +8,14 @@
 > 2.6.2 it carried a "What X changed" block for every release back to
 > 1.13.0 — trimmed in 2.7.0; the CHANGELOG has all of it.)
 >
-> **Last refresh:** 2026-10-20, at 2.7.1. Read this first, then run the
+> **Last refresh:** 2026-10-20, at 2.8.0. Read this first, then run the
 > gates (CLAUDE.md §Gates) — do not take the "green" below on trust.
 
 ---
 
 ## Current status
 
-- **Version:** `2.7.1` — `VERSION`, `src/version_str.cyr`,
+- **Version:** `2.8.0` — `VERSION`, `src/version_str.cyr`,
   `dist/vyakarana.cyr`, the CHANGELOG header and `docs/man/vyk.1`
   agree.
 - **Toolchain pin:** `cyrius = "6.7.15"` in `cyrius.cyml`, the single
@@ -33,10 +33,10 @@
 - **Bundle:** `dist/vyakarana.cyr` from `cyrius distlib`, which needs
   `scripts/embed-grammars.sh` first (ADR 0014), plus a `.deps` sidecar
   of four stdlib leaves (alloc, string, vec, io).
-- **Next release:** 2.8.0 — the streaming engine. No closeout audit
-  until 2.9.1, which covers 2.7.x – 2.9.x ([roadmap](./roadmap.md)).
+- **Next release:** 2.9.0 — size and tooling. No closeout audit until
+  2.9.1, which covers 2.7.x – 2.9.x ([roadmap](./roadmap.md)).
 
-## Gates (green at 2.7.1, 2026-10-20)
+## Gates (green at 2.8.0, 2026-10-20)
 
 - `cyrius build` OK, 0 warnings · `cyrius test` **1056/1056** · smoke
   OK (it runs `scripts/check-detect.sh`) · `scripts/lint-fmt.sh`
@@ -76,15 +76,19 @@
 - **Coverage:** tokens tile the input exactly, for every grammar and
   every input.
 - **Chunk invariance:** streaming output equals a single feed at every
-  split offset for all 41 non-compose corpora plus `shell_modules.sh`,
-  gated by `fuzz/chunk_invariance.fcyr` (8 chunk sizes, two-feed
-  splits every 37 bytes, 39 every-offset shapes). **Not** for the
-  compose grammars — markdown, html, vue, svelte, cyml — where token
-  boundaries can move between chunkings (coverage still holds); 2.8.0.
+  split offset for all 49 corpus files — the compose grammars
+  (markdown, html, vue, svelte, cyml) included since 2.8.0 — gated by
+  `fuzz/chunk_invariance.fcyr` (8 chunk sizes, two-feed splits every
+  37 bytes, 46 every-offset shapes). The drain commits only what the
+  scanner reports settled: heredoc and compose holds, groups that
+  commit whole, the marker window, watches that wait on new bytes
+  (ADR 0028).
 - **Streaming bounds:** `VYK_STREAM_CAP` 16 MiB live buffer;
-  `VYK_COMPOSE_HOLD_MAX` 8 MiB; `VYK_HEREDOC_HOLD_MAX` 1 MiB (a heredoc
-  body longer than that, fed in chunks, tokenizes as code past it);
-  4 GiB per stream (ADR 0021).
+  `VYK_COMPOSE_HOLD_MAX` 8 MiB and `VYK_HEREDOC_HOLD_MAX` 1 MiB (a
+  still-open compose region or heredoc longer than that, fed in chunks,
+  commits as the outer grammar read it past the bound); 4 GiB per stream
+  (ADR 0021). An unresolved compose region gives no tokens until it
+  closes or the stream finishes.
 - **Detection:** compiled in `src/detect.cyr`, declared by the grammars,
   checked both ways (ADR 0025). The content sniff is a shebang,
   `<?xml`, `<!DOCTYPE html>`, and the `.s` / `.S` asm vote (ADR 0015).
@@ -101,11 +105,9 @@
   `<<<EOT`, Swift `#"…"#` — have no rule yet; ADR 0023 says to extend
   the heredoc rule rather than add a mechanism. Rust's nested
   `/* /* */ */` is not nested.
-- **Streaming cost:** a long non-pair token is re-scanned on every
-  drain (a prefixed string such as `f"…"` too — it skips the pending
-  fast path); the heredoc terminator-search budget scales with the
-  buffer, so pathological shell can diverge between chunked and single
-  feeds (both 2.8.0).
+- **Streaming latency inside compose regions:** a long, still-open
+  `<style>` / fence / cyml body is held whole until it closes (ADR 0028;
+  a resumable region is in the roadmap backlog).
 - **Size:** `vyk` ~490 KB, the DCE build ~400 KB, against 1.13.0's
   300 KB soft cap (2.9.0).
 - **Out of scope:** Python INDENT / DEDENT and anything structural —

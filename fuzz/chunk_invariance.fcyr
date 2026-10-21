@@ -19,14 +19,12 @@
 #   - a short pair rule vouching for a long rule's token (python)
 #   - pending set on an already-closed token (ruby)
 #
-# COMPOSE GRAMMARS ARE DEDUCTED ON PURPOSE. markdown, html, vue,
-# svelte and cyml still diverge: the marker window that fixes the
-# rest cannot be applied to them without breaking the compose
-# prefix-hold interaction (see `_stream_max_marker`'s call site in
-# src/tokenize.cyr for the three attempts and why it is scoped
-# instead of forced). They are listed in `_ci_known_divergent`
-# below so this file records the debt explicitly rather than by
-# omission — delete an entry as it is fixed.
+# Every corpus is here, the compose grammars too since 2.8.0 —
+# markdown, html, vue, svelte and cyml were left out through 2.7.1,
+# when their streaming rested on a prefix-hold heuristic and cyml
+# failed at 90 % of split offsets. The scanner now reports unresolved
+# compose openers and finished regions itself (src/tokenize.cyr,
+# "Compose hold").
 #
 # Add a grammar here when adding a corpus entry: the cost is one
 # line and it is the only gate that would catch a boundary
@@ -215,11 +213,11 @@ fn _ci_every(lang, src) {
     return rc;
 }
 
-# Every non-compose grammar's corpus — 41 since 2.5.2 (it was 15; the
-# other 26 were never listed, and 12 of them failed the every-offset
-# split until the 2.5.2 streaming fixes). Compose grammars (markdown,
-# html, vue, svelte, cyml) stay out by design — see state.md. Then the
-# exact shapes the 2.5.2 audit found, at every split offset.
+# Every corpus: the 41 non-compose grammars since 2.5.2 (it was 15; 12
+# of the other 26 failed the every-offset split until the 2.5.2
+# streaming fixes), shell_modules.sh since 2.6.0, and the compose
+# corpora since 2.8.0. Then the exact shapes the audits found, at every
+# split offset.
 fn _ci_main() {
     bootstrap_grammars();
     var rc = 0;
@@ -266,6 +264,13 @@ fn _ci_main() {
     if (_ci_one("tests/corpus/concept.xml", "xml") != 0) { rc = 1; }
     if (_ci_one("tests/corpus/concept.yaml", "yaml") != 0) { rc = 1; }
     if (_ci_one("tests/corpus/zig.zig", "zig") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.md", "markdown") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/README.md", "markdown") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.html", "html") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.vue", "vue") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.svelte", "svelte") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/dependencies.cyml", "cyml") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/phase_d.cyml", "cyml") != 0) { rc = 1; }
     if (_ci_every("json", "{\"a\":\"x\\\"y\"}") != 0) { rc = 1; }
     if (_ci_every("toml", "k = \"a \\\\\\\" b\"\n") != 0) { rc = 1; }
     if (_ci_every("c", "c = '\\n'; d = '\\033'; e = '\\\\';") != 0) { rc = 1; }
@@ -308,6 +313,11 @@ fn _ci_main() {
     if (_ci_every("toml", "d = 1979-05-27T07:32:00.999-07:00\ne = 1979-05-27 07:32:00\nt = 07:32:00\nf = 6.626e-34\n") != 0) { rc = 1; }
     if (_ci_every("yaml", "date: 2001-12-14t21:59:43Z\nv: 1.2.3\nn: 12345\n") != 0) { rc = 1; }
     if (_ci_every("json", "{\"a\": -1.5E+10, \"b\": 0.25, \"c\": 123456789}") != 0) { rc = 1; }
+    # 2.8.0: prefixed strings that span lines or end in escapes — the
+    # streaming helpers judged them as line comments through 2.7.1.
+    if (_ci_every("python", "x = f\"\"\"a\nb {c}\n\"\"\"\ny = rb'''p\\\nq'''\nz = F\"r\\\"s\"\n") != 0) { rc = 1; }
+    if (_ci_every("rust", "let x = r\"a\\\nb\";\nlet y = br\"c\\\nd\";\nlet z = b\"e\\\"f\";\n") != 0) { rc = 1; }
+    if (_ci_every("c", "w = L\"wide\\\nline\"; v = u8\"a\\\"b\";\n") != 0) { rc = 1; }
     # 2.7.1 (ADR 0027): string prefixes, `ident_lead`, `followed_by` /
     # `not_followed_by`, makefile automatic variables, heredoc word forms.
     if (_ci_every("python", "x = f\"{a}\" + rb'\\d' + R\"\"\"y\"\"\" + u'z' + ab\"q\" + F''\n") != 0) { rc = 1; }
@@ -321,12 +331,15 @@ fn _ci_main() {
     if (_ci_every("shell", "cat <<\"E\"OF\nit's\nEOF\ncat <<''\nb's\n\ned f <<!\nq's\n!\ncat <<E\\OF\nr's\nEOF\n") != 0) { rc = 1; }
     if (_ci_every("php", "<?php $a === $b && $c !== $d;") != 0) { rc = 1; }
     if (_ci_every("ocaml", "let xs = 1 :: 2 :: [];;") != 0) { rc = 1; }
+    # 2.8.0: compose shapes — a split inside a start marker, an end
+    # marker, a fence's info line, a cyml region and its `\n[[`.
+    if (_ci_every("markdown", "before\n```rust\nfn x() {}\n```\nafter ``code`` and `a` <!-- c -->\n# t\n\n```python\nx = 1  # c\n```\n") != 0) { rc = 1; }
+    if (_ci_every("html", "<p>a</p><style>\na { b: c; }\n</style><script>\nlet x = \"</s\";\n</script><!-- d -->\n") != 0) { rc = 1; }
+    if (_ci_every("vue", "<template><p>{{ a }}</p></template>\n<script>\nexport default {}\n</script>\n<style>\n.a { b: c }\n</style>\n") != 0) { rc = 1; }
+    if (_ci_every("cyml", "[a]\nk = 1\n---\n# Title\n\ntext `code` *em*\n\n[[b]]\nz = \"q\"\n---\nmore\n") != 0) { rc = 1; }
 
     return rc;
 }
-
-# Known-divergent, deliberately NOT asserted — see the header.
-# markdown, html, vue, svelte, cyml.
 
 fn _harness_main() {
     if (_ci_main() != 0) {

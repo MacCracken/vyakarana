@@ -191,23 +191,20 @@ fn fuzz_main(data, n) {
     # HTML — compose rules for `<script>` → JS and `<style>` →
     # CSS. Pre-2.2.1 these random-split cases were disabled
     # because compose-rule START markers split across chunk
-    # boundaries lost the route (FINDING-011). 2.2.1's
-    # `_stream_compose_prefix_hold` fixes the gap; cases now
-    # re-enabled.
+    # boundaries lost the route (FINDING-011); since 2.8.0 the
+    # scanner reports unresolved openers and the drain holds them.
     var h1 = "<style>.x{color:red;}</style><div>hi</div>";
     if (_strm_one(h1, "html", "html/compose-style") != 0) { return 1; }
     var h2 = "<script>const x = 42;</script>";
     if (_strm_one(h2, "html", "html/compose-script") != 0) { return 1; }
 
     # Vue SFC — outer Vue tokenizer with compose for <script>
-    # and <style>. Verifies the prefix-hold works for grammars
-    # with multiple compose rules.
+    # and <style>: two compose rules in one grammar.
     var v1 = "<script>let x = 1;</script><style>.x{}</style>";
     if (_strm_one(v1, "vue", "vue/script-and-style") != 0) { return 1; }
 
     # Markdown — compose_fenced rule with captured language
-    # tag. The prefix-hold helper covers compose_fenced rules
-    # too; chunk-boundary in ` ``` ` opener should hold cleanly.
+    # tag; a chunk boundary inside the ` ``` ` opener must hold.
     var md1 = "before\n```rust\nfn x() {}\n```\nafter";
     if (_strm_one(md1, "markdown", "markdown/fence-rust") != 0) { return 1; }
 

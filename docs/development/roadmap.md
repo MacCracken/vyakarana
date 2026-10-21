@@ -19,8 +19,8 @@ from this file.
 - **Versioning.** A minor when token boundaries change for some input
   (a consumer can see the difference) or a feature lands; a patch
   otherwise. The CLAUDE.md hardening step runs as a closeout patch —
-  but not after every minor for now: the remaining pinned work (2.8.0
-  – 2.9.0) ships first, and **one closeout audit, 2.9.1, covers 2.7.x
+  but not after every minor for now: the remaining pinned work (2.9.0)
+  ships first, and **one closeout audit, 2.9.1, covers 2.7.x
   – 2.9.x** (decided 2026-10-20).
 - **Toolchain catch-ups** are user-directed patch releases at any point
   in the train (pin → re-vendor → gates → byte-identical output A/B).
@@ -34,34 +34,6 @@ from this file.
 ---
 
 ## Pinned releases
-
-### 2.8.0 — Streaming engine *(minor)*
-
-- **Long non-pair tokens are re-scanned on every drain.** Only pair
-  rules have the pending fast path; a 512 KB line comment in 64-byte
-  chunks takes 4 s, a 512 KB identifier 10 s, a 400 KB token 6.5 s.
-  Generalise the fast path to line rules, identifiers, whitespace and
-  numbers — or replace the rescan-and-commit drain with a state machine
-  that scans only new bytes.
-- **Compose-grammar chunk invariance** — markdown, html, vue, svelte,
-  cyml. Needs prefix-hold restructured so it stops reading the commit
-  list as state (three patch attempts in 2.4.0 regressed). Fixes the
-  residual O(N^1.6) compose drains with it.
-- **Heredoc terminator search** (2.6.x audit): the per-call budget
-  scales with the buffer, so on pathological input (hundreds of
-  distinct unterminated `<<` openers, or a few multi-line arithmetic
-  shifts) a stream that compacted earlier bytes away gives up sooner
-  than a single feed and a later heredoc comes back as code. Index the
-  buffer's lines once per scan and look terminators up instead of
-  searching — no budget, so no divergence.
-- **Heredoc watch costs** (2.6.x audit): a mode-2 hold (an opener
-  followed by a string spanning many lines) re-scans the held bytes at
-  every new line break; the terminator watch resumes at the start of a
-  long partial line (a 1 MiB one-line body in 512-byte chunks, 5.5 s).
-  Both bounded by `VYK_HEREDOC_HOLD_MAX`; both fold into the same
-  state-machine work.
-- Exit: `fuzz/chunk_invariance.fcyr` covers all 46 corpora; the
-  every-offset split is clean on all 46.
 
 ### 2.9.0 — Size and tooling *(minor)*
 
@@ -100,6 +72,9 @@ does.
 - **New grammars** — a NASM / MASM grammar (would take `.asm`, which
   2.6.2 stopped claiming), MDX, Lean 4, shell variants beyond
   bash / zsh / sh / dash, whatever a consumer needs.
+- **Incremental tokens inside a long, still-open compose region** — a
+  resumable region that re-scans only its body (ADR 0028's "when to
+  revisit"); today such a region commits when it closes.
 - **Consumer-routed detection** — an additive
   `detect_language_registered(path)` that walks the registry, if a
   consumer wants vyakarana to route its own grammars
@@ -124,5 +99,5 @@ does.
 |---|---|
 | A grammar needs a distinction the ten kinds cannot express | Defer adding a kind; check whether a theme can distinguish by token text first |
 | Consumers want parsing, not tokens | Point them at a parser library; vyakarana stops at tokens |
-| Streaming complexity keeps concentrating in the drain (pending fast path, marker window, compose prefix-hold, heredoc hold and watch) | 2.8.0's state-machine work; until then every drain change is gated by the every-offset split over all non-compose corpora |
+| Streaming complexity keeps concentrating in the drain (holds, watches, groups, the marker window) | Every drain decision reads scanner-reported state (ADR 0028); every drain change is gated by the every-offset split over all 49 corpora |
 | Gates that pass on inputs too narrow to fail — the recurring theme of the 2.3.4, 2.5.2 and 2.6.x audits | Every new gate is shown to fail against the previous release before it ships |

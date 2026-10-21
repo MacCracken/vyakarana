@@ -139,13 +139,20 @@ was removed in 2.0.0 (ADR 0017).
 
 ## Status
 
+**2.8.0** (2026-10-20) — streaming engine
+([ADR 0028](docs/adr/0028-streaming-holds-watches-groups.md)): a chunked
+stream now matches a single feed for every grammar, markdown / html /
+vue / svelte / cyml included, and feeding long tokens or blocks in
+small chunks is linear (a 550 KB fenced block in 4 KB chunks: > 300 s →
+0.26 s). Single-feed output is unchanged. Next on the
+[roadmap](docs/development/roadmap.md): 2.9.0 size and tooling.
+
 **2.7.1** (2026-10-20) — grammar polish
 ([ADR 0027](docs/adr/0027-prefixes-lead-bytes-next-byte-rules.md)):
 `f"…"` / `b'\n'` / `L"…"` prefixes belong to their string, PHP 8
 `#[attributes]` and Cyrius `#ifdef` lines are no longer comments, CSS
 `calc(a - b)` has a minus, makefile `$<` / `$^`, Ruby `@@vars` and shell
-`<<"E"OF` heredocs tokenize correctly. 1056/1056 tests. Next on the
-[roadmap](docs/development/roadmap.md): 2.8.0 streaming engine.
+`<<"E"OF` heredocs tokenize correctly. 1056/1056 tests.
 
 **2.7.0** (2026-10-20) — number literals. A float (`2.5e-3`), a
 digit-separated integer (`1_000`, C++ `1'000`) and a TOML / YAML
