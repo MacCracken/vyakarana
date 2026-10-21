@@ -4,15 +4,21 @@
 > (1.x and 2.x cuts), plus any session that shifts the gates'
 > colour or the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.6.0 are
-> shipped. **2.6.0 is shell correctness**, the first pinned release:
+> **Read this file before doing anything.** 1.0.0–2.6.1 are
+> shipped. **2.6.1 is CLI hardening**: stdout goes through a checked,
+> buffered writer (write failures exit 3 instead of 0; NDJSON 3.5x
+> faster), flag values are validated (`--language=` empty / unknown is
+> exit 2), `--export-theme` honours `--theme` on either side and
+> refuses a FILE, `-` reads stdin and `--` ends options. Tokenization is
+> byte-identical to 2.6.0. **Next: 2.6.2 detection from grammar data.**
+> **2.6.0 is shell correctness**, the first pinned release:
 > `#` opens a comment only at the start of a word (`${#v}`, `${x#p}`,
 > `a#b` are code — ADR 0022's `start_after`), here-documents are one
 > string token (ADR 0023's `heredoc` rule type), and `\"` / `\#` / …
 > and `$0`–`$9` are single tokens. Streaming stays chunk-invariant
 > through two new drain mechanisms (the last committed byte; a hold +
 > terminator watch behind unresolved heredoc openers) — both shown to
-> be load-bearing. **Next: 2.6.1 CLI hardening.**
+> be load-bearing.
 > **2.5.2 is the 2.5.x closeout audit** — the full CLAUDE.md
 > hardening step. 5 P1 / 10 P2 / 12 P3 fixed, among them terminal-
 > escape injection through `vyk --theme`, three streaming bugs (char
@@ -155,7 +161,7 @@
 
 ## Current status (2026-10-20)
 
-- **Version:** `2.6.0` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `2.6.1` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`.
 - **Toolchain pin:** `cyrius = "6.7.15"` (bumped from 6.7.9 in
   2.5.1; 6.7.9 came from 6.6.20 in 2.5.0, 6.6.20 from 6.6.2 in
@@ -168,7 +174,7 @@
   fmt, io, fs, str, string, vec, args; `[test] stdlib` = assert.
   `lib/` is 28 files. `tests/vyakarana.tcyr` also includes
   `lib/assert.cyr` directly so editors (build-scope resolve) see it.
-- **Gates (re-run 2026-10-20 on 6.7.15, 2.6.0):** build OK, 0 warnings · **956/956** tests · smoke OK · **lint+fmt
+- **Gates (re-run 2026-10-20 on 6.7.15, 2.6.1):** build OK, 0 warnings · **956/956** tests · smoke OK · **lint+fmt
   exit 0, 0 warnings** (enforced via `--exit-with-count` since 2.5.1
   — before that a warning still exited 0) · fuzz **5/5** · 0 untracked deferrals. **46 grammars.** `scripts/smoke.sh`
   gained two regression groups in 2.3.4 (oversize input must fail
@@ -213,6 +219,18 @@
   rows — the hot path consumers actually run — are all
   fractionally *faster*. Table not refreshed: the documented
   cadence is minor-release boundaries, and this is a patch.
+- **What 2.6.1 changed (CLI hardening):**
+  - `src/out.cyr` — CLI-only checked, buffered stdout (not in the
+    bundle). Every stdout call site in `main.cyr` /
+    `theme_export.cyr` goes through it; `_vyk_exit` flushes and maps a
+    failure to exit 3. Note for future CLI code: never call `print` /
+    `println` / `fmt_int` for stdout in the CLI — use `out_*`.
+  - Arg parsing rewritten around `_flag_value`: values validated where
+    parsed, export deferred until argv is read, `--`, `-` (stdin via
+    `_read_stdin`, same 1 MiB cap and too-large refusal).
+  - Smoke gained a 2.6.1 group; each check was run against 2.6.0 and
+    fails there.
+
 - **What 2.6.0 changed (shell correctness):**
   - **Two new grammar mechanisms, each with an ADR.** `start_after`
     on line rules (0022) and the `heredoc` rule type (0023). ADR 0024
@@ -1202,8 +1220,7 @@ over an unchanged public API.
 
 1. ~~2.6.0 — shell correctness~~ — **shipped 2026-10-20** (ADRs 0022,
    0023).
-2. **2.6.1 — CLI hardening**: write failures exit non-zero, clear
-   bad-value errors, `--export-theme` flag order, stdin.
+2. ~~2.6.1 — CLI hardening~~ — **shipped 2026-10-20**.
 3. **2.6.2 — detection from grammar data** (ADR), then the 2.6.x
    closeout audit.
 4. **2.7.0 — `number_float`** (minor, ADR); **2.7.1 — grammar polish**

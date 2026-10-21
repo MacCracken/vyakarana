@@ -91,12 +91,18 @@ checkout, picking up a pin bump takes `cyriusly use <pin>` and then
 ## `vyk` — the demo CLI
 
 ```sh
-vyk --version              # prints `vyk 2.3.0`
+vyk --version              # prints `vyk <version>`
 vyk --list-kinds           # print the ten token kinds
 vyk --list-languages       # list loaded grammars (46 bundled)
 vyk file.rs                # NDJSON tokens for any bundled grammar
 vyk --language=shell setup # explicit grammar override (extensionless)
+cat x.py | vyk --language=python -   # `-` reads standard input
 ```
+
+Exit codes: 0 ok · 1 the output has `error` tokens · 2 bad usage (unknown
+option, missing or invalid value) · 3 I/O error reading the input or
+writing the output · 4 no grammar matched. `vyk --help` and
+[`docs/man/vyk.1`](docs/man/vyk.1) have the details.
 
 `--theme=<name> file.py` previews the grammar via owl's palette
 without running owl; `--handcoded file.sh` exercises the M1 hand-
@@ -132,6 +138,13 @@ was removed in 2.0.0 (ADR 0017).
 ---
 
 ## Status
+
+**2.6.1** (2026-10-20) — CLI hardening: write failures (a full disk, a
+closed stdout) exit 3 instead of 0, bad or empty flag values are clear
+usage errors, `-` reads standard input, `--` ends options, and NDJSON
+output is 3.5x faster. Tokens unchanged from 2.6.0. Next on the
+[roadmap](docs/development/roadmap.md): 2.6.2 detection from grammar
+data.
 
 **2.6.0** (2026-10-20) — shell correctness. `${#arr[@]}`, `${x#p}` and
 `a#b` are code, not comments; here-documents (`<<EOF`, `<<'EOF'`,

@@ -39,16 +39,16 @@ fn _te_emit_entry(scope, color_hex, is_first) {
     if (strlen(color_hex) == 0) { return is_first; }
     if (is_first == 0) {
         var c1 = ",\n";
-        print(c1, strlen(c1));
+        out_write(c1, strlen(c1));
     }
     var open_brace = "    { \"scope\": \"";
-    print(open_brace, strlen(open_brace));
-    print(scope, strlen(scope));
+    out_write(open_brace, strlen(open_brace));
+    out_write(scope, strlen(scope));
     var middle = "\", \"settings\": { \"foreground\": \"";
-    print(middle, strlen(middle));
-    print(color_hex, strlen(color_hex));
+    out_write(middle, strlen(middle));
+    out_write(color_hex, strlen(color_hex));
     var close_brace = "\" } }";
-    print(close_brace, strlen(close_brace));
+    out_write(close_brace, strlen(close_brace));
     return 0;
 }
 
@@ -110,19 +110,19 @@ fn theme_export_vscode(theme) {
 
     # Header.
     var l1 = "{\n";
-    print(l1, strlen(l1));
+    out_write(l1, strlen(l1));
     var l2 = "    \"name\": \"vyakarana-";
-    print(l2, strlen(l2));
-    print(name_str, strlen(name_str));
+    out_write(l2, strlen(l2));
+    out_write(name_str, strlen(name_str));
     var l3 = "\",\n";
-    print(l3, strlen(l3));
+    out_write(l3, strlen(l3));
     var l4 = "    \"type\": \"";
-    print(l4, strlen(l4));
-    print(type_str, strlen(type_str));
+    out_write(l4, strlen(l4));
+    out_write(type_str, strlen(type_str));
     var l5 = "\",\n";
-    print(l5, strlen(l5));
+    out_write(l5, strlen(l5));
     var l6 = "    \"tokenColors\": [\n";
-    print(l6, strlen(l6));
+    out_write(l6, strlen(l6));
 
     # Per-kind entries. Order matches src/token.cyr's TK_*
     # listing for readability; whitespace and ident are omitted
@@ -140,11 +140,11 @@ fn theme_export_vscode(theme) {
 
     # Trailer.
     var nl = "\n";
-    print(nl, strlen(nl));
+    out_write(nl, strlen(nl));
     var l7 = "    ]\n";
-    print(l7, strlen(l7));
+    out_write(l7, strlen(l7));
     var l8 = "}\n";
-    print(l8, strlen(l8));
+    out_write(l8, strlen(l8));
 
     return 0;
 }
@@ -172,13 +172,13 @@ fn theme_export_vscode(theme) {
 fn _te_emit_helix_entry(scope, color_hex) {
     if (strlen(color_hex) == 0) { return 0; }
     var open_quote = "\"";
-    print(open_quote, 1);
-    print(scope, strlen(scope));
+    out_write(open_quote, 1);
+    out_write(scope, strlen(scope));
     var middle = "\" = \"";
-    print(middle, strlen(middle));
-    print(color_hex, strlen(color_hex));
+    out_write(middle, strlen(middle));
+    out_write(color_hex, strlen(color_hex));
     var close = "\"\n";
-    print(close, 2);
+    out_write(close, 2);
     return 0;
 }
 
@@ -189,15 +189,15 @@ fn theme_export_helix(theme) {
 
     # Header comment — TOML files can carry it.
     var h1 = "# vyakarana-";
-    print(h1, strlen(h1));
-    print(name_str, strlen(name_str));
+    out_write(h1, strlen(h1));
+    out_write(name_str, strlen(name_str));
     var h2 = " — Helix theme exported by `vyk --export-theme=helix`\n";
-    print(h2, strlen(h2));
+    out_write(h2, strlen(h2));
     var h3 = "# Pair with `theme = \"vyakarana-";
-    print(h3, strlen(h3));
-    print(name_str, strlen(name_str));
+    out_write(h3, strlen(h3));
+    out_write(name_str, strlen(name_str));
     var h4 = "\"` in your Helix `config.toml`.\n\n";
-    print(h4, strlen(h4));
+    out_write(h4, strlen(h4));
 
     _te_emit_helix_entry("variable",          _te_hex(theme, TK_IDENT));
     _te_emit_helix_entry("keyword",           _te_hex(theme, TK_KEYWORD));
@@ -251,44 +251,44 @@ fn _te_iterm_chan(byte_value) {
 # One `Ansi N Color` plist dict. r/g/b are byte values.
 fn _te_iterm_emit_color(slot_name, r, g, b) {
     var k1 = "\t<key>";
-    print(k1, strlen(k1));
-    print(slot_name, strlen(slot_name));
+    out_write(k1, strlen(k1));
+    out_write(slot_name, strlen(slot_name));
     var k2 = "</key>\n\t<dict>\n";
-    print(k2, strlen(k2));
+    out_write(k2, strlen(k2));
     var space = "\t\t<key>Color Space</key>\n\t\t<string>sRGB</string>\n";
-    print(space, strlen(space));
+    out_write(space, strlen(space));
     var rk = "\t\t<key>Red Component</key>\n\t\t<real>";
-    print(rk, strlen(rk));
+    out_write(rk, strlen(rk));
     var rs = _te_iterm_chan(r);
-    print(rs, strlen(rs));
+    out_write(rs, strlen(rs));
     var rkc = "</real>\n";
-    print(rkc, strlen(rkc));
+    out_write(rkc, strlen(rkc));
     var gk = "\t\t<key>Green Component</key>\n\t\t<real>";
-    print(gk, strlen(gk));
+    out_write(gk, strlen(gk));
     var gs = _te_iterm_chan(g);
-    print(gs, strlen(gs));
-    print(rkc, strlen(rkc));
+    out_write(gs, strlen(gs));
+    out_write(rkc, strlen(rkc));
     var bk = "\t\t<key>Blue Component</key>\n\t\t<real>";
-    print(bk, strlen(bk));
+    out_write(bk, strlen(bk));
     var bs = _te_iterm_chan(b);
-    print(bs, strlen(bs));
-    print(rkc, strlen(rkc));
+    out_write(bs, strlen(bs));
+    out_write(rkc, strlen(rkc));
     var close = "\t</dict>\n";
-    print(close, strlen(close));
+    out_write(close, strlen(close));
     return 0;
 }
 
 fn theme_export_iterm(theme) {
     var hdr = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
-    print(hdr, strlen(hdr));
+    out_write(hdr, strlen(hdr));
     # Doctype split into two prints to keep source under 120
     # chars per line (cyrius lint convention).
     var dt1 = "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" ";
-    print(dt1, strlen(dt1));
+    out_write(dt1, strlen(dt1));
     var dt2 = "\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n";
-    print(dt2, strlen(dt2));
+    out_write(dt2, strlen(dt2));
     var pl = "<plist version=\"1.0\">\n<dict>\n";
-    print(pl, strlen(pl));
+    out_write(pl, strlen(pl));
 
     # Standard 16 ANSI colours. Default and dark themes share the
     # palette; what changes between them is which kinds map to
@@ -325,7 +325,7 @@ fn theme_export_iterm(theme) {
     _te_iterm_emit_color("Selection Color",   205, 205, 205);
 
     var trail = "</dict>\n</plist>\n";
-    print(trail, strlen(trail));
+    out_write(trail, strlen(trail));
 
     return 0;
 }

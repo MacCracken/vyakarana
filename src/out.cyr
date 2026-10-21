@@ -1,0 +1,103 @@
+# vyakarana — checked, buffered standard output for the `vyk` CLI
+#
+# CLI-only (not in `[lib] modules`; library consumers do their own I/O).
+#
+# Why (2.6.1): every stdout write used to go straight to the kernel —
+# `print` through `file_write`, `println` / `fmt_int` through a raw
+# `syscall(1, …)` — and every result was ignored. `vyk a.sh > /dev/full`,
+# `--export-theme=vscode > /dev/full` and a closed stdout (`>&-`) all
+# exited 0 with nothing written: the "silent degradation" the 2.3.4 audit
+# made a house rule against. And NDJSON cost seven write syscalls per
+# token.
+#
+# Now output collects in a 64 KiB buffer; `out_flush` writes it with the
+# partial-write / EINTR loop `write(2)` needs and latches the first
+# failure in `_out_failed`, after which further output is dropped.
+# `main`'s exit path flushes and turns a failure into exit 3 with a
+# message on stderr. A write to a closed PIPE still raises SIGPIPE, which
+# ends the process the conventional way (`vyk big.sh | head -1`).
+#
+# Names avoid the `_int` / `_str` / `_cstr` suffixes — those are the
+# compiler's overload-dispatch targets (CLAUDE.md §Cyrius dialect
+# gotchas).
+
+var OUT_CAP = 65536;
+var _out_buf = 0;
+var _out_len = 0;
+var _out_failed = 0;
+var _out_num_buf = 0;
+
+# Write `buf[0..n)` to fd 1 completely, or latch `_out_failed`.
+fn _out_raw(buf, n) {
+    var off = 0;
+    while ((off < n) && (_out_failed == 0)) {
+        var w = syscall(1, 1, buf + off, n - off);
+        # -4 is EINTR: retry. Anything else <= 0 (EPIPE, ENOSPC, EBADF,
+        # EIO, a 0-byte write) is a failure.
+        if (w > 0) { off = off + w; }
+        if ((w <= 0) && (w != (0 - 4))) { _out_failed = 1; }
+    }
+    return 0;
+}
+
+fn out_flush() {
+    if (_out_len > 0) {
+        _out_raw(_out_buf, _out_len);
+        _out_len = 0;
+    }
+    return 0;
+}
+
+fn out_write(p, n) {
+    if (_out_failed == 1) { return 0; }
+    if (n <= 0) { return 0; }
+    if (_out_buf == 0) {
+        _out_buf = alloc(OUT_CAP);
+        # No buffer (out of memory): write through unbuffered.
+        if (_out_buf == 0) {
+            _out_raw(p, n);
+            return 0;
+        }
+    }
+    if (_out_len + n > OUT_CAP) { out_flush(); }
+    if (n >= OUT_CAP) {
+        _out_raw(p, n);
+        return 0;
+    }
+    memcpy(_out_buf + _out_len, p, n);
+    _out_len = _out_len + n;
+    return 0;
+}
+
+fn out_line(s) {
+    out_write(s, strlen(s));
+    out_write("\n", 1);
+    return 0;
+}
+
+# Decimal `v` (any i64, i64::MIN included — digits are taken from the
+# negative value, as lib/fmt.cyr's fmt_int does).
+fn out_num(v) {
+    if (_out_num_buf == 0) {
+        _out_num_buf = alloc(24);
+        if (_out_num_buf == 0) { return 0; }
+    }
+    var b = _out_num_buf;
+    var bi = 23;
+    var neg = 0;
+    if (v < 0) { neg = 1; }
+    if (v == 0) { store8(b + bi, 48); bi = bi - 1; }
+    while (v != 0) {
+        var d = v % 10;
+        if (d < 0) { d = 0 - d; }
+        store8(b + bi, 48 + d);
+        bi = bi - 1;
+        v = v / 10;
+    }
+    if (neg == 1) { store8(b + bi, 45); bi = bi - 1; }
+    out_write(b + bi + 1, 23 - bi);
+    return 0;
+}
+
+# 1 once any stdout write has failed.
+fn out_failed() { return _out_failed; }

@@ -4,6 +4,53 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.6.1] — 2026-10-20
+
+**CLI hardening.** The `vyk` command line only; the library bundle is unchanged
+apart from its version line, and `vyk`'s stdout and exit code are byte-identical
+to 2.6.0 on all 4,026 real files in the sweep sample. 956/956 tests, smoke OK
+(new 2.6.1 group — every check in it fails against 2.6.0), lint+fmt exit 0,
+fuzz 5/5.
+
+### Fixed
+
+- **Write failures no longer exit 0.** Every stdout write went straight to the
+  kernel with its result ignored, so `vyk a.sh > /dev/full`,
+  `--export-theme=vscode > /dev/full`, `--help > /dev/full` and a closed stdout
+  (`>&-`) all "succeeded" with nothing written. Output now goes through a
+  checked, buffered writer (`src/out.cyr`, CLI-only): partial writes and EINTR
+  are retried, the first failure latches, and the run exits **3** with
+  `vyk: write error on standard output`. A closed pipe still ends the process by
+  SIGPIPE, as is conventional (`vyk big.sh | head -1`).
+- **Empty flag values** — `--language=`, `--theme=`, `--export-theme=` — are
+  reported as `missing value for …` (exit 2) instead of `unknown option`.
+- **`--language=<unknown>` is a usage error** (exit 2, `invalid value`),
+  checked before the file is read; it used to exit 4 "no grammar matched FILE".
+- **`--export-theme=` reads `--theme=` on either side.** It exported as soon as
+  it was seen, so `--export-theme=vscode --theme=dark` produced the `default`
+  theme. It also refuses a FILE now (exit 2) instead of silently ignoring it.
+- **`--handcoded` on a non-shell file** is a usage error that says so; it used
+  to report "no grammar matched", which was untrue.
+
+### Added
+
+- **`-` reads standard input** (`git show HEAD:a.py | vyk --language=python -`);
+  messages call it `<stdin>`. Without `--language=`, detection uses the content
+  sniff only (a shebang, `<?xml`, `<!DOCTYPE html>`). Tokens are identical to
+  reading the same file.
+- **`--` ends option parsing**, so a file named `-x` can be read
+  (`vyk -- -x`).
+
+### Changed
+
+- **NDJSON output is buffered** — it was seven write syscalls per token. 700 KB
+  of shell to `/dev/null`: 2.59 s → 0.74 s.
+- `--help`, `docs/man/vyk.1` and the README document `-`, `--`, the broadened
+  exit codes 2 and 3, and `--export-theme`'s flag-order rule. The man page
+  header said 2.3.0.
+- The 2.6.0-era `parse_language_arg` / `parse_theme_arg` /
+  `parse_export_theme_arg` helpers are gone (one `_flag_value` replaces them).
+
 ## [2.6.0] — 2026-10-20
 
 **Shell correctness.** The first pinned release of the 2.6.x – 2.9.0 roadmap.

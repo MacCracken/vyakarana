@@ -18,6 +18,7 @@ include "src/token.cyr"
 include "src/grammar.cyr"
 include "src/tokenize.cyr"
 include "src/detect.cyr"
+include "src/out.cyr"
 include "src/theme.cyr"
 include "src/theme_export.cyr"
 include "src/version_str.cyr"
@@ -49,64 +50,67 @@ var EXIT_NO_GRAMMAR   = 4;
 var VYK_SRC_CAP = 1048576;
 
 fn print_version() {
-    println(VYK_VERSION);
+    out_line(VYK_VERSION);
     return 0;
 }
 
 fn print_help() {
-    println("vyk — vyakarana source-code tokenizer (demo CLI)");
-    println("");
-    println("Usage: vyk [OPTIONS] [FILE]");
-    println("");
-    println("Tokenize FILE and print one NDJSON record per token, or");
-    println("emit ANSI-coloured source bytes when --theme= is set.");
-    println("Without FILE, exits with --help text.");
-    println("");
-    println("Options:");
-    println("  -h, --help             Print this help and exit");
-    println("  -V, --version          Print version and exit");
-    println("      --list-kinds       Print the ten token kinds and exit");
-    println("      --list-languages   Print loaded grammars and exit");
-    println("      --language=<lang>  Override extension/content detection");
-    println("                         (run --list-languages for valid names)");
-    println("      --theme=<name>     Render ANSI-coloured source instead");
-    println("                         of NDJSON. Names: default, dark, none.");
-    println("                         See docs/architecture/004-theme-palette-contract.md.");
-    println("      --export-theme=<format>  Emit a theme file for the named");
-    println("                         editor format and exit. Formats:");
-    println("                         vscode (theme.json), helix (theme.toml),");
-    println("                         iterm (.itermcolors plist).");
-    println("                         Pair with --theme=<name> to pick the");
-    println("                         palette (default: default).");
-    println("      --handcoded        Use the M1 hand-coded shell oracle");
-    println("                         (regression diagnostic; shell only)");
-    println("");
-    println("Exit codes:");
-    println("  0  success");
-    println("  1  tokenization produced an `error` token kind");
-    println("  2  bad command-line usage (run --help)");
-    println("  3  cannot read FILE (not found or not readable)");
-    println("  4  no grammar matched FILE");
-    println("");
-    println("Examples:");
-    println("  vyk script.sh                    # NDJSON tokens to stdout");
-    println("  vyk --theme=dark file.rs         # ANSI-coloured render");
-    println("  vyk --language=python script     # extensionless file");
-    println("  vyk --export-theme=vscode > theme.json   # editor theme");
-    println("  vyk --list-languages | grep ml   # discover grammar names");
-    println("");
-    println("NDJSON output shape:");
-    println("  {\"kind\":\"keyword\",\"start\":0,\"len\":2}");
-    println("  Kinds: ident, keyword, string, number, comment,");
-    println("         operator, punctuation, whitespace,");
-    println("         preprocessor, error.");
+    out_line("vyk — vyakarana source-code tokenizer (demo CLI)");
+    out_line("");
+    out_line("Usage: vyk [OPTIONS] [--] [FILE | -]");
+    out_line("");
+    out_line("Tokenize FILE and print one NDJSON record per token, or");
+    out_line("emit ANSI-coloured source bytes when --theme= is set.");
+    out_line("FILE `-` reads standard input. Without FILE, prints this help.");
+    out_line("");
+    out_line("Options:");
+    out_line("  -h, --help             Print this help and exit");
+    out_line("  -V, --version          Print version and exit");
+    out_line("      --list-kinds       Print the ten token kinds and exit");
+    out_line("      --list-languages   Print loaded grammars and exit");
+    out_line("      --language=<lang>  Override extension/content detection");
+    out_line("                         (run --list-languages for valid names)");
+    out_line("      --theme=<name>     Render ANSI-coloured source instead");
+    out_line("                         of NDJSON. Names: default, dark, none.");
+    out_line("                         See docs/architecture/004-theme-palette-contract.md.");
+    out_line("      --export-theme=<format>  Emit a theme file for the named");
+    out_line("                         editor format and exit. Formats:");
+    out_line("                         vscode (theme.json), helix (theme.toml),");
+    out_line("                         iterm (.itermcolors plist).");
+    out_line("                         Pair with --theme=<name> (either side)");
+    out_line("                         to pick the palette (default: default).");
+    out_line("                         Takes no FILE.");
+    out_line("      --handcoded        Use the M1 hand-coded shell oracle");
+    out_line("                         (regression diagnostic; shell only)");
+    out_line("      --                 End of options; later args are FILEs");
+    out_line("");
+    out_line("Exit codes:");
+    out_line("  0  success");
+    out_line("  1  tokenization produced an `error` token kind");
+    out_line("  2  bad usage: unknown option, missing or invalid value");
+    out_line("  3  I/O error: cannot read FILE, or cannot write output");
+    out_line("  4  no grammar matched FILE");
+    out_line("");
+    out_line("Examples:");
+    out_line("  vyk script.sh                    # NDJSON tokens to stdout");
+    out_line("  vyk --theme=dark file.rs         # ANSI-coloured render");
+    out_line("  vyk --language=python script     # extensionless file");
+    out_line("  git show HEAD:a.py | vyk --language=python -   # stdin");
+    out_line("  vyk --export-theme=vscode > theme.json   # editor theme");
+    out_line("  vyk --list-languages | grep ml   # discover grammar names");
+    out_line("");
+    out_line("NDJSON output shape:");
+    out_line("  {\"kind\":\"keyword\",\"start\":0,\"len\":2}");
+    out_line("  Kinds: ident, keyword, string, number, comment,");
+    out_line("         operator, punctuation, whitespace,");
+    out_line("         preprocessor, error.");
     return 0;
 }
 
 fn print_list_kinds() {
     var i = 0;
     while (i < TK_COUNT) {
-        println(kind_name(i));
+        out_line(kind_name(i));
         i = i + 1;
     }
     return 0;
@@ -130,7 +134,7 @@ fn print_list_languages() {
     var name: cstring = 0;
     while (i < n) {
         name = vec_get(names, i);
-        println(name);
+        out_line(name);
         i = i + 1;
     }
     return 0;
@@ -200,18 +204,18 @@ fn _tty_put_escape(src, p, len) {
     var out = _tty_esc_buf;
     if (cp < 32) {
         store8(out, 94); store8(out + 1, cp + 64);
-        print(out, 2);
+        out_write(out, 2);
         return 0;
     }
     if (cp == 127) {
         store8(out, 94); store8(out + 1, 63);
-        print(out, 2);
+        out_write(out, 2);
         return 0;
     }
     store8(out, 92); store8(out + 1, 120);
     store8(out + 2, load8(_tty_hex + (cp >> 4)));
     store8(out + 3, load8(_tty_hex + (cp & 15)));
-    print(out, 4);
+    out_write(out, 4);
     return 0;
 }
 
@@ -241,7 +245,7 @@ fn _tty_print_safe(src, src_len, s, l) {
         var u = _tty_unit(src, src_len, p);
         var ulen = u >> 1;
         if ((u & 1) == 1) {
-            if (p > run) { print(src + run, p - run); }
+            if (p > run) { out_write(src + run, p - run); }
             _tty_put_escape(src, p, ulen);
             # A `C2 9B` split across two tokens is escaped once, here;
             # the next token must skip the `9B` it starts with.
@@ -261,7 +265,7 @@ fn _tty_print_safe(src, src_len, s, l) {
         }
     }
     if (p > end) { p = end; }
-    if (p > run) { print(src + run, p - run); }
+    if (p > run) { out_write(src + run, p - run); }
     return 0;
 }
 
@@ -334,6 +338,25 @@ fn bad_value_error(flag, allowed) {
     eprint(msg2, strlen(msg2));
     eprint(allowed, strlen(allowed));
     eprint("\n", 1);
+    return 0;
+}
+
+# `--language=` / `--theme=` / `--export-theme=` with nothing after the
+# `=`. Through 2.6.0 these fell through to "unknown option" (2.6.1).
+fn missing_value_error(flag) {
+    var m1 = "vyk: missing value for ";
+    eprint(m1, strlen(m1));
+    eprint(flag, strlen(flag));
+    var m2 = "\nvyk: try --help for the accepted values\n";
+    eprint(m2, strlen(m2));
+    return 0;
+}
+
+# A usage error with a fixed message (2.6.1).
+fn usage_error(msg) {
+    eprint(msg, strlen(msg));
+    var m2 = "vyk: try --help\n";
+    eprint(m2, strlen(m2));
     return 0;
 }
 
@@ -412,11 +435,11 @@ fn emit_themed(tb, src, src_len, theme) {
         var color = theme_color(theme, k);
         var clen = strlen(color);
         if (clen > 0) {
-            print(color, clen);
+            out_write(color, clen);
         }
         _tty_print_safe(src, src_len, s, l);
         if (clen > 0) {
-            print(reset, rlen);
+            out_write(reset, rlen);
         }
         i = i + 1;
     }
@@ -439,13 +462,13 @@ fn emit_ndjson(tb) {
         var l = tokenbuf_len(tb, i);
         if (k == TK_ERROR) { any_error = 1; }
         var name = kind_name(k);
-        print(s_open, strlen(s_open));
-        print(name, strlen(name));
-        print(s_mid1, strlen(s_mid1));
-        fmt_int(s);
-        print(s_mid2, strlen(s_mid2));
-        fmt_int(l);
-        print(s_close, strlen(s_close));
+        out_write(s_open, strlen(s_open));
+        out_write(name, strlen(name));
+        out_write(s_mid1, strlen(s_mid1));
+        out_num(s);
+        out_write(s_mid2, strlen(s_mid2));
+        out_num(l);
+        out_write(s_close, strlen(s_close));
         i = i + 1;
     }
     return any_error;
@@ -493,34 +516,31 @@ fn tokenize_buf(buf, n, path, lang, handcoded, theme) {
     return EXIT_OK;
 }
 
-# Parse --language=<val>; returns pointer to value or 0 if arg isn't
-# a --language=... form.
-fn parse_language_arg(a) {
-    var prefix = "--language=";
+# `a` starts with `prefix`: the value after it (possibly empty — check
+# `load8(v) == 0`). Otherwise 0. Replaces 2.6.0's `parse_*_arg` trio,
+# which treated an empty value as "not this flag" — so `--language=`
+# fell through to "unknown option" (2.6.1).
+fn _flag_value(a, prefix) {
     var plen = strlen(prefix);
-    if (strlen(a) <= plen) { return 0; }
+    if (strlen(a) < plen) { return 0; }
     if (memeq(a, prefix, plen) == 0) { return 0; }
     return a + plen;
 }
 
-# Parse --theme=<val>; returns pointer to value or 0 if arg isn't
-# a --theme=... form.
-fn parse_theme_arg(a) {
-    var prefix = "--theme=";
-    var plen = strlen(prefix);
-    if (strlen(a) <= plen) { return 0; }
-    if (memeq(a, prefix, plen) == 0) { return 0; }
-    return a + plen;
-}
-
-# Parse --export-theme=<val>; returns pointer to value or 0 if
-# arg isn't a --export-theme=... form.
-fn parse_export_theme_arg(a) {
-    var prefix = "--export-theme=";
-    var plen = strlen(prefix);
-    if (strlen(a) <= plen) { return 0; }
-    if (memeq(a, prefix, plen) == 0) { return 0; }
-    return a + plen;
+# Read all of stdin into `buf` (at most `cap` bytes). Returns the byte
+# count, or -1 on a read error. Same contract as `file_read_all`: a
+# result of `cap` means "possibly more", which the caller refuses as too
+# large (2.6.1: `vyk -` reads stdin).
+fn _read_stdin(buf, cap) {
+    var n = 0;
+    var done = 0;
+    while ((n < cap) && (done == 0)) {
+        var r = syscall(0, 0, buf + n, cap - n);
+        if (r > 0) { n = n + r; }
+        if (r == 0) { done = 1; }
+        if ((r < 0) && (r != (0 - 4))) { return (0 - 1); }   # -4: EINTR, retry
+    }
+    return n;
 }
 
 fn main() {
@@ -544,76 +564,111 @@ fn main() {
     # are valid theme tags from theme_resolve().
     var theme = 0 - 1;
 
+    # `--export-theme=` is applied after the whole argv is read, so
+    # `--theme=` works on either side of it (through 2.6.0 only an
+    # EARLIER `--theme=` counted: `--export-theme=vscode --theme=dark`
+    # exported `default`). 0 = no export; 1 vscode, 2 helix, 3 iterm.
+    var export_fmt = 0;
+    var opts_done = 0;   # set by `--`: every later arg is a FILE
+
     var i = 1;
     while (i < ac) {
         var a = argv(i);
-        if (streq(a, "-h") == 1) { print_help(); return EXIT_OK; }
-        if (streq(a, "--help") == 1) { print_help(); return EXIT_OK; }
-        if (streq(a, "-V") == 1) { print_version(); return EXIT_OK; }
-        if (streq(a, "--version") == 1) { print_version(); return EXIT_OK; }
-        if (streq(a, "--list-kinds") == 1) { print_list_kinds(); return EXIT_OK; }
-        if (streq(a, "--list-languages") == 1) { print_list_languages(); return EXIT_OK; }
-        if (streq(a, "--handcoded") == 1) {
-            handcoded = 1;
-            i = i + 1;
-            continue;
+        var handled = 0;
+        if (opts_done == 0) {
+            if (streq(a, "-h") == 1) { print_help(); return EXIT_OK; }
+            if (streq(a, "--help") == 1) { print_help(); return EXIT_OK; }
+            if (streq(a, "-V") == 1) { print_version(); return EXIT_OK; }
+            if (streq(a, "--version") == 1) { print_version(); return EXIT_OK; }
+            if (streq(a, "--list-kinds") == 1) { print_list_kinds(); return EXIT_OK; }
+            if (streq(a, "--list-languages") == 1) { print_list_languages(); return EXIT_OK; }
+            if (streq(a, "--") == 1) { opts_done = 1; handled = 1; }
+            if (streq(a, "--handcoded") == 1) { handcoded = 1; handled = 1; }
         }
 
-        var langv = parse_language_arg(a);
-        if (langv != 0) {
-            lang_override = langv;
-            i = i + 1;
-            continue;
+        if ((opts_done == 0) && (handled == 0)) {
+            var langv = _flag_value(a, "--language=");
+            if (langv != 0) {
+                if (load8(langv) == 0) {
+                    missing_value_error("--language=");
+                    return EXIT_USAGE;
+                }
+                # Validate now: an unknown name is a usage error (2), not
+                # "no grammar matched FILE" (4) — 2.6.1.
+                if (has_grammar(langv) == 0) {
+                    bad_value_error(a, "any name from --list-languages");
+                    return EXIT_USAGE;
+                }
+                lang_override = langv;
+                handled = 1;
+            }
         }
 
-        var themev = parse_theme_arg(a);
-        if (themev != 0) {
-            theme = theme_resolve(themev);
-            if (theme < 0) {
-                bad_value_error(a, "default, dark, none");
+        if ((opts_done == 0) && (handled == 0)) {
+            var themev = _flag_value(a, "--theme=");
+            if (themev != 0) {
+                if (load8(themev) == 0) {
+                    missing_value_error("--theme=");
+                    return EXIT_USAGE;
+                }
+                theme = theme_resolve(themev);
+                if (theme < 0) {
+                    bad_value_error(a, "default, dark, none");
+                    return EXIT_USAGE;
+                }
+                handled = 1;
+            }
+        }
+
+        if ((opts_done == 0) && (handled == 0)) {
+            var exportv = _flag_value(a, "--export-theme=");
+            if (exportv != 0) {
+                if (load8(exportv) == 0) {
+                    missing_value_error("--export-theme=");
+                    return EXIT_USAGE;
+                }
+                # 1.11.1 added `vscode`; 1.12.1 `helix` and `iterm`.
+                export_fmt = 0;
+                if (streq(exportv, "vscode") == 1) { export_fmt = 1; }
+                if (streq(exportv, "helix") == 1)  { export_fmt = 2; }
+                if (streq(exportv, "iterm") == 1)  { export_fmt = 3; }
+                if (export_fmt == 0) {
+                    bad_value_error(a, "vscode, helix, iterm");
+                    return EXIT_USAGE;
+                }
+                handled = 1;
+            }
+        }
+
+        if (handled == 0) {
+            # Not a known flag. Before `--`, anything else starting with
+            # `-` is an unknown option — except `-` alone, which is
+            # standard input (2.6.1).
+            if ((opts_done == 0) && (load8(a) == 45) && (streq(a, "-") == 0)) {
+                unknown_option_error(a);
                 return EXIT_USAGE;
             }
-            i = i + 1;
-            continue;
-        }
-
-        var exportv = parse_export_theme_arg(a);
-        if (exportv != 0) {
-            # 1.11.1 added `vscode`; 1.12.1 adds `helix` and
-            # `iterm`. Selects which theme via the `--theme=`
-            # flag if it appeared earlier; otherwise default.
-            var which = theme;
-            if (which < 0) { which = THEME_DEFAULT; }
-            if (streq(exportv, "vscode") == 1) {
-                theme_export_vscode(which);
-                return EXIT_OK;
+            if (path != 0) {
+                # Second positional — too many file args.
+                extra_arg_error(a);
+                return EXIT_USAGE;
             }
-            if (streq(exportv, "helix") == 1) {
-                theme_export_helix(which);
-                return EXIT_OK;
-            }
-            if (streq(exportv, "iterm") == 1) {
-                theme_export_iterm(which);
-                return EXIT_OK;
-            }
-            bad_value_error(a, "vscode, helix, iterm");
-            return EXIT_USAGE;
-        }
-
-        # First non-flag: treat as a file path. Reject anything else
-        # starting with `-` as an unknown option.
-        if (load8(a) == 45) {   # `-`
-            unknown_option_error(a);
-            return EXIT_USAGE;
-        }
-        if (path == 0) {
             path = a;
-            i = i + 1;
-            continue;
         }
-        # Second positional — too many file args.
-        extra_arg_error(a);
-        return EXIT_USAGE;
+        i = i + 1;
+    }
+
+    if (export_fmt != 0) {
+        if (path != 0) {
+            usage_error("vyk: --export-theme writes a theme file and takes no FILE\n");
+            return EXIT_USAGE;
+        }
+        var which = theme;
+        if (which < 0) { which = THEME_DEFAULT; }
+        if (export_fmt == 1) { theme_export_vscode(which); }
+        if (export_fmt == 2) { theme_export_helix(which); }
+        if (export_fmt == 3) { theme_export_iterm(which); }
+        return EXIT_OK;
     }
 
     if (path == 0) {
@@ -626,7 +681,18 @@ fn main() {
     # bytes (shebang, signature, asm flavour) without a second
     # read.
     var buf = alloc(VYK_SRC_CAP);
-    var n = file_read_all(path, buf, VYK_SRC_CAP - 1);
+    if (buf == 0) {
+        io_error(path);
+        return EXIT_IO;
+    }
+    var n = 0;
+    # `-` is standard input; messages call it `<stdin>`, and detection
+    # falls to the content sniff (no extension to go on).
+    if (streq(path, "-") == 1) {
+        path = "<stdin>";
+        n = _read_stdin(buf, VYK_SRC_CAP - 1);
+    }
+    if (streq(path, "<stdin>") == 0) { n = file_read_all(path, buf, VYK_SRC_CAP - 1); }
     if (n < 0) {
         io_error(path);
         return EXIT_IO;
@@ -651,9 +717,30 @@ fn main() {
         no_grammar_error(path);
         return EXIT_NO_GRAMMAR;
     }
+    # The hand-coded oracle is shell-only. Through 2.6.0 any other
+    # language reported "no grammar matched", which was untrue (2.6.1).
+    if ((handcoded == 1) && (streq(lang, "shell") == 0)) {
+        var hc_msg = "vyk: --handcoded is the shell oracle; the file is not shell";
+        eprint(hc_msg, strlen(hc_msg));
+        usage_error(" (pass --language=shell to force it)\n");
+        return EXIT_USAGE;
+    }
 
     return tokenize_buf(buf, n, path, lang, handcoded, theme);
 }
 
-var exit_code = main();
+# Flush buffered stdout and report a write failure (2.6.1, src/out.cyr):
+# a run whose output did not reach its destination exits 3, whatever
+# else it would have returned.
+fn _vyk_exit(rc) {
+    out_flush();
+    if (out_failed() == 1) {
+        var m = "vyk: write error on standard output\n";
+        eprint(m, strlen(m));
+        return EXIT_IO;
+    }
+    return rc;
+}
+
+var exit_code = _vyk_exit(main());
 syscall(60, exit_code);

@@ -272,6 +272,9 @@ drifted, then stayed drifted). Brief shape:
   here-documents as one string token (`heredoc` rule type, ADR 0023),
   backslash escapes and `$0`–`$9` as single tokens; chunk-invariant
   through a drain hold and a terminator watch.
+  2.6.1: CLI hardening — checked buffered stdout (write failures exit
+  3), validated flag values, `--export-theme` order-independent, `-`
+  stdin and `--`.
 
 ### Forward plan — pinned releases (2.6.x – 2.x.x)
 
@@ -312,7 +315,10 @@ its identity corpus has none, the same standing as backticks.*
 - Exit: a vidya-synced corpus addition per shape; every shell file in
   the real-file sweep zero-error.
 
-#### 2.6.1 — CLI hardening *(patch)*
+#### 2.6.1 — CLI hardening *(patch)* — **shipped 2026-10-20**
+
+*Done as planned, plus `--` (end of options) and a buffered writer that
+made NDJSON output 3.5x faster.*
 
 - Write failures exit non-zero: `vyk a.sh > /dev/full`, a closed
   stdout and `--export-theme > /dev/full` all exit 0 today (stdlib

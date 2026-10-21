@@ -8,17 +8,22 @@
 .\" file, which is how the .TH line sat at 1.13.1 across the whole
 .\" 2.x line.  Smoke probes `--help` output, never this page.
 .\"
-.TH VYK 1 "2026-07-31" "vyakarana 2.3.0" "User Commands"
+.TH VYK 1 "2026-10-20" "vyakarana 2.6.1" "User Commands"
 .SH NAME
 vyk \- source-code tokenizer (vyakarana demo CLI)
 .SH SYNOPSIS
 .B vyk
 [\fIOPTIONS\fR]
-[\fIFILE\fR]
+[\fB\-\-\fR]
+[\fIFILE\fR | \fB\-\fR]
 .SH DESCRIPTION
 .B vyk
 reads
 .I FILE
+(or standard input when
+.I FILE
+is
+.BR \- )
 and emits one NDJSON record per recognized token, or ANSI-coloured
 source bytes when
 .B \-\-theme=
@@ -69,12 +74,30 @@ Emit a theme file for the named editor format and exit. Formats:
 .BR iterm " (.itermcolors plist)."
 Pair with
 .B \-\-theme=<name>
-to pick the source palette (default:
+(before or after it) to pick the source palette (default:
 .BR default ).
+Takes no
+.IR FILE .
 .TP
 .B \-\-handcoded
 Route through the M1 hand-coded shell oracle. Regression
-diagnostic for the shell grammar only.
+diagnostic for the shell grammar only; any other language is a
+usage error.
+.TP
+.B \-\-
+End of options: every later argument is a
+.IR FILE ,
+even one starting with
+.BR \- .
+.TP
+.B \-
+As
+.IR FILE :
+read standard input (named
+.I <stdin>
+in messages). Detection can only use the content, so pass
+.B \-\-language=
+for input without a shebang or signature.
 .SH EXIT STATUS
 .TP
 .B 0
@@ -86,14 +109,19 @@ Tokenization produced one or more
 token kinds (grammar gap or malformed input).
 .TP
 .B 2
-Bad command-line usage. Run
+Bad command-line usage: an unknown option, a missing or invalid
+flag value (including a
+.B \-\-language=
+name no grammar has), too many arguments. Run
 .B \-\-help
 for syntax.
 .TP
 .B 3
-Cannot read
-.IR FILE :
-file not found or not readable.
+I/O error: cannot read
+.I FILE
+(not found, not readable, or over the 1 MiB CLI cap), or cannot
+write the output (a full disk, a closed or failing standard
+output).
 .TP
 .B 4
 No grammar matched
@@ -116,6 +144,15 @@ ANSI-coloured render with the dark theme:
 .RS
 .nf
 \fBvyk \-\-theme=dark file.rs\fR
+.fi
+.RE
+.PP
+Tokenize standard input (detection needs a shebang or
+.BR \-\-language= ):
+.PP
+.RS
+.nf
+\fBgit show HEAD:app.py | vyk \-\-language=python \-\fR
 .fi
 .RE
 .PP

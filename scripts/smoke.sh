@@ -648,4 +648,56 @@ hw_off=$((hw_off + 6))
 grep -q "\"kind\":\"operator\",\"start\":$hw_off,\"len\":1" "$TMPDIR/sh.ndjson" \
     || fail "'\${#input}': the # at $hw_off is not a 1-byte operator (comment again?)"
 
+# ── 2.6.1 CLI hardening ──
+# exp_rc CODE "LABEL" CMD... — run CMD, require exit CODE.
+exp_rc() {
+    want="$1"; label="$2"; shift 2
+    set +e
+    "$@" > "$TMPDIR/cli.out" 2> "$TMPDIR/cli.err"
+    got=$?
+    set -e
+    [ "$got" = "$want" ] \
+        || fail "$label: exit $got, expected $want (stderr: $(head -2 "$TMPDIR/cli.err"))"
+}
+# Write failures exit 3 — through 2.6.0 they exited 0 with nothing written.
+if [ -w /dev/full ]; then
+    set +e
+    "$BIN" tests/corpus/rust.rs > /dev/full 2> "$TMPDIR/cli.err"; rc=$?
+    set -e
+    [ "$rc" = "3" ] || fail "output to /dev/full: exit $rc, expected 3"
+    grep -q "^vyk: write error on standard output" "$TMPDIR/cli.err" \
+        || fail "output to /dev/full: no write-error message"
+    set +e
+    "$BIN" --export-theme=vscode > /dev/full 2> /dev/null; rc=$?
+    set -e
+    [ "$rc" = "3" ] || fail "--export-theme to /dev/full: exit $rc, expected 3"
+fi
+set +e
+"$BIN" tests/corpus/rust.rs >&- 2> /dev/null; rc=$?
+set -e
+[ "$rc" = "3" ] || fail "closed stdout: exit $rc, expected 3"
+# Flag values: missing / invalid are usage errors (2), each named.
+exp_rc 2 "--language= (empty)" "$BIN" --language= tests/corpus/shell.sh
+grep -q "^vyk: missing value for --language=" "$TMPDIR/cli.err" || fail "--language=: no missing-value message"
+exp_rc 2 "--theme= (empty)" "$BIN" --theme= tests/corpus/shell.sh
+exp_rc 2 "--export-theme= (empty)" "$BIN" --export-theme=
+exp_rc 2 "--language=bogus" "$BIN" --language=bogus tests/corpus/shell.sh
+grep -q "^vyk: invalid value for --language=bogus" "$TMPDIR/cli.err" || fail "--language=bogus: wrong message"
+# --export-theme sees --theme on either side; refuses a FILE.
+exp_rc 0 "--export-theme=vscode --theme=dark" "$BIN" --export-theme=vscode --theme=dark
+grep -q '"type": "dark"' "$TMPDIR/cli.out" || fail "--theme=dark AFTER --export-theme was ignored"
+exp_rc 2 "--export-theme with FILE" "$BIN" --export-theme=vscode tests/corpus/shell.sh
+# --handcoded is shell-only: a usage error, not "no grammar matched".
+exp_rc 2 "--handcoded on python" "$BIN" --handcoded tests/corpus/python.py
+# `-` is stdin; `--` ends options.
+set +e
+"$BIN" --language=python - < tests/corpus/python.py > "$TMPDIR/stdin.ndjson" 2> "$TMPDIR/cli.err"; rc=$?
+set -e
+[ "$rc" = "0" ] || fail "stdin with --language=python: exit $rc"
+"$BIN" tests/corpus/python.py > "$TMPDIR/file.ndjson"
+cmp -s "$TMPDIR/stdin.ndjson" "$TMPDIR/file.ndjson" || fail "stdin tokens differ from the same file's"
+cp tests/corpus/shell.sh "$TMPDIR/-dash.sh"
+(cd "$TMPDIR" && "$ABS_BIN" -- -dash.sh > /dev/null 2>&1) || fail "'vyk -- -dash.sh' did not read the file"
+exp_rc 2 "dash-named file without --" "$BIN" -dash.sh
+
 echo "smoke: OK ($v_long) — M0 + M1 + M2 + M3 gates passing"
