@@ -43,10 +43,11 @@ var GRAMMAR_FILE_CAP = 32768;
 #  160  compose_rules       Vec<ComposeRule> — embedded-grammar routing
 #  168  compose_fenced_rules Vec<ComposeFencedRule> — captured-tag routing (ADR 0016)
 #  176  compose_region_rules Vec<ComposeRegionRule> — open-ended region routing (ADR 0019)
+#  184  heredoc_rules       Vec<HeredocRule> — here-documents (ADR 0023, 2.6.0)
 #  -----
-#  184 bytes total
+#  192 bytes total
 
-var GRAMMAR_SIZE = 184;
+var GRAMMAR_SIZE = 192;
 
 fn grammar_new() {
     var g = alloc(GRAMMAR_SIZE);
@@ -65,6 +66,7 @@ fn grammar_new() {
     store64(g + 160, vec_new());   # compose_rules
     store64(g + 168, vec_new());   # compose_fenced_rules
     store64(g + 176, vec_new());   # compose_region_rules
+    store64(g + 184, vec_new());   # heredoc_rules (2.6.0)
     return g;
 }
 
@@ -91,18 +93,41 @@ fn grammar_case_insensitive_kw(g) { return load64(g + 152); }
 fn grammar_compose_rules(g)        { return load64(g + 160); }
 fn grammar_compose_fenced_rules(g) { return load64(g + 168); }
 fn grammar_compose_region_rules(g) { return load64(g + 176); }
+fn grammar_heredoc_rules(g)        { return load64(g + 184); }
+
+# Here-document rule (ADR 0023): `start` opens it (`<<`); an optional
+# one-byte `indent` marker right after the start (`-` for `<<-`) lets
+# the terminator line be indented by tabs. The body plus terminator is
+# one `kind` token (string).
+var HEREDOC_RULE_SIZE = 24;
+fn heredoc_rule_new(kind, start, indent) {
+    var r = alloc(HEREDOC_RULE_SIZE);
+    if (r == 0) { return 0; }
+    store64(r,      kind);
+    store64(r + 8,  start);
+    store64(r + 16, indent);
+    return r;
+}
+fn heredoc_rule_kind(r)   { return load64(r); }
+fn heredoc_rule_start(r)  { return load64(r + 8); }
+fn heredoc_rule_indent(r) { return load64(r + 16); }
 
 # ── Rule sub-records ────────────────────────
 
-var LINE_RULE_SIZE = 16;
+var LINE_RULE_SIZE = 24;   # +8 in 2.6.0: start_after @ 16 (ADR 0022)
 fn line_rule_new(kind, start) {
     var r = alloc(LINE_RULE_SIZE);
     store64(r,     kind);
     store64(r + 8, start);
+    store64(r + 16, 0);
     return r;
 }
 fn line_rule_kind(r)  { return load64(r); }
 fn line_rule_start(r) { return load64(r + 8); }
+# `start_after` (ADR 0022): a cstr of bytes, or 0. When set, the start
+# marker counts only at the start of input or right after one of these
+# bytes — shell's `#` begins a comment only at the start of a word.
+fn line_rule_after(r) { return load64(r + 16); }
 
 var PAIR_RULE_SIZE = 32;
 fn pair_rule_new(kind, start, end, escape_byte) {
@@ -499,8 +524,10 @@ fn _gp_apply_kv(g, current_rule, section, buf, len, key_pos, key_len, value_pos)
         # current_rule layout: kind @ 0, match_type @ 8, start @ 16,
         # end @ 24, escape_byte @ 32, words @ 40 (Vec) or inner @ 40
         # (cstr), slot-40 tag @ 48 (1 words / 2 inner), kind-given
-        # flag @ 56. The last two exist only for `_gp_close_rule`'s
-        # validation (2.5.2).
+        # flag @ 56 (those two exist only for `_gp_close_rule`'s
+        # validation, 2.5.2), start_after @ 64 (cstr, line rules only;
+        # ADR 0022, 2.6.0), indent @ 72 (cstr, heredoc rules only;
+        # ADR 0023, 2.6.0).
         if (_gp_slice_eq(buf, key_pos, key_len, "kind") == 1) {
             _gp_parse_string(buf, len, value_pos, out_str_slot);
             var kname = load64(out_str_slot);
@@ -518,6 +545,7 @@ fn _gp_apply_kv(g, current_rule, section, buf, len, key_pos, key_len, value_pos)
             if (streq(mname, "compose") == 1)        { mt = 4; }
             if (streq(mname, "compose_fenced") == 1) { mt = 5; }
             if (streq(mname, "compose_region") == 1) { mt = 6; }
+            if (streq(mname, "heredoc") == 1)        { mt = 7; }   # ADR 0023
             store64(current_rule + 8, mt);
             return 0;
         }
@@ -537,6 +565,20 @@ fn _gp_apply_kv(g, current_rule, section, buf, len, key_pos, key_len, value_pos)
             # only mt==6 reads it as non-consuming. See ADR 0019.
             _gp_parse_string(buf, len, value_pos, out_str_slot);
             store64(current_rule + 24, load64(out_str_slot));
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "indent") == 1) {
+            # Heredoc rules only (ADR 0023): the byte after `start` that
+            # allows a tab-indented terminator (`-` for shell's `<<-`).
+            _gp_parse_string(buf, len, value_pos, out_str_slot);
+            store64(current_rule + 72, load64(out_str_slot));
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "start_after") == 1) {
+            # Line rules only (ADR 0022); `_gp_close_rule` rejects it
+            # on any other match type.
+            _gp_parse_string(buf, len, value_pos, out_str_slot);
+            store64(current_rule + 64, load64(out_str_slot));
             return 0;
         }
         if (_gp_slice_eq(buf, key_pos, key_len, "escape") == 1) {
@@ -616,9 +658,16 @@ fn _gp_close_rule(g, rule_acc) {
     var words = load64(rule_acc + 40);
     var slot40 = load64(rule_acc + 48);
     var kind_given = load64(rule_acc + 56);
-    if ((mt < 1) || (mt > 6)) { return 1; }               # unknown `match`
+    var after = load64(rule_acc + 64);
+    if ((after != 0) && (mt != 1)) { return 1; }          # start_after: line rules only
+    if ((after != 0) && (_gp_nonempty(after) == 0)) { return 1; }
+    var indent = load64(rule_acc + 72);
+    if ((mt < 1) || (mt > 7)) { return 1; }               # unknown `match`
+    if ((indent != 0) && (mt != 7)) { return 1; }         # indent: heredoc rules only
+    if ((indent != 0) && (_gp_nonempty(indent) == 0)) { return 1; }
+    if ((mt == 7) && (endp != 0)) { return 1; }           # a heredoc's end is its delimiter
     if ((mt != 3) && (_gp_nonempty(start) == 0)) { return 1; }   # all but `words` need `start`
-    if ((mt <= 3) && (kind_given == 0)) { return 1; }     # line / pair / words need `kind`
+    if (((mt <= 3) || (mt == 7)) && (kind_given == 0)) { return 1; }   # line / pair / words / heredoc need `kind`
     if (((mt == 2) || (mt == 4) || (mt == 5) || (mt == 6)) && (_gp_nonempty(endp) == 0)) {
         return 1;                                         # `end` / `end_before`
     }
@@ -628,7 +677,9 @@ fn _gp_close_rule(g, rule_acc) {
     }
     if ((mt != 3) && (mt != 4) && (mt != 6) && (slot40 != 0)) { return 1; }
     if (mt == 1) {
-        vec_push(grammar_line_rules(g), line_rule_new(kind, start));
+        var lr = line_rule_new(kind, start);
+        store64(lr + 16, after);
+        vec_push(grammar_line_rules(g), lr);
         return 0;
     }
     if (mt == 2) {
@@ -655,6 +706,10 @@ fn _gp_close_rule(g, rule_acc) {
           compose_fenced_rule_new(start, endp));
         return 0;
     }
+    if (mt == 7) {
+        vec_push(grammar_heredoc_rules(g), heredoc_rule_new(kind, start, indent));
+        return 0;
+    }
     if (mt == 6) {
         # Compose-region: `end_before` shares slot 24 with `end`
         # (a rule declares one or the other, never both), and the
@@ -669,10 +724,10 @@ fn _gp_close_rule(g, rule_acc) {
 }
 
 fn _gp_new_rule_acc() {
-    var r = alloc(64);
+    var r = alloc(80);
     if (r == 0) { return 0; }
     var i = 0;
-    while (i < 64) { store8(r + i, 0); i = i + 1; }
+    while (i < 80) { store8(r + i, 0); i = i + 1; }
     return r;
 }
 

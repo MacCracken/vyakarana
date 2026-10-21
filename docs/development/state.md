@@ -4,8 +4,16 @@
 > (1.x and 2.x cuts), plus any session that shifts the gates'
 > colour or the active task.
 >
-> **Read this file before doing anything.** 1.0.0–2.5.2 are
-> shipped. **2.5.2 is the 2.5.x closeout audit** — the full CLAUDE.md
+> **Read this file before doing anything.** 1.0.0–2.6.0 are
+> shipped. **2.6.0 is shell correctness**, the first pinned release:
+> `#` opens a comment only at the start of a word (`${#v}`, `${x#p}`,
+> `a#b` are code — ADR 0022's `start_after`), here-documents are one
+> string token (ADR 0023's `heredoc` rule type), and `\"` / `\#` / …
+> and `$0`–`$9` are single tokens. Streaming stays chunk-invariant
+> through two new drain mechanisms (the last committed byte; a hold +
+> terminator watch behind unresolved heredoc openers) — both shown to
+> be load-bearing. **Next: 2.6.1 CLI hardening.**
+> **2.5.2 is the 2.5.x closeout audit** — the full CLAUDE.md
 > hardening step. 5 P1 / 10 P2 / 12 P3 fixed, among them terminal-
 > escape injection through `vyk --theme`, three streaming bugs (char
 > literals and escaped quotes split by a chunk boundary; heap growing
@@ -147,7 +155,7 @@
 
 ## Current status (2026-10-20)
 
-- **Version:** `2.5.2` in `VERSION`, `src/version_str.cyr`, and
+- **Version:** `2.6.0` in `VERSION`, `src/version_str.cyr`, and
   `dist/vyakarana.cyr`.
 - **Toolchain pin:** `cyrius = "6.7.15"` (bumped from 6.7.9 in
   2.5.1; 6.7.9 came from 6.6.20 in 2.5.0, 6.6.20 from 6.6.2 in
@@ -160,7 +168,7 @@
   fmt, io, fs, str, string, vec, args; `[test] stdlib` = assert.
   `lib/` is 28 files. `tests/vyakarana.tcyr` also includes
   `lib/assert.cyr` directly so editors (build-scope resolve) see it.
-- **Gates (re-run 2026-10-20 on 6.7.15, 2.5.2):** build OK, 0 warnings · **927/927** tests · smoke OK · **lint+fmt
+- **Gates (re-run 2026-10-20 on 6.7.15, 2.6.0):** build OK, 0 warnings · **956/956** tests · smoke OK · **lint+fmt
   exit 0, 0 warnings** (enforced via `--exit-with-count` since 2.5.1
   — before that a warning still exited 0) · fuzz **5/5** · 0 untracked deferrals. **46 grammars.** `scripts/smoke.sh`
   gained two regression groups in 2.3.4 (oversize input must fail
@@ -205,6 +213,34 @@
   rows — the hot path consumers actually run — are all
   fractionally *faster*. Table not refreshed: the documented
   cadence is minor-release boundaries, and this is a patch.
+- **What 2.6.0 changed (shell correctness):**
+  - **Two new grammar mechanisms, each with an ADR.** `start_after`
+    on line rules (0022) and the `heredoc` rule type (0023). ADR 0024
+    records 2.5.2's char-literal widening, which 2.5.2 claimed to have
+    put in ADR 0010 but had not.
+  - **Streaming is where the work was.** The `#` decision needs the
+    byte before the cursor, which compaction removes — the stream
+    record now keeps it (`+96`). Heredocs are non-local — the drain
+    holds from a line's first unresolved opener (hold bound 1 MiB) and
+    watches only new lines for the terminator (`+104..136`; 48 s → 0.02
+    s on a 900 KB heredoc). Three bugs found on the way, all by the
+    every-offset split: an opener cut mid-delimiter by the buffer end
+    must hold; two openers on one line must hold as a unit; the
+    re-scan of a held buffer was quadratic.
+  - **False positives are bounded by design**: no terminator line → not
+    a heredoc; inside `((`…`))` → a shift; a work budget keeps N
+    distinct unterminated openers linear.
+  - **Oracle:** `src/grammars/shell.cyr` follows `#` / escapes / `$N`
+    (identity check holds on `tests/corpus/shell.sh`), not heredocs.
+  - **Big incidental speed-up.** The first 2.6.0 bench showed
+    shell-small +14 % and shell grammar-load +30 %. Chasing it found
+    `_ds_try_exact_list` paying `strlen` + `memeq` per list entry per
+    token for every grammar; an inline first-byte test made tokenize
+    shell −44 %, rust −42 %, html −19 %, json −17 % vs 2.5.2, output
+    identical on 2,840 non-shell real files. `performance.md` latency
+    table refreshed. Lesson worth keeping: grammar `.cyml` comments are
+    parsed on every load — rationale belongs in ADRs.
+
 - **What 2.5.2 changed (closeout audit):**
   - **Method worth reusing.** Four read-only subsystem reviews plus a
     46-grammar header cross-check, then sweeps that don't depend on
@@ -1164,9 +1200,8 @@ over an unchanged public API.
 **The queue is the roadmap's pinned release train** —
 [`./roadmap.md`](./roadmap.md) §Forward plan. In order:
 
-1. **2.6.0 — shell correctness** (minor): `#` only at word start
-   (`${#v}`, `${x#p}`), heredocs, `\"` outside quotes, `$0`-`$9`; oracle
-   in lockstep. ADRs 0022 / 0023.
+1. ~~2.6.0 — shell correctness~~ — **shipped 2026-10-20** (ADRs 0022,
+   0023).
 2. **2.6.1 — CLI hardening**: write failures exit non-zero, clear
    bad-value errors, `--export-theme` flag order, stdin.
 3. **2.6.2 — detection from grammar data** (ADR), then the 2.6.x

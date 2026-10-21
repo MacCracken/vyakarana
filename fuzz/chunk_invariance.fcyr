@@ -250,6 +250,7 @@ fn _ci_main() {
     if (_ci_one("tests/corpus/rust.rs", "rust") != 0) { rc = 1; }
     if (_ci_one("tests/corpus/concept.scss", "scss") != 0) { rc = 1; }
     if (_ci_one("tests/corpus/shell.sh", "shell") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/shell_modules.sh", "shell") != 0) { rc = 1; }
     if (_ci_one("tests/corpus/concept.sql", "sql") != 0) { rc = 1; }
     if (_ci_one("tests/corpus/concept.swift", "swift") != 0) { rc = 1; }
     if (_ci_one("tests/corpus/concept.tf", "terraform") != 0) { rc = 1; }
@@ -265,6 +266,16 @@ fn _ci_main() {
     if (_ci_every("java", "char c = '\\u0041';") != 0) { rc = 1; }
     if (_ci_every("python", "x = 1\n#!foobar\ny = 2\n") != 0) { rc = 1; }
     if (_ci_every("shell", "echo a\n#!/bin/sh\necho b\n") != 0) { rc = 1; }
+    # 2.6.0 (ADR 0022): `#` is a comment only at word start, decided by
+    # the byte BEFORE it — which a mid-stream buffer gets from the drain.
+    if (_ci_every("shell", "n=${#v} b=${p##*/} a#b #c\necho \\\" \\# $1;#d\n") != 0) { rc = 1; }
+    # 2.6.0 (ADR 0023): heredocs are non-local — the body depends on an
+    # opener committed before it and a terminator that arrives after —
+    # so the drain holds from the line's first unresolved opener. Two
+    # openers on one line, `<<-` with a tab-indented terminator, a quoted
+    # delimiter, an arithmetic `<<`, a here-string, an unterminated one.
+    if (_ci_every("shell", "cat <<EOF > o\nit's # x\nEOF\ny=$((1 << n))\nc <<'Q' <<-T\nq\nQ\n\tt\n\tT\nr <<< x\nd <<NOEND\nn # c\n") != 0) { rc = 1; }
+    if (_ci_every("shell", "a <<A <<B <<C\n1\nA\n2\nB\n3\nC\nz <<X; y <<Y\nx\nX\ny\nY\necho e\n") != 0) { rc = 1; }
     if (_ci_every("php", "<?php $a === $b && $c !== $d;") != 0) { rc = 1; }
     if (_ci_every("ocaml", "let xs = 1 :: 2 :: [];;") != 0) { rc = 1; }
 

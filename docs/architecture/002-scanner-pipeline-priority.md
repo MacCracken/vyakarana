@@ -14,19 +14,21 @@ the steps below in order. The first step that returns a non-zero
 
 | #  | Step                                         | Source                                              |
 |----|----------------------------------------------|-----------------------------------------------------|
+| H  | Queued heredoc bodies — at the first byte after a top-level line break that follows their opener(s); body + terminator line = one token each | `[[rules]] match = "heredoc"` ([ADR 0023](../adr/0023-heredoc-rule.md), shell; 2.6.0) |
 | 0a | Compose rules (recursive — push start marker, inner-grammar body, end marker) | `[[rules]] match = "compose"` (HTML → CSS / JS) |
 | 0b | Compose-fenced rules (info-string picks the inner grammar) | `[[rules]] match = "compose_fenced"` ([ADR 0016](../adr/0016-compose-fenced-rule.md), markdown ``` fences) |
 | 0c | Compose-region rules (open-ended region to EOF) | `[[rules]] match = "compose_region"` ([ADR 0019](../adr/0019-compose-region-rule.md), CYML markdown bodies) |
 | 1  | Shebang (`#!…\n` at file start)              | `[defaults] shebang = true`                         |
-| 2  | Line rules                                   | `[[rules]] match = "line"` (e.g. `#`, `//`)         |
+| 2  | Line rules — optionally only after a `start_after` byte | `[[rules]] match = "line"` (e.g. `#`, `//`); `start_after` [ADR 0022](../adr/0022-line-rule-start-after.md) (shell `#` at word start, 2.6.0) |
 | 3  | Pair rules                                   | `[[rules]] match = "pair"` (strings, block comments)|
-| 4  | Special var `$X` (2-byte)                    | `[defaults] special_vars = true` (shell only)       |
+| 4  | Special var `$X` (2-byte; X in `#?@!*$-` or `0`-`9`) | `[defaults] special_vars = true` (shell, makefile; digits since 2.6.0) |
 | 5  | Lone `$` operator (1-byte, shell-only)       | falls out of step 4                                 |
 | 6  | Identifier / keyword                         | `[defaults] ident_start` + `[[rules]] match="words"`|
 | 7  | Number                                       | `[defaults] number_decimal/0x/0b/0o`                |
-| 7b | Char literal `'C'` / `'\C'` / `'\xHH'`       | `[defaults] char_literal = true` (C/Rust/Go/Zig)    |
-| 8  | Operator (longest-match)                     | `[defaults] operators = […]`                        |
-| 9  | Punctuation (longest-match)                  | `[defaults] punctuation = […]`                      |
+| 7b | Char literal `'C'` / `'\…'` (≤ 12 bytes) / UTF-8 | `[defaults] char_literal = true` ([ADR 0010](../adr/0010-char-literal-default.md), escape forms [ADR 0024](../adr/0024-char-literal-escape-forms.md)) |
+| 7c | Heredoc opener — queues a body, consumes nothing | `[[rules]] match = "heredoc"` ([ADR 0023](../adr/0023-heredoc-rule.md)) |
+| 8  | Operator — FIRST entry that matches, in list order (list longest-first; a test enforces it since 2.5.2) | `[defaults] operators = […]` |
+| 9  | Punctuation — same first-match rule          | `[defaults] punctuation = […]`                      |
 | 10 | Whitespace                                   | `[defaults] whitespace = true`                      |
 | 11 | Fallback `TK_ERROR + 1 byte`                 | always present (closes the coverage invariant)      |
 

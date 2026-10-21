@@ -416,6 +416,7 @@ svelte:tests/corpus/concept.svelte
 nix:tests/corpus/concept.nix
 terraform:tests/corpus/concept.tf
 openqasm:tests/corpus/openqasm.qasm
+shell:tests/corpus/shell_modules.sh
 "
 
 for entry in $M3_CORPUS_ENTRIES; do
@@ -627,5 +628,24 @@ printf 'echo a\000b c\n' > "$TMPDIR/nul.sh"
 hc_sum=$("$BIN" --handcoded "$TMPDIR/nul.sh" | grep -oE '"len":[0-9]+' | cut -d: -f2 \
     | awk '{s+=$1} END {print s+0}')
 [ "$hc_sum" = "11" ] || fail "--handcoded covered $hc_sum of 11 bytes (stops at NUL?)"
+
+# ── 2.6.0 shell correctness ──
+# Heredoc bodies are one string token (ADR 0023): in the vidya-synced
+# corpus the body of `cat > ... <<'EOF'` opens with `# math_lib.sh`,
+# which through 2.5.2 came back as a COMMENT (the body was lexed as
+# shell code). It must now sit inside a string token.
+"$BIN" tests/corpus/shell_modules.sh > "$TMPDIR/sm.ndjson" 2> "$TMPDIR/err" \
+    || fail "shell_modules.sh: exit non-zero"
+hd_off=$(grep -bo '# math_lib.sh' tests/corpus/shell_modules.sh | head -1 | cut -d: -f1)
+if grep -q "\"kind\":\"comment\",\"start\":$hd_off," "$TMPDIR/sm.ndjson"; then
+    fail "heredoc body lexed as code: '# math_lib.sh' at $hd_off is a comment token"
+fi
+# `#` mid-word is not a comment (ADR 0022): `tests/corpus/shell.sh`
+# line 49 `len=${#input}` — through 2.5.2 `#input}` was a comment.
+"$BIN" tests/corpus/shell.sh > "$TMPDIR/sh.ndjson" 2> "$TMPDIR/err"
+hw_off=$(grep -bo 'len=${#input}' tests/corpus/shell.sh | head -1 | cut -d: -f1)
+hw_off=$((hw_off + 6))
+grep -q "\"kind\":\"operator\",\"start\":$hw_off,\"len\":1" "$TMPDIR/sh.ndjson" \
+    || fail "'\${#input}': the # at $hw_off is not a 1-byte operator (comment again?)"
 
 echo "smoke: OK ($v_long) — M0 + M1 + M2 + M3 gates passing"

@@ -4,6 +4,98 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.6.0] — 2026-10-20
+
+**Shell correctness.** The first pinned release of the 2.6.x – 2.9.0 roadmap.
+Minor because shell token boundaries change — wherever a `#` sits mid-word,
+inside every here-document, at `$0`–`$9`, and at backslash escapes outside
+quotes. No token kind, `Token` layout or public streaming-API change; one new
+line-rule key and one new rule type, each with an ADR. 956/956 tests (+15
+assertions), smoke OK, lint+fmt exit 0 with 0 warnings, fuzz 5/5.
+
+**Checked on real code.** All 234 shell files in the real-file and vidya sweeps
+tokenize with zero error tokens (3,846 files overall, 0 coverage-invariant
+violations; poison-allocator A/B over 1,577 of them clean). Against 2.5.2, 203 of
+the 234 change: **101 heredoc bodies** — exactly the number of terminated openers
+a separate census counted — **64 mid-word `#`** (`${#v}`, bash base literals
+`16#ff`, `${x#p}`, `[[ =~ ^# ]]`; spot-checked, none a real comment), 729 `$N`,
+10 escapes. No exit code changed.
+
+### Added
+
+- **`heredoc` rule type** ([ADR 0023](docs/adr/0023-heredoc-rule.md)) and
+  shell's here-documents: `cat <<EOF`, `<<'EOF'`, `<<"EOF"`, `<<\EOF`, and
+  `<<-EOF` with a tab-indented terminator. The body from the next line through
+  the terminator line is one string token; the `<<`, the delimiter and the
+  rest of the opener line (`> out`, a second `<<B`) tokenize as before. Only
+  when a terminator line exists: `$(( a << b ))` (inside `((`…`))`), `1 << 2`
+  (a bare delimiter must start with a letter or `_`) and `<<<` here-strings
+  are not heredocs. Through 2.5.2 bodies were lexed as shell code — their
+  comment lines became comments and an apostrophe opened a string that ran on.
+- **`start_after` key for line rules** ([ADR 0022](docs/adr/0022-line-rule-start-after.md)):
+  the start marker counts only at input start or right after one of the given
+  bytes. Shell's `#` uses bash's metacharacters, so it opens a comment only at
+  the start of a word.
+- `tests/corpus/shell_modules.sh` — vidya's `module_systems/shell.sh`, synced
+  (ADR 0001) for its five heredocs.
+
+### Fixed
+
+- **`#` mid-word no longer comments out the rest of the line**: `${#arr[@]}`,
+  `${x#p}`, `${x##*/}`, `a#b` are code; `#` after a space, `;`, `|`, `(` … is
+  still a comment. The bundled corpus had it (`len=${#input}`, line 49).
+- **Backslash escapes outside quotes** `\"` `\'` `` \` `` `\\` `\$` `\#` `\ `
+  are one operator token: `\"` used to open a string that ran to the next quote,
+  often EOF, and `\#` began a comment.
+- **`$0` – `$9`** are one special-variable token, as `$#` / `$?` always were
+  (shell and makefile; `$10` is `$1` + `0`, as in bash).
+- The hand-coded shell oracle (`--handcoded`) follows the `#`, escape and
+  `$N` changes, so the smoke M1/M2 byte-identical check still holds. It does
+  not implement heredocs (its identity corpus has none).
+
+### Streaming
+
+- The `#` decision reads the byte BEFORE the cursor; at the start of a
+  mid-stream buffer that byte was compacted away, so the drain now records the
+  last byte it removes and hands it to the scanner. With that disabled, the
+  every-offset split fails at 7 offsets.
+- Heredocs are non-local, so the drain holds commits from the line's first
+  unresolved opener until its terminator line (with line break) arrives,
+  finish, or 1 MiB (`VYK_HEREDOC_HOLD_MAX`); while held it watches only new
+  lines for the terminator (a 900 KB heredoc in 4 KB chunks: 48 s → 0.02 s).
+  Every-offset splits are clean on all seven vidya heredoc samples;
+  `fuzz/chunk_invariance.fcyr` gains the shapes and the new corpus, and fails
+  75 times with the hold disabled.
+- Terminator searches share a per-scan work budget (4× input + 64 KiB) and a
+  failed-search cache, so N distinct unterminated `<<` openers stay linear
+  (40,000 of them in 469 KB: 1.11 s, vs 1.07 s on 2.5.2).
+
+### Docs
+
+- ADRs 0022 (`start_after`), 0023 (heredoc), 0024 (char-literal escape forms —
+  the 2.5.2 widening, which 2.5.2 said "amended ADR 0010" without doing so; the
+  ADR index forbids in-place edits, so it is recorded here and 0010's status
+  points to it). ADR index gains 0021, which was missing.
+- `docs/architecture/002` pipeline table: heredoc steps, `start_after`, and
+  operators / punctuation described as first-match in list order (it said
+  "longest-match" — the gap behind 2.5.2's shadowed operators).
+
+### Performance
+
+- **Operator / punctuation matching compares the first byte inline** before
+  `strlen` + `memeq`. Every grammar paid two calls per list entry per token, and
+  almost every entry fails on its first byte. Paired A/B against 2.5.2 (10
+  alternating rounds): tokenize shell-small **−44 %**, rust-small **−42 %**,
+  html-compose −19 %, json-small −17 %; detect −8 to −11 %; grammar load +7 %.
+  Output identical to 2.5.2 on all 2,840 non-shell files of the sweep sample.
+  Found because the first 2.6.0 capture showed shell-small +14 % and shell
+  grammar load +30 % — the new escape entries and `shell.cyml`'s grown
+  comments (now trimmed, 5,392 → 2,742 B; rationale moved to the ADRs).
+- The line-rule boundary test runs only when the marker matches, and the
+  heredoc opener check only at the marker's first byte.
+- Binary 444,032 → 459,632 B (DCE 353,920 → 369,520). `performance.md`'s
+  latency baseline refreshed for the minor.
+
 ## [2.5.2] — 2026-10-20
 
 **Closeout audit — the CLAUDE.md hardening step, run in full.** Four

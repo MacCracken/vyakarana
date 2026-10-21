@@ -156,7 +156,16 @@ var VYK_OFFSET_CAP = 4294967295;
 # used to wedge the stream permanently.
 var VYK_COMPOSE_HOLD_MAX = 8388608;
 
-var STREAM_REC_SIZE = 96;   # +8 in 2.5.2: scratch_tb at s + 88
+# Bound on how far a streaming drain holds back commits behind an
+# unresolved here-document opener (ADR 0023) — a `<<WORD` whose
+# terminator line has not arrived. Past it the bytes commit as ordinary
+# code, so only a heredoc body longer than this, split across feeds,
+# can tokenize differently from a single feed. Smaller than the compose
+# bound because every drain re-scans the held bytes, and an arithmetic
+# `<< x` with no line `x` ever holds until finish.
+var VYK_HEREDOC_HOLD_MAX = 1048576;
+
+var STREAM_REC_SIZE = 144;  # 2.5.2: scratch_tb @ 88; 2.6.0: prev byte @ 96, heredoc watch @ 104..136
 
 # Error codes returned by tokenize_stream_feed.
 var VYK_OK            = 0;
@@ -303,6 +312,12 @@ fn tokenize_stream_new(lang) {
     store64(s + 72, (0 - 1));          # pending_idx — none (2.0.3)
     store64(s + 80, 0);                # scan_resume
     store64(s + 88, scratch);          # scratch_tb, reused per drain (2.5.2)
+    store64(s + 96, (0 - 1));          # last committed byte, -1 = none (2.6.0)
+    store64(s + 104, 0);               # heredoc watch: 1 = active (2.6.0)
+    store64(s + 112, 0);               #   delimiter offset in buf
+    store64(s + 120, 0);               #   delimiter length
+    store64(s + 128, 0);               #   indent (tab-stripped terminator) flag
+    store64(s + 136, 0);               #   terminator search resume offset
     return s;
 }
 
@@ -966,6 +981,43 @@ fn tokenize_stream_drain(s, out_tb) {
 
     var emitted = 0;
 
+    # 2.6.0 heredoc fast path (ADR 0023). A previous drain held back
+    # everything from an unresolved `<<WORD` whose terminator line had
+    # not arrived. Until it does, re-tokenizing the whole held buffer
+    # each feed is O(N^2) — a 1 MB heredoc fed in 4 KB chunks took 48 s
+    # — and can only reach the same "hold" verdict. So look for the
+    # terminator in the NEW lines only; return with nothing committed
+    # while it is absent; fall through to the full scan once it is
+    # present with its line break, or at finish.
+    if (load64(s + 104) == 1) {
+        if (finishing == 1) { store64(s + 104, 0); }
+        if (finishing == 0) {
+            var hres = load64(s + 136);
+            _ds_gen_counter = _ds_gen_counter + 1;
+            var hsaved = _ds_cur_gen;
+            _ds_cur_gen = _ds_gen_counter;
+            var hte = _ds_hd_find_term(buf, buf_len, hres, buf + load64(s + 112),
+              load64(s + 120), load64(s + 128));
+            _ds_cur_gen = hsaved;
+            var hcomplete = 0;
+            if ((hte >= 0) && (hte < buf_len)) {
+                if (load8(buf + hte) == 10) { hcomplete = 1; }
+                if ((load8(buf + hte) == 13) && (hte + 1 < buf_len)) {
+                    if (load8(buf + hte + 1) == 10) { hcomplete = 1; }
+                }
+            }
+            if (hcomplete == 0) {
+                # Lines before the last line break are now known not to
+                # terminate it; resume at the start of the last line.
+                var hlf = buf_len - 1;
+                while ((hlf >= hres) && (load8(buf + hlf) != 10)) { hlf = hlf - 1; }
+                if (hlf >= hres) { store64(s + 136, hlf + 1); }
+                return 0;
+            }
+            store64(s + 104, 0);
+        }
+    }
+
     # 2.0.3 fast path — pending pair rule from a previous drain.
     # The buffer's first bytes are the open marker; the body has
     # been growing across feeds. Skip the full scanner and look
@@ -993,6 +1045,9 @@ fn tokenize_stream_drain(s, out_tb) {
             emitted = emitted + (tokenbuf_count(out_tb) - fp_before);
             store64(s + 72, (0 - 1));
             store64(s + 80, 0);
+            # Remember the last byte leaving the buffer — a `start_after`
+            # boundary at the new buffer start needs it (ADR 0022).
+            store64(s + 96, load8(buf + pair_total - 1));
             var k0 = pair_total;
             var dst0 = 0;
             while (k0 < buf_len) {
@@ -1069,8 +1124,17 @@ fn tokenize_stream_drain(s, out_tb) {
     var temp_tb = load64(s + 88);
     if (temp_tb == 0) { return 0; }
     _tokenbuf_reset(temp_tb);
-    if (abs_offset > 0) { _ds_not_file_start = 1; }
+    if (abs_offset > 0) {
+        _ds_not_file_start = 1;
+        _ds_buf_prev = load64(s + 96);
+    }
+    _ds_hd_hold_from = (0 - 1);
+    _ds_hd_hold_fast = 0;
     tokenize_with_grammar(g, buf, buf_len, temp_tb);
+    var hd_hold = _ds_hd_hold_from;
+    var hd_fast = _ds_hd_hold_fast;
+    _ds_hd_hold_from = (0 - 1);
+    var hd_applied = 0;
     var n_temp = tokenbuf_count(temp_tb);
     var commit_count = n_temp;
     # `_stream_compose_prefix_hold` is called from two sibling
@@ -1213,6 +1277,24 @@ fn tokenize_stream_drain(s, out_tb) {
             }
         }
     }
+    # Here-document hold (ADR 0023). The scanner reports the lowest `<<`
+    # whose heredoc it could not resolve in this buffer. Whether those
+    # bytes are a heredoc body or code depends on input that has not
+    # arrived — and once the opener line commits, the next drain re-scans
+    # the body with no memory of the opener. So nothing from the `<<` on
+    # commits until the terminator line (and its LF) is in the buffer,
+    # or finish, or the hold passes VYK_HEREDOC_HOLD_MAX.
+    if ((finishing == 0) && (hd_hold >= 0)) {
+        if (buf_len - hd_hold <= VYK_HEREDOC_HOLD_MAX) {
+            hd_applied = 1;
+            var hd_done = 0;
+            while ((commit_count > 0) && (hd_done == 0)) {
+                var hlast = commit_count - 1;
+                if (tokenbuf_start(temp_tb, hlast) + tokenbuf_len(temp_tb, hlast) <= hd_hold) { hd_done = 1; }
+                if (hd_done == 0) { commit_count = commit_count - 1; }
+            }
+        }
+    }
     # Count what actually landed, not what we attempted.
     # `tokenbuf_push` drops the token (rather than writing through a
     # NULL data pointer) when its buffer cannot grow — see
@@ -1329,7 +1411,18 @@ fn tokenize_stream_drain(s, out_tb) {
         var last = commit_count - 1;
         consumed = tokenbuf_start(temp_tb, last) + tokenbuf_len(temp_tb, last);
     }
+    # Arm the heredoc watch (fast path at the top of this function) when
+    # this drain held for a terminator that has not arrived. Offsets are
+    # rebased past the bytes about to be compacted away.
+    if ((hd_applied == 1) && (hd_fast == 1) && (_ds_hd_hold_dpos >= consumed)) {
+        store64(s + 104, 1);
+        store64(s + 112, _ds_hd_hold_dpos - consumed);
+        store64(s + 120, _ds_hd_hold_dlen);
+        store64(s + 128, _ds_hd_hold_ind);
+        store64(s + 136, _ds_hd_hold_body - consumed);
+    }
     if (consumed > 0) {
+        store64(s + 96, load8(buf + consumed - 1));   # see the fast path (ADR 0022)
         var k = consumed;
         var dst = 0;
         while (k < buf_len) {
@@ -1517,6 +1610,8 @@ fn tokenize_stream_free(s) {
     store64(s + 56, 0);   # staging_tb (2.0.2)
     store64(s + 64, 0);   # next_idx
     store64(s + 88, 0);   # scratch_tb (2.5.2)
+    store64(s + 96, 0);   # last committed byte (2.6.0)
+    store64(s + 104, 0);  # heredoc watch (2.6.0)
     # pending_idx's "none" sentinel is -1, NOT 0 — 0 is a valid
     # pair-rule index. Every other field here poisons safely to 0,
     # and two call sites lean on that ("_free zeroes every field"

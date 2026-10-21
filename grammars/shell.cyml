@@ -1,23 +1,15 @@
 # shell — bash / sh / zsh / dash tokenizer grammar
 #
-# Rule scheme per ADR 0005: narrow [[rules]] (line / pair / words)
-# plus a [defaults] table that parameterizes the built-in scanner
-# (shebang / ident / number / operator / punctuation / whitespace /
-# special-var).
+# Comments here are parsed on every grammar load — keep them short;
+# rationale lives in the ADRs.
 #
-# Regression bar: on tests/corpus/shell.sh, tokens produced from
-# this file must be byte-identical to the hand-coded tokenize_shell
-# in src/grammars/shell.cyr (the `--handcoded` oracle). The diff
-# check lives in scripts/smoke.sh. The two are NOT equivalent in
-# general: this file adds a backtick pair rule and
-# `unicode_ident = true`, so `` `cmd` `` and UTF-8 words come back
-# as string / ident here where shell.cyr emits TK_ERROR. The corpus
-# has neither shape.
+# Regression bar: on tests/corpus/shell.sh, tokens are byte-identical to
+# the hand-coded oracle src/grammars/shell.cyr (smoke checks it). Not
+# equivalent in general: backticks, UTF-8 words and heredocs are handled
+# here only.
 #
-# Known gap (shared with shell.cyr): a `#` mid-word — `${#arr[@]}`,
-# `${x#p}`, `${x##*/}` — starts a comment that runs to end of line.
-# `special_vars` only rescues `$#`; `${` is `$` + `{`, then the `#`
-# line rule fires. See the roadmap.
+# `#` opens a comment only at word start (ADR 0022); heredocs are one
+# string token (ADR 0023). Both 2.6.0.
 
 [grammar]
 name = "shell"
@@ -31,11 +23,7 @@ shebang = true
 # Whitespace runs (space, tab, \n, \r) emit as TK_WHITESPACE.
 whitespace = true
 
-# Identifiers: [A-Za-z_] followed by [A-Za-z0-9_]*.
-# The char-class syntax is a small subset — ranges A-Z, a-z, 0-9 and
-# individual characters, joined. Runs are emitted as TK_IDENT unless
-# they match a keyword (see the [[rules]] match = "words" below),
-# in which case TK_KEYWORD.
+# Identifiers: [A-Za-z_][A-Za-z0-9_]*; keywords via the words rule.
 ident_start = "A-Za-z_"
 ident_cont  = "A-Za-z0-9_"
 
@@ -48,8 +36,7 @@ number_0x      = true
 number_0b      = true
 number_0o      = true
 
-# `$X` where X is #/?/@/!/*/$/- emits as a 2-char TK_OPERATOR so
-# that e.g. `$#` doesn't start a comment. Bare `$` is a 1-char op.
+# `$X`, X in #?@!*$- or 0-9, is one 2-byte operator (digits since 2.6.0).
 special_vars = true
 
 # Operators in longest-match order. The scanner tries them in this
@@ -59,7 +46,11 @@ operators = [
     "&&", "||", "==", "!=", "=~", "<=", ">=", ">>", "<<", "<>",
     "++", "--", "+=", "-=", "*=", "/=", "%=", "->",
     "=", "|", "&", "<", ">", "+", "-", "*", "/", "%", "!", "~",
+    # Escapes outside quotes, ahead of the bare `\` (2.6.0).
+    "\\\\", "\\\"", "\\'", "\\`", "\\$", "\\#", "\\ ",
     "?", "@", "^", "\\",
+    # `#` not at word start: `${#v}`, `${x#p}`, `a#b` (ADR 0022).
+    "#",
 ]
 
 # Punctuation, longest-match order.
@@ -69,18 +60,23 @@ punctuation = [
 ]
 
 
-# ── Rules ──────────────────────────────────────────────────────────
-# Rule priority (applied before defaults.ident/number/operator/etc.):
-#   1. line-comment rule
-#   2. pair rules (strings)
-#   3. words rules (keyword list — applied over an identifier run)
-# See ADR 0005 for the full scanner dispatch order.
+# ── Rules ── (dispatch order: docs/architecture/002)
 
 
 [[rules]]
 kind = "comment"
 match = "line"
 start = "#"
+start_after = " \t\n\r;&|()<>"
+
+
+# Here-documents (ADR 0023): `<<EOF` `<<'EOF'` `<<-EOF` …; body through
+# terminator = one string. Not in shell.cyr.
+[[rules]]
+kind = "string"
+match = "heredoc"
+start = "<<"
+indent = "-"
 
 
 [[rules]]
@@ -110,11 +106,7 @@ words = [
     "select", "time",
 ]
 
-# Command substitution `` `cmd` ``. Standard POSIX shell and still
-# pervasive in real scripts (`PROGNAME=`basename $0``). Treated as
-# TK_STRING, matching how julia.cyml types its backtick command
-# literals; the inner bytes are a command, not shell code the outer
-# scanner should re-tokenize.
+# Command substitution `` `cmd` `` as one string (as julia.cyml).
 [[rules]]
 kind = "string"
 match = "pair"

@@ -1,6 +1,6 @@
 # ADR 0010 — `char_literal` default
 
-- **Status:** Accepted
+- **Status:** Accepted — escape forms widened by [ADR 0024](0024-char-literal-escape-forms.md) (2.5.2)
 - **Date:** 2026-05-08
 - **Deciders:** roadmap follow-through (proposed) / user (accepted)
 - **Relates to:** [ADR 0005](0005-m2-rule-type-scope.md)

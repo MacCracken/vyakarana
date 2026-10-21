@@ -267,6 +267,11 @@ drifted, then stayed drifted). Brief shape:
   scans, malformed-grammar crashes), every non-compose grammar
   chunk-invariant at every split offset, two fuzz harnesses
   strengthened until they fail on 2.5.1.
+- **2.6.x** — The pinned train begins. 2.6.0: shell correctness — `#`
+  opens a comment only at word start (`start_after`, ADR 0022),
+  here-documents as one string token (`heredoc` rule type, ADR 0023),
+  backslash escapes and `$0`–`$9` as single tokens; chunk-invariant
+  through a drain hold and a terminator watch.
 
 ### Forward plan — pinned releases (2.6.x – 2.x.x)
 
@@ -288,7 +293,11 @@ Toolchain catch-ups stay user-directed patch releases at any point in
 the train (pin → re-vendor → gates → byte-identical output A/B, the
 2.4.3 – 2.5.1 protocol); they never carry other work.
 
-#### 2.6.0 — Shell correctness *(minor: shell token boundaries change)*
+#### 2.6.0 — Shell correctness *(minor: shell token boundaries change)* — **shipped 2026-10-20**
+
+*Done as planned, with one scope note: the M1 oracle follows the `#`,
+escape and `$N` changes (so the identity check holds) but not heredocs —
+its identity corpus has none, the same standing as backticks.*
 
 - **`#` starts a comment only at word start.** `${#arr[@]}`, `${x#p}`,
   `${x##*/}` and `a#b` comment out the rest of the line today — in the

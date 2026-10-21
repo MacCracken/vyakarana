@@ -150,7 +150,7 @@ altered.
 
 | Grammar     | Corpus                              | Tokens | Notes |
 |-------------|-------------------------------------|-------:|-------|
-| shell       | vidya `shell.sh` (8524B)            | 1560 | M1 hand-coded, M2 data-driven. |
+| shell       | vidya `shell.sh` (8524B); + vidya `module_systems/shell.sh` → `shell_modules.sh` (7772B, 2.6.0) | 1560 | M1 hand-coded, M2 data-driven. The second file carries five heredocs (ADR 0023). |
 | toml        | vidya `concept.toml` (10341B)       |  471 | `"""…"""` / `'''…'''` since 1.1.0 (ADR 0008). |
 | json        | stand-in `concept.json` (3380B)     |  376 | ADR 0006. |
 | cyrius      | vidya `cyrius.cyr` (9233B)          | 2508 | |

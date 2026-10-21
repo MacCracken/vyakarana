@@ -34,6 +34,10 @@ sub-blocks).
 | 0018 | [Vendored stdlib snapshot is gitignored, not committed](0018-vendored-stdlib-gitignored.md) | Accepted | 2026-05-27 |
 | 0019 | [`compose_region` rule type for open-ended regions](0019-compose-region-rule.md)           | Accepted | 2026-07-31 |
 | 0020 | [When `TK_ERROR` is correct and when it is a grammar hole](0020-tk-error-adjudication.md) | Accepted | 2026-07-31 |
+| 0021 | [`Token.start` / `Token.len` stay u32; the 4 GiB stream ceiling is deliberate](0021-token-span-width-ceiling.md) | Accepted | 2026-08-20 |
+| 0022 | [`start_after`: a line rule that only opens at a word boundary](0022-line-rule-start-after.md) | Accepted | 2026-10-20 |
+| 0023 | [`heredoc` rule type for here-documents](0023-heredoc-rule.md)                        | Accepted | 2026-10-20 |
+| 0024 | [Char-literal escape forms beyond `'\C'` / `'\xHH'`](0024-char-literal-escape-forms.md) | Accepted | 2026-10-20 |
 
 ## Conventions
 

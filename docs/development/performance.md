@@ -19,11 +19,18 @@ host — variance ~±10% between runs.
 
 | Artifact                    | Size (bytes) | Size (KB) | Notes                                         |
 |-----------------------------|-------------:|----------:|-----------------------------------------------|
-| `build/vyk` (CLI binary)    |      444,032 |     433.6 | Includes 46 inlined grammars (~231 KB of text) |
-| `build/vyk`, `CYRIUS_DCE=1` |      353,920 |     345.6 | Same tree, dead fns compacted out — **what releases ship** |
-| `dist/vyakarana.cyr`        |      429,133 |     419.1 | Single-file bundle for `cyrius deps` (5,097 lines) |
+| `build/vyk` (CLI binary)    |      459,632 |     448.9 | Includes 46 inlined grammars (~230 KB of text) |
+| `build/vyk`, `CYRIUS_DCE=1` |      369,520 |     360.9 | Same tree, dead fns compacted out — **what releases ship** |
+| `dist/vyakarana.cyr`        |      454,039 |     443.4 | Single-file bundle for `cyrius deps` (5,673 lines) |
 
-**Re-captured 2026-10-20 at `2.5.2`, 6.7.15 toolchain.** 423,480 →
+**Re-captured 2026-10-20 at `2.6.0`, 6.7.15 toolchain.** 444,032 →
+459,632 (+15,600; DCE +15,600): the heredoc rule type, `start_after`,
+and the drain's hold / watch / last-byte machinery. `shell.cyml`'s
+comments were trimmed in the same cut (5,392 → 2,742 B) once the
+rationale moved into ADRs 0022 / 0023 — comment text is parsed on every
+grammar load.
+
+**`2.5.2` capture (same day).** 423,480 →
 444,032 (+20,552); DCE 337,464 → 353,920. The closeout audit's code —
 the terminal-safe writer, grammar validation, the compose / fence /
 LF watermarks, the per-depth inner tokenbuf pool, the LSP and
@@ -225,7 +232,37 @@ win. The `2.3.0` table was captured on 6.5.4, which does subtract
 it. Table not refreshed: the documented cadence is minor-release
 boundaries, and this is a patch.
 
-## Tokenize / detect / load latencies (2.5.2 baseline, 2026-10-20)
+## Tokenize / detect / load latencies (2.6.0 baseline, 2026-10-20)
+
+Same paired protocol as 2.5.2 below (iterations ÷ 10, 2.5.2 and 2.6.0
+alternated for 10 rounds, host load 1.8–2.6), best run:
+
+| Benchmark                  |       Avg |       Min |       Max | Iterations |
+|----------------------------|----------:|----------:|----------:|-----------:|
+| tokenize/shell-small       | 10.677 µs | 10.467 µs | 11.235 µs | 100,000 × 10 runs |
+| tokenize/rust-small        | 15.975 µs | 15.894 µs | 16.545 µs | 100,000 × 10 runs |
+| tokenize/json-small        |  3.670 µs |  3.605 µs |  3.789 µs | 100,000 × 10 runs |
+| tokenize/html-compose      |  7.344 µs |  7.247 µs |  7.793 µs | 100,000 × 10 runs |
+| detect/path-shell          |     31 ns |     30 ns |     33 ns | 1,000,000 × 10 runs |
+| detect/content-python      |    176 ns |    174 ns |    184 ns | 1,000,000 × 10 runs |
+| detect/combined-asm-arm    |  5.275 µs |  5.241 µs |  5.460 µs | 100,000 × 10 runs |
+| blob/grammar-load-shell    | 31.665 µs | 31.336 µs | 33.017 µs | 10,000 × 10 runs |
+
+**Median per-round ratio 2.6.0 / 2.5.2:** shell-small **−44.2 %**,
+rust-small **−41.7 %**, html-compose −18.9 %, json-small −17.2 %,
+path-shell −11.4 %, content-python −8.3 %, combined-asm-arm 0.0 %,
+grammar-load-shell +7.0 %. The tokenize wins are one change:
+`_ds_try_exact_list` (operator / punctuation matching) now compares the
+first byte inline before calling `strlen` + `memeq` — every grammar
+paid two calls per list entry per token, and almost every entry fails
+on its first byte. It was found because the first 2.6.0 capture showed
+shell-small **+14 %** (shell's eight new escape / `#` operator entries)
+and grammar-load-shell **+30 %** (`shell.cyml` +45 % comment text);
+both are now net improvements or within noise. Output equivalence: all
+2,840 non-shell real files in the sweep sample tokenize byte-identically
+to 2.5.2.
+
+## Tokenize / detect / load latencies (2.5.2 baseline, 2026-10-20 — superseded by 2.6.0 above)
 
 **Captured on a loaded host, by a protocol that holds there.** An idle
 machine is not available (cyrius release work runs alongside), and two

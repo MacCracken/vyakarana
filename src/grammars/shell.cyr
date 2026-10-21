@@ -5,15 +5,16 @@
 #
 # Dispatch table (first match wins, all advance `i` by the token's len):
 #   1. `#!` on column 0 of line 0       → preprocessor (shebang)
-#   2. `#` (not shebang)                 → comment to end of line
+#   2. `#` at the start of a word        → comment to end of line
+#      (input start, or right after space / tab / LF / CR / `;` `&`
+#      `|` `(` `)` `<` `>` — 2.6.0, mirroring shell.cyml's
+#      `start_after`, ADR 0022). A `#` elsewhere (`${#v}`, `${x#p}`,
+#      `a#b`) falls through to step 10 as a 1-byte operator.
 #   3. `"..."` (backslash escape aware)  → string
 #   4. `'...'` (no escapes)              → string
-#   5. `$X` where X is #?@!*$-           → operator, length 2
-#      (shell special variable refs; prevents `$#` starting a comment).
-#      Digits are NOT in the set — `$1` is `$` + number `1`; this line
-#      used to list `0..9` (2.5.2 audit). Known gap shared with
-#      shell.cyml: a `#` mid-word (`${#arr[@]}`, `${x#p}`) still
-#      starts a comment — see the roadmap.
+#   5. `$X` where X is #?@!*$- or 0-9     → operator, length 2
+#      (shell special variable refs; prevents `$#` starting a comment;
+#      digits since 2.6.0)
 #   6. `$`                               → operator, length 1
 #   7. identifier start [A-Za-z_]        → keyword-lookup, else ident
 #   8. digit                             → number (decimal, hex, bin, oct)
@@ -86,6 +87,7 @@ fn is_ident_cont(b) {
 # Shell special-variable char: `$X` where X is one of these emits as a
 # 2-char operator, so the `$#` sequence doesn't start a comment.
 fn is_shell_special_var(b) {
+    if ((b >= 48) && (b <= 57)) { return 1; }  # 0-9 (2.6.0)
     if (b == 35) { return 1; }  # #
     if (b == 63) { return 1; }  # ?
     if (b == 64) { return 1; }  # @
@@ -274,6 +276,24 @@ fn _peek3_eq(src, src_len, i, c0, c1, c2) {
 #
 # Coverage invariant: every byte of [0, src_len) is covered by exactly
 # one token. The main loop never advances zero bytes.
+# Bytes after which a `#` starts a comment: bash's metacharacters plus
+# CR. Same set as shell.cyml's comment-rule `start_after` (2.6.0).
+fn _sh_word_break(b) {
+    if ((b == 32) || (b == 9) || (b == 10) || (b == 13)) { return 1; }
+    if ((b == 59) || (b == 38) || (b == 124)) { return 1; }   # ; & |
+    if ((b == 40) || (b == 41)) { return 1; }                 # ( )
+    if ((b == 60) || (b == 62)) { return 1; }                 # < >
+    return 0;
+}
+
+# Bytes a backslash escapes into one 2-byte operator outside quotes:
+# `\\` `\"` `\'` `` \` `` `\$` `\#` `\ ` (2.6.0, as shell.cyml).
+fn _sh_escapable(b) {
+    if ((b == 92) || (b == 34) || (b == 39) || (b == 96)) { return 1; }
+    if ((b == 36) || (b == 35) || (b == 32)) { return 1; }
+    return 0;
+}
+
 fn tokenize_shell(src, src_len, tb) {
     var i = 0;
     while (i < src_len) {
@@ -289,11 +309,13 @@ fn tokenize_shell(src, src_len, tb) {
             }
         }
 
-        # 2. Comment (# to EOL), but not if we just handled a shebang
+        # 2. Comment (# to EOL) — only at the start of a word.
         if (len == 0) {
             if (b == 35) {    # #
-                kind = TK_COMMENT;
-                len = _scan_to_eol(src, src_len, i);
+                if ((i == 0) || (_sh_word_break(load8(src + i - 1)) == 1)) {
+                    kind = TK_COMMENT;
+                    len = _scan_to_eol(src, src_len, i);
+                }
             }
         }
 
@@ -482,7 +504,16 @@ fn tokenize_shell(src, src_len, tb) {
             if (b == 94) { kind = TK_OPERATOR; len = 1; }   # ^
         }
         if (len == 0) {
-            if (b == 92) { kind = TK_OPERATOR; len = 1; }   # \
+            if (b == 92) {                                    # \
+                kind = TK_OPERATOR;
+                len = 1;
+                if (i + 1 < src_len) {
+                    if (_sh_escapable(load8(src + i + 1)) == 1) { len = 2; }
+                }
+            }
+        }
+        if (len == 0) {
+            if (b == 35) { kind = TK_OPERATOR; len = 1; }   # # mid-word (2.6.0)
         }
 
         # 11. Single-char punctuation

@@ -76,6 +76,30 @@ fn _t_detect(src) {
     return r;
 }
 
+# Kind of the token that starts at byte `off` in `tb`, or -1 if no
+# token starts there (2.6.0).
+fn _t_kind_at(tb, off) {
+    var i = 0;
+    while (i < tokenbuf_count(tb)) {
+        if (tokenbuf_start(tb, i) == off) { return tokenbuf_kind(tb, i); }
+        i = i + 1;
+    }
+    return (0 - 1);
+}
+
+# 1 if two tokenbufs are identical (kind, start, len for every token).
+fn _t_same_tokens(a, b) {
+    if (tokenbuf_count(a) != tokenbuf_count(b)) { return 0; }
+    var i = 0;
+    while (i < tokenbuf_count(a)) {
+        if (tokenbuf_kind(a, i) != tokenbuf_kind(b, i)) { return 0; }
+        if (tokenbuf_start(a, i) != tokenbuf_start(b, i)) { return 0; }
+        if (tokenbuf_len(a, i) != tokenbuf_len(b, i)) { return 0; }
+        i = i + 1;
+    }
+    return 1;
+}
+
 fn main() {
     alloc_init();
 
@@ -3601,6 +3625,65 @@ fn main() {
     # test doesn't drift on every bump.
     assert(strlen(VYK_VERSION) > 4, "version string is longer than 4 chars");
     assert_eq(memeq(VYK_VERSION, "vyk ", 4), 1, "version string starts with 'vyk '");
+
+    test_group("2.6.0 shell — word-start comments, escapes, positional params");
+    # `#` opens a comment only at the start of a word (ADR 0022). Offsets
+    # below index into sh6_src.
+    #            0         1         2         3         4
+    #            0123456789012345678901234567890123456789012345678
+    var sh6_src = "n=${#v} b=${p##*/} a#b #c\necho \\\" \\# $1 $0;#d\n";
+    var sh6_tb = _t_tokenize(sh6_src, "shell");
+    assert_eq(_t_kind_at(sh6_tb, 4),  TK_OPERATOR, "`${#v}`: the # is an operator, not a comment");
+    assert_eq(_t_kind_at(sh6_tb, 5),  TK_IDENT,    "`${#v}`: v is an ident after it");
+    assert_eq(_t_kind_at(sh6_tb, 13), TK_OPERATOR, "`${p##*/}`: first # is an operator");
+    assert_eq(_t_kind_at(sh6_tb, 14), TK_OPERATOR, "`${p##*/}`: second # is an operator");
+    assert_eq(_t_kind_at(sh6_tb, 20), TK_OPERATOR, "`a#b`: the # is an operator");
+    assert_eq(_t_kind_at(sh6_tb, 23), TK_COMMENT,  "` #c`: # after a space is a comment");
+    assert_eq(_t_kind_at(sh6_tb, 31), TK_OPERATOR, "`\\\"` is one escape operator");
+    assert_eq(_t_kind_at(sh6_tb, 34), TK_OPERATOR, "`\\#` is one escape operator (no comment)");
+    # ...and the escaped byte is consumed with the backslash: no token
+    # may START at the `"` or the `#` (on 2.5.2 the `"` opened a string).
+    assert_eq(_t_kind_at(sh6_tb, 32), (0 - 1), "`\\\"`: the quote is part of the escape, not a string opener");
+    assert_eq(_t_kind_at(sh6_tb, 35), (0 - 1), "`\\#`: the # is part of the escape, not a comment opener");
+    assert_eq(_t_kind_at(sh6_tb, 37), TK_OPERATOR, "`$1` is one special-var operator");
+    assert_eq(_t_kind_at(sh6_tb, 40), TK_OPERATOR, "`$0` is one special-var operator");
+    assert_eq(_t_kind_at(sh6_tb, 43), TK_COMMENT,  "`;#d`: # after ; is a comment");
+    # Here-documents (ADR 0023). Offsets index into hd6_src:
+    #   0  "cat <<EOF > o\n"           opener; body at 14
+    #   14 "it's # x\nEOF\n"           body + terminator = one string (12 bytes)
+    #   27 "y=$((1 << n))\n"           arithmetic shift, not a heredoc
+    #   41 "c <<'Q' <<-T\n"            two openers on one line
+    #   54 "q\nQ\n"                    Q's body + terminator
+    #   58 "\tt\n\tT\n"                T's body + tab-indented terminator
+    #   64 "r <<< x\n"                 here-string, not a heredoc
+    #   72 "d <<NOEND\nn # c\n"         no terminator: code, and `# c` a comment
+    var hd6_src = "cat <<EOF > o\nit's # x\nEOF\ny=$((1 << n))\nc <<'Q' <<-T\nq\nQ\n\tt\n\tT\nr <<< x\nd <<NOEND\nn # c\n";
+    var hd6_tb = _t_tokenize(hd6_src, "shell");
+    assert_eq(_t_kind_at(hd6_tb, 4),  TK_OPERATOR, "heredoc opener `<<` stays an operator");
+    assert_eq(_t_kind_at(hd6_tb, 6),  TK_IDENT,    "bare delimiter stays its own token");
+    assert_eq(_t_kind_at(hd6_tb, 10), TK_OPERATOR, "rest of the opener line tokenizes as code (`>`)");
+    assert_eq(_t_kind_at(hd6_tb, 14), TK_STRING,   "heredoc body starts a string at the next line");
+    assert_eq(_t_kind_at(hd6_tb, 19), (0 - 1),     "the body's `#` is inside the string, not a comment");
+    assert_eq(_t_kind_at(hd6_tb, 23), (0 - 1),     "the terminator is part of the body token");
+    assert_eq(_t_kind_at(hd6_tb, 34), TK_OPERATOR, "`$((1 << n))`: the `<<` is a shift");
+    assert_eq(_t_kind_at(hd6_tb, 37), TK_IDENT,    "`$((1 << n))`: n is code, not a delimiter");
+    assert_eq(_t_kind_at(hd6_tb, 54), TK_STRING,   "first heredoc of a line: body Q");
+    assert_eq(_t_kind_at(hd6_tb, 58), TK_STRING,   "second heredoc of the line: body T (after Q's)");
+    assert_eq(_t_kind_at(hd6_tb, 61), (0 - 1),     "`<<-T`: the tab-indented terminator closes it");
+    assert_eq(_t_kind_at(hd6_tb, 66), TK_OPERATOR, "`<<<` is a here-string operator");
+    assert_eq(_t_kind_at(hd6_tb, 82), TK_IDENT,    "unterminated `<<NOEND`: next line is code");
+    assert_eq(_t_kind_at(hd6_tb, 84), TK_COMMENT,  "unterminated `<<NOEND`: its `# c` is a comment");
+    var hd6_ws = 0;
+    var hd6_i = 0;
+    while (hd6_i < tokenbuf_count(hd6_tb)) {
+        if (tokenbuf_start(hd6_tb, hd6_i) == 14) { hd6_ws = tokenbuf_len(hd6_tb, hd6_i); }
+        hd6_i = hd6_i + 1;
+    }
+    assert_eq(hd6_ws, 12, "body + terminator span exactly `it's # x\\nEOF` (12 bytes)");
+
+    var sh6_m1 = tokenbuf_new();
+    tokenize_shell(sh6_src, strlen(sh6_src), sh6_m1);
+    assert_eq(_t_same_tokens(sh6_m1, sh6_tb), 1, "M1 oracle == M2 grammar on the 2.6.0 shapes");
 
     test_group("2.5.2 grammar invariants — no shadowed operator / punctuation");
     # The scanner returns the FIRST list entry that matches, so an entry

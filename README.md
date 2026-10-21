@@ -133,6 +133,12 @@ was removed in 2.0.0 (ADR 0017).
 
 ## Status
 
+**2.6.0** (2026-10-20) — shell correctness. `${#arr[@]}`, `${x#p}` and
+`a#b` are code, not comments; here-documents (`<<EOF`, `<<'EOF'`,
+`<<-EOF`) are one string token; `\"` and `$1` are single tokens.
+Streaming stays chunk-invariant for all of it. 956/956 tests. Next on
+the [roadmap](docs/development/roadmap.md): 2.6.1 CLI hardening.
+
 **2.5.2** (2026-10-20) — the 2.5.x closeout audit. `vyk --theme` no
 longer passes a file's terminal escape sequences through to your
 terminal; streaming is chunk-invariant at every split offset for all

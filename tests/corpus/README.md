@@ -25,12 +25,16 @@ Re-sync manually when vidya updates a sample:
 
 ```sh
 cp ../../../vidya/content/lexing_and_parsing/shell.sh ./shell.sh
+cp ../../../vidya/content/module_systems/shell.sh ./shell_modules.sh   # 2.6.0
 ```
 
 ## Status
 
-47 corpus files across 46 bundled grammars — `cyml` carries two
-(`dependencies.cyml` and `phase_d.cyml`), every other grammar
+48 corpus files across 46 bundled grammars — `cyml` carries two
+(`dependencies.cyml` and `phase_d.cyml`) and so does `shell`
+(`shell.sh`, plus `shell_modules.sh` since 2.6.0 — vidya's
+`module_systems/shell.sh`, synced for its five heredocs, which the
+`lexing_and_parsing` sample has none of), every other grammar
 exactly one. Mix of vidya snapshots (where vidya ships a real
 sample — `openqasm.qasm` is the newest, synced in 2.3.5) and
 ADR-0006 stand-ins (hand-written `concept.<ext>` files where
