@@ -41,11 +41,29 @@ DETECT="src/detect.cyr"
 bad=0
 err() { echo "check-detect: $1" >&2; bad=$((bad + 1)); }
 
-# The `[grammar]` array line `key = [...]` of grammar $1, or empty.
+# The `[grammar]` array line `key = [...]` of grammar $1, or empty —
+# without its trailing comment: a `#` outside a string ends the line for
+# the loader, so a literal there is not declared. Through 2.9.0 the line
+# was matched whole, and `".h++"` in a comment passed (2.9.1 audit).
 decl() {
     f="grammars/$1.cyml"
     [ -f "$f" ] || { echo ""; return 0; }
-    grep -E "^$2 *=" "$f" | head -n 1 || true
+    grep -E "^$2 *=" "$f" | head -n 1 | awk '{
+        o = ""; q = 0; n = length($0)
+        for (i = 1; i <= n; i++) {
+            c = substr($0, i, 1)
+            if (q) {
+                o = o c
+                if (c == "\\") { i++; o = o substr($0, i, 1) }
+                else if (c == "\"") q = 0
+                continue
+            }
+            if (c == "#") break
+            if (c == "\"") q = 1
+            o = o c
+        }
+        print o
+    }' || true
 }
 
 # 1 if array line $1 contains the quoted literal $2.
@@ -57,7 +75,9 @@ has() {
 }
 
 TMP="${TMPDIR:-/tmp}/vyk-check-detect-$$"
-trap 'rm -f "$TMP".*' EXIT INT TERM
+trap 'rm -f "$TMP".*' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # Records, tab-separated; "-" stands for an empty field (`read` would
 # collapse an empty one, tab being IFS whitespace).

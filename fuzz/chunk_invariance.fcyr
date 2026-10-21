@@ -210,6 +210,23 @@ fn _ci_every(lang, src) {
         }
         p = p + 1;
     }
+    # And fed 1, 2 and 3 bytes at a time, a drain after each (2.9.1). The
+    # splits above drain twice in all; some states need several drains in
+    # a row with almost nothing buffered: a prefixed triple-quoted string
+    # whose body starts with quotes closed early only that way (2.9.1
+    # audit, reviewer B, F1).
+    var c = 1;
+    while (c <= 3) {
+        var ctb = _ci_tok(lang, src, n, c);
+        if (ctb == 0) { rc = 1; }
+        if (ctb != 0) {
+            if (_ci_same(whole, ctb, lang, c) == 0) {
+                eprint("  (small-chunk case, chunk size above)\n", 39);
+                rc = 1;
+            }
+        }
+        c = c + 1;
+    }
     return rc;
 }
 
@@ -337,6 +354,12 @@ fn _ci_main() {
     if (_ci_every("html", "<p>a</p><style>\na { b: c; }\n</style><script>\nlet x = \"</s\";\n</script><!-- d -->\n") != 0) { rc = 1; }
     if (_ci_every("vue", "<template><p>{{ a }}</p></template>\n<script>\nexport default {}\n</script>\n<style>\n.a { b: c }\n</style>\n") != 0) { rc = 1; }
     if (_ci_every("cyml", "[a]\nk = 1\n---\n# Title\n\ntext `code` *em*\n\n[[b]]\nz = \"q\"\n---\nmore\n") != 0) { rc = 1; }
+    # 2.9.1: fences that close after `end_indent` bytes (a list item, a
+    # blockquote), and fence tags that resolve by extension / interpreter.
+    if (_ci_every("markdown", "1. Build:\n   ```sh\n   make all\n   ```\n2. Then.\n\n```python\nx = 1\n```\n") != 0) { rc = 1; }
+    if (_ci_every("markdown", "> ```c\n> int a;\n> ```\n\n```bash\necho \"$x\" # c\n```\n") != 0) { rc = 1; }
+    # Prefixed triple-quoted strings whose body starts with quotes (B, F1).
+    if (_ci_every("python", "s = f\'\'\'\'\'hello\'\'\'\nt = b\"\"\"\"\"\"\nu = rb\'\'\'x\\\'\'\'\n") != 0) { rc = 1; }
 
     return rc;
 }

@@ -19,7 +19,9 @@ esac
 
 TMPDIR="${TMPDIR:-/tmp}/vyk-smoke-$$"
 mkdir -p "$TMPDIR"
-trap 'rm -rf "$TMPDIR"' EXIT INT TERM
+trap 'rm -rf "$TMPDIR"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 fail() { echo "smoke: FAIL — $1" >&2; exit 1; }
 

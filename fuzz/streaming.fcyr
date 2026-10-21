@@ -139,9 +139,22 @@ fn _strm_compare(tb_a, tb_b, label) {
 # Run one source × language across N split shapes (varying
 # chunk counts).
 fn _strm_one(src, lang, label) {
-    if (has_grammar(lang) == 0) { return 0; }
+    # A grammar that did not load, or a baseline that did not tokenize, is
+    # a failure: through 2.9.0 both returned success, so every case for
+    # them passed without running (2.9.1 audit, reviewer B).
+    if (has_grammar(lang) == 0) {
+        eprint("FAIL: ", 6); eprint(label, strlen(label));
+        var m1 = " — grammar not loaded\n";
+        eprint(m1, strlen(m1));
+        return 1;
+    }
     var baseline = _strm_baseline(src, lang);
-    if (baseline == 0) { return 0; }
+    if (baseline == 0) {
+        eprint("FAIL: ", 6); eprint(label, strlen(label));
+        var m2 = " — no baseline\n";
+        eprint(m2, strlen(m2));
+        return 1;
+    }
     var split_counts_buf = alloc(48);
     store64(split_counts_buf,      2);
     store64(split_counts_buf + 8,  4);

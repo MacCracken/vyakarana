@@ -13,9 +13,10 @@
 #   - generated stress inputs under `cutfirst` with a time limit of
 #     SECS (default 10) each: 512 KB tokens in 64-byte chunks, compose
 #     blocks in 4 KB chunks, a 1 MiB one-line heredoc body in 512-byte
-#     chunks, 20,000 unterminated heredoc openers. Each was quadratic
-#     (3 s to over 300 s) before 2.8.0 and takes well under a second
-#     after it, so a timeout here is a regression.
+#     chunks, 20,000 unterminated heredoc openers, and five inputs that
+#     defeated 2.9.0's watches (2.9.1 audit). Each was quadratic (3 s to
+#     over 300 s) before its fix and takes well under a second after,
+#     so a timeout here is a regression.
 # With FILEs or DIRs (real files; the grammar is detected as vyk
 # does), each file under `chunks 2`, `rand 11 6 400` and
 # `cutfirst 4096 4096`.
@@ -23,6 +24,7 @@
 # Exit: 0 when every run matched its single feed and none timed out.
 set -eu
 
+AUDIT_CWD=$(pwd)
 cd "$(dirname "$0")/../.."
 . scripts/audit/common.sh
 
@@ -39,8 +41,7 @@ done
 audit_build_harness
 H=build/vyk-audit
 
-T=$(mktemp -d)
-trap 'rm -rf "$T"' EXIT INT TERM
+audit_tmpdir
 
 runs=0; bad=0
 
@@ -92,7 +93,18 @@ if [ $# -eq 0 ]; then
     gen long_region.cyml 'printf "[a]\nk = 1\n---\n"; for (i = 0; i < 30000; i++) printf "text *em* `code`\n"; printf "\n[[b]]\nz = 2\n"'
     gen heredoc_1m.sh   'k = rep("z", 1024); printf "cat <<EOF\n"; for (i = 0; i < 1024; i++) printf "%s", k; printf "\nEOF\necho end\n"'
     gen heredoc_openers.sh 'for (i = 0; i < 20000; i++) printf ": <<b%d\n", i; printf "cat <<Z\nz # in body\nZ\necho end\n"'
-    for f in long_comment.py long_ident.py long_ws.py long_number.py long_fstr.py long_fstr3.py; do
+    # 2.9.1 audit (reviewer B): each was quadratic on 2.9.0 at 64-byte
+    # chunks — a heredoc whose delimiter quote removal rewrote (no watch:
+    # over 300 s), a fence body full of mid-line "```" (11.6 s), a
+    # heredoc line held open by a string full of `\"` (about 60 s), a
+    # blank run in a heredoc grammar (30 s), a Zig `\\` string line (13 s).
+    gen heredoc_rewritten.sh 'k = rep("x", 42); printf "cat <<E\\OF\n"; for (i = 0; i < 16000; i++) printf "body line %06d %s\n", i, k; printf "EOF\necho end\n"'
+    gen fence_nearmiss.md 'printf "# t\n\n```python\n"; for (i = 0; i < 5000; i++) printf "s = \"```\" + x%06d\n", i; printf "```\n"'
+    gen heredoc_quote.sh 'printf "cat <<EOF \"\nEOF\n"; for (i = 0; i < 30000; i++) printf "say \\\"hi\\\"\n"; printf "\"\necho end\n"'
+    gen blank_run.sh 'k = rep(" ", 63); printf "x=1"; for (i = 0; i < 16384; i++) printf "%s\n", k; printf "echo end\n"'
+    gen string_line.zig 'k = rep("abcdefgh", 8); printf "const s =\n    \\\\"; for (i = 0; i < 16384; i++) printf "%s", k; printf "\n;\n"'
+    for f in long_comment.py long_ident.py long_ws.py long_number.py long_fstr.py long_fstr3.py \
+        heredoc_rewritten.sh fence_nearmiss.md heredoc_quote.sh blank_run.sh string_line.zig; do
         check "$SECS" auto "$T/$f" cutfirst 64 64
     done
     for f in long_fence.md long_style.html open_style.html long_region.cyml heredoc_openers.sh; do
@@ -100,11 +112,15 @@ if [ $# -eq 0 ]; then
     done
     check "$SECS" auto "$T/heredoc_1m.sh" cutfirst 512 512
 else
-    audit_files "$@" > "$T/list"
+    audit_list "$T/list" "$@" || exit $?
     skipped=0
     while IFS= read -r f; do
-        # Exit 4 is "no grammar": not a run, not a failure.
-        if [ "$(audit_run 30 "$H" auto "$f" rand 0 0 1 > /dev/null 2>&1; echo $?)" -eq 4 ]; then
+        # Exit 4 is "no grammar": not a run, not a failure. (Captured
+        # with `|| rc=$?`: under dash a `$(…; echo $?)` inherits `set -e`
+        # and dies at the 4 before the echo — 2.9.1 audit.)
+        rc=0
+        audit_run 30 "$H" auto "$f" rand 0 0 1 > /dev/null 2>&1 || rc=$?
+        if [ "$rc" -eq 4 ]; then
             skipped=$((skipped + 1)); continue
         fi
         check 120 auto "$f" chunks 2

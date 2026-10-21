@@ -92,10 +92,17 @@ punctuation = [
 # scanner pipeline runs `compose_fenced` at step 0b, ahead of
 # step 3 pair rules — the 3-byte ` ``` ` start would otherwise be
 # eaten by the 1-byte ` ` ` inline-code pair rule.
+# `end_indent` (2.9.1): the closer may follow spaces, tabs and `>` on its
+# line, so a fence in a list item or a blockquote closes at its own
+# closer. CommonMark limits that to three spaces past the container's
+# indent; with no containers tracked here, any run counts — a column-0
+# fence whose body holds an indented "```" line closes there. Tags
+# resolve by name, extension or interpreter (`sh`, `bash`, `js`).
 [[rules]]
 match = "compose_fenced"
 start = "```"
 end = "```"
+end_indent = " \t>"
 
 
 # Inline code `` `...` ``.

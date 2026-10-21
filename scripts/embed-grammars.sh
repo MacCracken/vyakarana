@@ -21,11 +21,15 @@
 # and every space / tab / CR outside a string are dropped, so the blob
 # carries only what the loader reads. Two thirds of the .cyml text is
 # comment, and it went into every binary until 2.9.0. The compactor
-# follows the loader's lexical rules exactly (src/grammar.cyr: a string
-# is "..." with `\` escaping the next byte; `#` outside a string runs
-# to the end of the line; a value is a string, a string array or a
-# bool), and tests/vyakarana.tcyr proves it per grammar: each blob
-# must parse to the same grammar record as its source file.
+# follows the loader's lexical rules (src/grammar.cyr: a string is
+# "..." with `\` escaping the next byte; `#` outside a string runs to
+# the end of the line; a value is a string, a string array or a bool)
+# for well-formed grammar text, and refuses the malformed shapes where
+# dropping a blank would change what the loader reads: a blank inside
+# a word (`tr ue`, `number_ 0x`) or right after a header's `[`. (2.9.0
+# claimed "exactly"; the 2.9.1 audit found those cases.) For anything
+# else, tests/vyakarana.tcyr is the proof, per grammar: each blob must
+# parse to the same grammar record as its source file.
 #
 # POSIX sh + POSIX awk + tr. Through 2.8.0 the escaping used gsub(),
 # whose backslash doubling is a no-op under POSIX awk (gawk --posix,
@@ -42,7 +46,12 @@ export LC_ALL
 
 OUT="src/grammar_blobs.cyr"
 TMP="$OUT.tmp.$$"
-trap 'rm -f "$TMP"' EXIT INT TERM
+# `exit` in the INT / TERM handlers: a handler that only cleaned up let
+# the script carry on, and an interrupt could still end in "wrote …"
+# with a short blob file (2.9.1 audit).
+trap 'rm -f "$TMP"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 COUNT=0
 SRC_BYTES=0
@@ -85,9 +94,15 @@ compact_one() {
         if (c == "\r") return "\\r"
         return c
     }
+    function word(c) { return c ~ /^[A-Za-z0-9_-]$/ }
+    function refuse(why) {
+        printf "embed-grammars.sh: %s:%d: %s\n", FILENAME, FNR, why > "/dev/stderr"
+        exit 2
+    }
     {
         out = ""
         in_str = 0
+        gap = 0
         n = length($0)
         i = 1
         while (i <= n) {
@@ -105,7 +120,13 @@ compact_one() {
                 continue
             }
             if (c == "#") break
-            if (c == " " || c == "\t" || c == "\r") { i++; continue }
+            if (c == " " || c == "\t" || c == "\r") { gap = 1; i++; continue }
+            # The loader ends a word at a blank and reads a header from
+            # its first byte: dropping the blank in `tr ue`, `number_ 0x`
+            # or `[ grammar]` would change what it reads (2.9.1 audit).
+            if (gap && word(c) && word(substr(out, length(out), 1))) refuse("blank inside a word")
+            if (gap && (out == "[" || out == "[[")) refuse("blank after the [ of a header")
+            gap = 0
             if (c == "\"") in_str = 1
             out = out esc(c)
             i++
@@ -123,6 +144,14 @@ compact_one() {
 sym_of() {
     printf '%s' "$1" | tr -c 'A-Za-z0-9_' '_' | tr -s '_'
 }
+
+# Two names that map to one symbol (`zz-a`, `zz_a`) would make one blob
+# shadow the other; the compiler only warns (2.9.1 audit).
+dup=$(for f in grammars/*.cyml; do sym_of "$(basename "$f" .cyml)"; echo; done | sort | uniq -d)
+if [ -n "$dup" ]; then
+    echo "embed-grammars.sh: grammar names collide on blob symbol(s): $dup" >&2
+    exit 1
+fi
 
 {
     cat <<EOF
@@ -177,6 +206,19 @@ fn _grammar_blob_count() {
 EOF
     printf '    return %d;\n' "$COUNT"
     cat <<'EOF'
+}
+
+# The path of blob `i` (0 <= i < _grammar_blob_count()), or 0, so a test
+# can walk the blobs themselves rather than the grammars that loaded.
+fn _grammar_blob_path(i) {
+EOF
+    k=0
+    for f in grammars/*.cyml; do
+        printf '    if (i == %d) { return "%s"; }\n' "$k" "$f"
+        k=$((k + 1))
+    done
+    cat <<'EOF'
+    return 0;
 }
 EOF
 } > "$TMP"

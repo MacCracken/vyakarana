@@ -1,21 +1,51 @@
 # common.sh — helpers shared by the scripts in scripts/audit/ (sourced,
-# not run). Each script cd's to the repo root before sourcing this.
+# not run). Each script records the caller's directory in AUDIT_CWD,
+# then cd's to the repo root before sourcing this.
 
-# Files named by the arguments, one path per line: a FILE as is, a
-# DIR's regular files (skipping .git/ and node_modules/), and `-` for
-# paths read from stdin. Byte-sorted, so a run is repeatable.
-audit_files() {
-    for a in "$@"; do
-        if [ "$a" = "-" ]; then
-            cat
-        elif [ -d "$a" ]; then
-            find "$a" \( -name .git -o -name node_modules \) -prune -o -type f -print
-        elif [ -f "$a" ]; then
-            printf '%s\n' "$a"
-        else
-            echo "audit: $a: no such file or directory" >&2
+# audit_list OUT ARGS... — write to OUT the files named by ARGS, one
+# path per line, byte-sorted so a run is repeatable: a FILE as is, a
+# DIR's regular files (skipping .git/ and node_modules/), `-` for paths
+# read from stdin. Relative paths are the caller's, not the repo
+# root's. Returns 2 when an argument does not exist or nothing is left
+# to check — a sweep over nothing is not a clean sweep (2.9.1 audit:
+# a mistyped path used to report "files=0 … fails=0" and exit 0). A
+# path in a stdin list that has since vanished is named and skipped.
+audit_list() {
+    _out=$1
+    shift
+    _miss=0
+    : > "$_out.raw"
+    for _a in "$@"; do
+        if [ "$_a" = "-" ]; then
+            while IFS= read -r _p; do
+                [ -n "$_p" ] || continue
+                case "$_p" in /*) ;; *) _p="$AUDIT_CWD/$_p" ;; esac
+                if [ -f "$_p" ]; then
+                    printf '%s\n' "$_p" >> "$_out.raw"
+                else
+                    echo "audit: skipped, not a file: $_p" >&2
+                fi
+            done
+            continue
         fi
-    done | LC_ALL=C sort -u
+        case "$_a" in /*) _p=$_a ;; *) _p="$AUDIT_CWD/$_a" ;; esac
+        if [ -d "$_p" ]; then
+            find "$_p" \( -name .git -o -name node_modules \) -prune -o -type f -print >> "$_out.raw"
+        elif [ -f "$_p" ]; then
+            printf '%s\n' "$_p" >> "$_out.raw"
+        else
+            echo "audit: $_a: no such file or directory" >&2
+            _miss=1
+        fi
+    done
+    LC_ALL=C sort -u "$_out.raw" > "$_out"
+    rm -f "$_out.raw"
+    if [ "$_miss" -ne 0 ]; then return 2; fi
+    if [ ! -s "$_out" ]; then
+        echo "audit: no files to check" >&2
+        return 2
+    fi
+    return 0
 }
 
 # audit_run SECS CMD... — CMD under a SECS-second limit where
@@ -54,4 +84,15 @@ audit_build_vyk() {
         echo "audit: building vyk failed" >&2
         return 1
     fi
+}
+
+# Temp directory cleanup, and an interrupt that stops the script: a
+# trap on INT that only cleans up lets the script carry on after the
+# handler (2.9.1 audit). `exit` in the INT / TERM handler runs the EXIT
+# trap, which removes the directory.
+audit_tmpdir() {
+    T=$(mktemp -d)
+    trap 'rm -rf "$T"' EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
 }

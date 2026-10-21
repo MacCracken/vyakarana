@@ -62,9 +62,11 @@ operators = [
     "==", "!=", "<=", ">=",
     # `$=` and `-` are reachable since 2.7.1: `$` and `-` are
     # `ident_lead`, so they start an ident only before an ident byte.
+    # A lone `$` (`$ c`, `$` at the end) is an operator — through 2.9.0
+    # it fell through to an error token (2.9.1 audit, reviewer A, F3).
     "^=", "$=", "*=", "~=", "|=",
     "::",
-    "+", "-", "*", "/",
+    "+", "-", "*", "/", "$",
     "<", ">",
     "&", "|", "~",
     "!", "?",

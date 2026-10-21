@@ -96,6 +96,9 @@ boundary, not a workaround.
   independent and both are documented.
 - Consumers that may exceed 4 GiB must segment. `tokenize_stream_new`
   is cheap; the per-stream state is 88 bytes plus the live buffer.
+  *(2.9.1: 216 bytes now — the 2.6.x and 2.8.0 holds and watches —
+  plus the live buffer and a 256-byte delimiter copy once a heredoc
+  needs one.)*
 - If a consumer ever does hit this in practice, revisit option 1 —
   the measurement to bring is per-token memory against the workload,
   not a hypothetical.

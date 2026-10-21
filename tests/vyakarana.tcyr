@@ -167,7 +167,7 @@ fn _t_sub_spec(code) {
     if (code == 80) { return "issi"; }    # P  PairRule
     if (code == 87) { return "iv"; }      # W  WordsRule
     if (code == 67) { return "sss--"; }   # C  ComposeRule
-    if (code == 70) { return "ss--"; }    # F  ComposeFencedRule
+    if (code == 70) { return "ss--s"; }   # F  ComposeFencedRule
     if (code == 82) { return "sss"; }     # R  ComposeRegionRule
     if (code == 72) { return "iss"; }     # H  HeredocRule
     return 0;
@@ -4221,18 +4221,21 @@ fn main() {
     assert_eq(_t_gtext_eq(cb9_base, _t_cat3_alloc(cb9_a, cb9_line, cb9_c3)), 0, "a heredoc rule's indent is compared");
     var cb9_a2 = "[grammar]\nname = \"cmp\"\nextensions = [\".cmp\"]\n[defaults]\nident_start = \"a-z\"\nident_cont = \"a-z0-9\"\noperators = [\"=\", \"==\"]\n";
     assert_eq(_t_gtext_eq(cb9_base, _t_cat3_alloc(cb9_a2, cb9_line, cb9_c)), 0, "operator order is compared");
-    # Every bundled grammar: blob against grammars/<name>.cyml.
+    # Every blob against the file it was made from. The loop walks the
+    # blobs (`_grammar_blob_path`), not the grammars that loaded: built
+    # from loaded names, it could not see a blob that two names shared
+    # (`zz-a` / `zz_a`, one symbol — 2.9.1 audit, reviewer C), and each
+    # blob's grammar must be the one registered under its name.
     var cb9_names = vec_new();
     list_languages_into(cb9_names);
-    var cb9_path = alloc(256);
     var cb9_buf = alloc(GRAMMAR_FILE_CAP);
     var cb9_bad = 0;
     var cb9_src = 0;
     var cb9_blobs = 0;
     var cb9_gi = 0;
-    while (cb9_gi < vec_len(cb9_names)) {
-        var cb9_nm = vec_get(cb9_names, cb9_gi);
-        _t_cat3(cb9_path, "grammars/", cb9_nm, ".cyml");
+    while (cb9_gi < _grammar_blob_count()) {
+        var cb9_path = _grammar_blob_path(cb9_gi);
+        var cb9_nm = cb9_path;
         var cb9_blob = _grammar_blob_data(cb9_path);
         var cb9_n = file_read_all(cb9_path, cb9_buf, GRAMMAR_FILE_CAP - 1);
         var cb9_ok = 0;
@@ -4242,6 +4245,11 @@ fn main() {
             var cb9_gf = _gp_parse(cb9_buf, cb9_n);
             var cb9_gb = _gp_parse(cb9_blob, strlen(cb9_blob));
             if ((cb9_gf != 0) && (cb9_gb != 0)) { cb9_ok = _t_rec_eq(cb9_gf, cb9_gb, cb9_spec); }
+            if (cb9_ok == 1) {
+                var cb9_reg = registry_find_by_name(grammar_name(cb9_gf));
+                if (cb9_reg == 0) { cb9_ok = 0; }
+                if (cb9_reg != 0) { cb9_ok = _t_rec_eq(cb9_reg, cb9_gf, cb9_spec); }
+            }
             cb9_src = cb9_src + cb9_n;
             cb9_blobs = cb9_blobs + strlen(cb9_blob);
         }
@@ -4252,9 +4260,172 @@ fn main() {
         }
         cb9_gi = cb9_gi + 1;
     }
-    assert_eq(cb9_bad, 0, "every bundled grammar's blob parses to its source file's record");
+    assert_eq(cb9_bad, 0, "every blob parses to its source file's record, and that grammar is the one registered");
     assert_eq(vec_len(cb9_names), _grammar_blob_count(), "every blob belongs to a loaded grammar");
     assert(cb9_blobs * 2 < cb9_src, "the blobs are under half their sources (comments stripped)");
+
+    test_group("2.9.1 closeout audit");
+    # A held heredoc whose delimiter quote removal rewrote lives in the
+    # scratch slot, not the buffer; the terminator watch takes an offset
+    # into the buffer. Through 2.9.0 the body step passed the slot's
+    # address minus the buffer's — the watch read outside its buffer and
+    # never fired, or faulted (reviewer A, F1).
+    var au9_s = tokenize_stream_new("shell");
+    var au9_tb = tokenbuf_new();
+    var au9_a = "cat <<\"E\"OF <<\"E\"OF\nx\nEOF\n";
+    tokenize_stream_feed(au9_s, au9_a, strlen(au9_a));
+    tokenize_stream_drain(au9_s, au9_tb);
+    # The bad offset showed two ways, by heap layout: above the buffer, a
+    # mode-1 watch reading outside it; below, no watch at all (the drain
+    # refuses a negative offset), so every later drain re-scanned —
+    # quadratic (reviewer B, F2). The watch now compares against the
+    # stream's own copy of the decoded delimiter: mode 1, offset -1.
+    assert_eq(load64(au9_s + 104), 1, "a held heredoc with a rewritten delimiter gets the terminator watch");
+    assert_eq(load64(au9_s + 112), 0 - 1, "  ... against the stream's copy of the delimiter, not an offset");
+    tokenize_stream_feed(au9_s, "EOF\n", 4);
+    tokenize_stream_finish(au9_s, au9_tb);
+    var au9_one = _t_tokenize("cat <<\"E\"OF <<\"E\"OF\nx\nEOF\nEOF\n", "shell");
+    assert_eq(_t_same_tokens(au9_tb, au9_one), 1, "  ... and the stream matches one feed");
+    tokenize_stream_free(au9_s);
+    # Two consumer grammars whose compose_region rules route into each
+    # other recursed once per region: `--- ` x 20,000 overflowed the
+    # stack (reviewer C, P2-1). Nesting now stops at DS_MAX_DEPTH.
+    var cy9_a = "[grammar]\nname = \"au9cya\"\n[defaults]\nwhitespace = true\nident_start = \"a-z\"\nident_cont = \"a-z\"\n[[rules]]\nmatch = \"compose_region\"\nstart = \"---\"\nend_before = \"\\n[[\"\ninner = \"au9cyb\"\n";
+    var cy9_b = "[grammar]\nname = \"au9cyb\"\n[defaults]\nwhitespace = true\nident_start = \"a-z\"\nident_cont = \"a-z\"\n[[rules]]\nmatch = \"compose_region\"\nstart = \"---\"\nend_before = \"\\n[[\"\ninner = \"au9cya\"\n";
+    var cy9_ga = _gp_parse(cy9_a, strlen(cy9_a));
+    var cy9_gb = _gp_parse(cy9_b, strlen(cy9_b));
+    assert_neq(cy9_ga, 0, "two grammars composing into each other load (only self-composition is refused)");
+    registry_add(cy9_ga);
+    registry_add(cy9_gb);
+    var cy9_n = 20000 * 4;
+    var cy9_src = alloc(cy9_n + 1);
+    var cy9_i = 0;
+    while (cy9_i < 20000) { memcpy(cy9_src + cy9_i * 4, "--- ", 4); cy9_i = cy9_i + 1; }
+    store8(cy9_src + cy9_n, 0);
+    var cy9_tb = tokenbuf_new();
+    tokenize_with_grammar(cy9_ga, cy9_src, cy9_n, cy9_tb);
+    assert_eq(tb_coverage_sum(cy9_tb), cy9_n, "  ... and 20,000 nested regions tokenize, covered, without exhausting the stack");
+    assert(DS_MAX_DEPTH >= 8, "  ... the cap leaves room for real nesting (cyml > markdown > html > css)");
+    # A fenced code block in a list item or a blockquote closes at its own
+    # indented / quoted closer. Through 2.9.0 the closer had to be in
+    # column 0, so the fence below ran to the python fence and took its
+    # opener as the close, pairing every later fence one off (2.9.1).
+    var fe9_tb = _t_tokenize("1. Build:\n   ```sh\n   make all\n   ```\n2. Then.\n\n```python\nx = 1\n```\n", "markdown");
+    assert_eq(_t_len_at(fe9_tb, 13), 6, "markdown: an indented fence opener");
+    assert_eq(_t_len_at(fe9_tb, 22), 4, "  ... its body is tokenized (`make`), not one string to the next fence");
+    assert_eq(_t_kind_at(fe9_tb, 34), TK_PUNCTUATION, "  ... and it closes at its own indented closer");
+    assert_eq(_t_len_at(fe9_tb, 48), 10, "  ... so the next fence's opener is an opener");
+    assert_eq(_t_kind_at(fe9_tb, 58), TK_IDENT, "  ... and its body is python");
+    var fe9_bq = _t_tokenize("> ```c\n> a\n> ```\n\n```\n", "markdown");
+    assert_eq(_t_kind_at(fe9_bq, 13), TK_PUNCTUATION, "markdown: a blockquoted fence closes at `> ````");
+    assert_eq(tb_error_count(fe9_bq), 0, "  ... with no error tokens (the c grammar read the quoted backticks)");
+    var fe9_c0 = _t_tokenize("```\na\n    ```\nb\n```\n", "markdown");
+    assert_eq(_t_kind_at(fe9_c0, 10), TK_PUNCTUATION, "markdown: an indented closer closes a column-0 fence too (CommonMark allows 0-3)");
+    # Fence tags resolve by name, then by extension or interpreter (2.9.1):
+    # `sh` / `bash` were 3,140 of one machine's 7,607 tagged fences.
+    var fe9_sh = _t_tokenize("```bash\necho hi\n```\n", "markdown");
+    assert_eq(_t_len_at(fe9_sh, 8), 4, "markdown: ```bash routes to shell (by interpreter)");
+    var fe9_py = _t_tokenize("```Python\nx = 1\n```\n", "markdown");
+    assert_eq(_t_kind_at(fe9_py, 10), TK_IDENT, "markdown: ```Python routes to python (case ignored)");
+    assert_eq(registry_find_fence_tag("sh"), registry_find_by_name("shell"), "fence tag `sh` -> shell (extension)");
+    assert_eq(registry_find_fence_tag("cyr"), registry_find_by_name("cyrius"), "fence tag `cyr` -> cyrius (extension)");
+    assert_eq(registry_find_fence_tag("node"), registry_find_by_name("javascript"), "fence tag `node` -> javascript (interpreter)");
+    assert_eq(registry_find_fence_tag("text"), 0, "fence tag `text` -> no grammar");
+    var fe9_tx = _t_tokenize("```text\nplain\n```\n", "markdown");
+    assert_eq(_t_len_at(fe9_tx, 8), 6, "  ... and its body stays one string");
+    # `end_indent` belongs to compose_fenced rules, and is not empty.
+    var fe9_g1 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"string\"\nmatch = \"pair\"\nstart = \"'\"\nend = \"'\"\nend_indent = \" \"\n";
+    assert_eq(_gp_parse(fe9_g1, strlen(fe9_g1)), 0, "end_indent on a pair rule rejects the grammar");
+    var fe9_g2 = "[grammar]\nname = \"x\"\n[[rules]]\nmatch = \"compose_fenced\"\nstart = \"~~~\"\nend = \"~~~\"\nend_indent = \"\"\n";
+    assert_eq(_gp_parse(fe9_g2, strlen(fe9_g2)), 0, "an empty end_indent rejects the grammar");
+    # compose_region with no `end_before` runs to EOF (ADR 0019); 2.5.2's
+    # validation rejected it (reviewer C, P3-3).
+    var eb9_g = "[grammar]\nname = \"au9reg\"\n[defaults]\nwhitespace = true\n[[rules]]\nmatch = \"compose_region\"\nstart = \"---\"\ninner = \"json\"\n";
+    var eb9_gr = _gp_parse(eb9_g, strlen(eb9_g));
+    assert_neq(eb9_gr, 0, "compose_region without end_before loads");
+    registry_add(eb9_gr);
+    var eb9_src = "--- [1, 2]\n{\"a\": true}\n";
+    var eb9_one = _t_tokenize(eb9_src, "au9reg");
+    assert_eq(_t_kind_at(eb9_one, 4), TK_PUNCTUATION, "  ... its body is the inner grammar's to EOF");
+    assert_eq(tb_coverage_sum(eb9_one), strlen(eb9_src), "  ... covered");
+    var eb9_s = tokenize_stream_new("au9reg");
+    var eb9_tb = tokenbuf_new();
+    var eb9_i = 0;
+    while (eb9_i < strlen(eb9_src)) {
+        tokenize_stream_feed(eb9_s, eb9_src + eb9_i, 1);
+        tokenize_stream_drain(eb9_s, eb9_tb);
+        eb9_i = eb9_i + 1;
+    }
+    tokenize_stream_finish(eb9_s, eb9_tb);
+    assert_eq(_t_same_tokens(eb9_tb, eb9_one), 1, "  ... and streamed a byte at a time it matches one feed (the until-finish hold)");
+    tokenize_stream_free(eb9_s);
+    # Keys that were accepted and then did nothing are refused (reviewer C, P3-4).
+    var vl9_a = "[grammar]\nname = \"x\"\n[defaults]\nnumber_decimal = true\nnumber_separator = \"\\n\"\n";
+    assert_eq(_gp_parse(vl9_a, strlen(vl9_a)), 0, "a line-break number_separator rejects the grammar");
+    var vl9_b = "[grammar]\nname = \"x\"\n[defaults]\nnumber_decimal = true\nnumber_separator = \"a\"\n";
+    assert_eq(_gp_parse(vl9_b, strlen(vl9_b)), 0, "a letter number_separator rejects the grammar");
+    var vl9_c = "[grammar]\nname = \"x\"\n[defaults]\nnumber_decimal = true\nnumber_separator = \"_\"\n";
+    assert_neq(_gp_parse(vl9_c, strlen(vl9_c)), 0, "  ... `_` still loads");
+    var vl9_d = "[grammar]\nname = \"x\"\n[defaults]\nnumber_float = true\n";
+    assert_eq(_gp_parse(vl9_d, strlen(vl9_d)), 0, "number_float without number_decimal rejects the grammar");
+    var vl9_e = "[grammar]\nname = \"x\"\n[defaults]\nident_start = \"a-w\"\nident_cont = \"a-z\"\nident_lead = \"x\"\n";
+    assert_eq(_gp_parse(vl9_e, strlen(vl9_e)), 0, "an ident_lead byte outside ident_start rejects the grammar");
+    # SCSS: a lone `$` is an operator, not an error (reviewer A, F3).
+    var sc9_tb = _t_tokenize("a{b:$ c}", "scss");
+    assert_eq(_t_kind_at(sc9_tb, 4), TK_OPERATOR, "scss: a lone `$` is an operator");
+    assert_eq(tb_error_count(sc9_tb), 0, "  ... no error token");
+    # A heredoc delimiter over 255 bytes that needs no rewriting is a
+    # heredoc again (2.7.1 regression; reviewer A, F2).
+    var hd9_n = 6 + 300 + 1 + 5 + 300 + 8;
+    var hd9_src = alloc(hd9_n + 1);
+    memcpy(hd9_src, "cat <<", 6);
+    var hd9_i = 0;
+    while (hd9_i < 300) { store8(hd9_src + 6 + hd9_i, 65); store8(hd9_src + 312 + hd9_i, 65); hd9_i = hd9_i + 1; }
+    memcpy(hd9_src + 306, "\nbody\n", 6);
+    memcpy(hd9_src + 612, "\necho z\n", 8);
+    store8(hd9_src + hd9_n, 0);
+    var hd9_tb = _t_tokenize(hd9_src, "shell");
+    assert_eq(_t_kind_at(hd9_tb, 307), TK_STRING, "shell: a 300-byte heredoc delimiter opens a heredoc");
+    assert_eq(_t_len_at(hd9_tb, 307), 305, "  ... body and terminator are one string");
+    # Nix floats (ADR 0026, opted in 2.9.1).
+    var nx9_tb = _t_tokenize("x = 1.5;\n", "nix");
+    assert_eq(_t_len_at(nx9_tb, 4), 3, "nix: `1.5` is one number");
+    # The filename rule (ADR 0025, 2.9.1): a variant must start with a
+    # letter and not end in a tool's suffix; an ending must be anchored.
+    assert_streq(_t_path("/usr/share/man/man5/Dockerfile.5.gz"), "(none)", "2.9.1: Dockerfile.5.gz (a man page) is not a dockerfile");
+    assert_streq(_t_path("Makefile.rej"), "(none)", "2.9.1: Makefile.rej is not a makefile");
+    assert_streq(_t_path("x/Dockerfile.dockerignore"), "(none)", "2.9.1: Dockerfile.dockerignore is not a dockerfile");
+    assert_streq(_t_path("CMakeFiles/Makefile.cmake"), "(none)", "2.9.1: Makefile.cmake is CMake's, not make's");
+    assert_streq(_t_path("notaMakefile"), "(none)", "2.9.1: a filename ending is anchored (notaMakefile)");
+    assert_streq(_t_path("x/Makefile.in.in"), "makefile", "2.9.1: Makefile.in.in -> makefile");
+    assert_streq(_t_path("Makefile.orig"), "makefile", "2.9.1: Makefile.orig -> makefile");
+    assert_streq(_t_path("ci/prod-Dockerfile"), "dockerfile", "2.9.1: prod-Dockerfile -> dockerfile");
+    assert_streq(_t_path("GNUmakefile"), "makefile", "2.9.1: GNUmakefile -> makefile");
+    # The 8 MiB compose hold is enforced (reviewer B: nothing exercised
+    # it). An unclosed `<style>` fed in 64 KB chunks: no feed error, the
+    # held buffer stays within the bound, every byte covered.
+    var cb91_s = tokenize_stream_new("html");
+    var cb91_tb = tokenbuf_new();
+    var cb91_line = "a { color: red; }\n";
+    var cb91_ll = strlen(cb91_line);
+    var cb91_chunk = alloc(65536);
+    var cb91_cl = 0;
+    while (cb91_cl + cb91_ll <= 65536) { memcpy(cb91_chunk + cb91_cl, cb91_line, cb91_ll); cb91_cl = cb91_cl + cb91_ll; }
+    var cb91_fed = 8;
+    var cb91_bad = 0;
+    var cb91_max = 0;
+    tokenize_stream_feed(cb91_s, "<style>\n", 8);
+    while (cb91_fed < 9437184) {
+        if (tokenize_stream_feed(cb91_s, cb91_chunk, cb91_cl) != 0) { cb91_bad = cb91_bad + 1; }
+        cb91_fed = cb91_fed + cb91_cl;
+        tokenize_stream_drain(cb91_s, cb91_tb);
+        if (load64(cb91_s + 8) > cb91_max) { cb91_max = load64(cb91_s + 8); }
+    }
+    tokenize_stream_finish(cb91_s, cb91_tb);
+    assert_eq(cb91_bad, 0, "a 9 MB unclosed <style> streams without a feed error");
+    assert(cb91_max <= VYK_COMPOSE_HOLD_MAX + 65536, "  ... and the held buffer stays within the 8 MiB bound");
+    assert_eq(tb_coverage_sum(cb91_tb), cb91_fed, "  ... and the tokens cover every byte");
+    tokenize_stream_free(cb91_s);
 
     return assert_summary();
 }

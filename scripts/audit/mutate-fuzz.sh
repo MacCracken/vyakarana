@@ -22,6 +22,7 @@
 # Exit: 0 when every mutant passed.
 set -eu
 
+AUDIT_CWD=$(pwd)
 cd "$(dirname "$0")/../.."
 . scripts/audit/common.sh
 
@@ -37,7 +38,8 @@ while [ $# -gt 0 ]; do
     esac
 done
 if [ $# -eq 0 ]; then
-    V="${VIDYA:-../vidya}"
+    V="${VIDYA:-$(pwd)/../vidya}"
+    case "$V" in /*) ;; *) V="$AUDIT_CWD/$V" ;; esac
     if [ ! -d "$V/content" ]; then
         echo "mutate-fuzz: no FILE given and no vidya checkout at $V (set VIDYA=...)" >&2
         exit 2
@@ -51,10 +53,9 @@ audit_build_harness
 H=build/vyk-audit
 mkdir -p build/audit/mutants
 
-T=$(mktemp -d)
-trap 'rm -rf "$T"' EXIT INT TERM
+audit_tmpdir
 
-audit_files "$@" > "$T/list"
+audit_list "$T/list" "$@" || exit $?
 
 n=0; tried=0; bad=0; k=0
 while IFS= read -r f; do

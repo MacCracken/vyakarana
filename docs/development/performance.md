@@ -22,9 +22,14 @@ host — variance ~±10% between runs.
 
 | Artifact                    | Size (bytes) | Size (KB) | Notes                                         |
 |-----------------------------|-------------:|----------:|-----------------------------------------------|
-| `build/vyk` (CLI binary)    |      342,336 |     334.3 | Includes 46 compacted grammars (55.5 KB of data) |
-| `build/vyk`, `CYRIUS_DCE=1` |      252,224 |     246.3 | Same tree, dead fns compacted out — **what releases ship**; budget 300 KiB |
-| `dist/vyakarana.cyr`        |      342,875 |     334.8 | Single-file bundle for `cyrius deps` (6,673 lines by `wc -l`) |
+| `build/vyk` (CLI binary)    |      354,792 |     346.5 | Includes 46 compacted grammars (55.5 KB of data) |
+| `build/vyk`, `CYRIUS_DCE=1` |      260,584 |     254.5 | Same tree, dead fns compacted out — **what releases ship**; budget 300 KiB |
+| `dist/vyakarana.cyr`        |      362,193 |     353.7 | Single-file bundle for `cyrius deps` (7,054 lines by `wc -l`) |
+
+**`2.9.1` (2026-10-21):** 2.9.0 → 2.9.1 +12,456 (DCE +8,360, 46,616
+under budget) — the audit's fixes: the fence tag lookup, the watches'
+new state, the depth cap and validations, and `_grammar_blob_path`'s
+46 path strings; the bundle +19 KB, mostly comments.
 
 **Re-captured 2026-10-21 at `2.9.0`, 6.7.15 toolchain.** 2.8.0 →
 2.9.0: 498,792 → 342,336 (−156,456; DCE 408,680 → 252,224) — the
@@ -279,6 +284,18 @@ microsecond-scale row by ~1.3 µs and can masquerade as a real
 win. The `2.3.0` table was captured on 6.5.4, which does subtract
 it. Table not refreshed: the documented cadence is minor-release
 boundaries, and this is a patch.
+
+## Bench note (2.9.1, 2026-10-21) — the closeout audit's fixes, A/B'd
+
+`sh scripts/bench-paired.sh 2.9.0`, host load 3.8–5.9: every tokenize row
+and grammar loading within ±1.1 %, `detect/content-python` −3.9 %, and
+`detect/path-shell` +9.4 % (a second run +9.3 %) — 3 ns on 31 ns, on code
+that did not change (`foo.sh` is matched by `_detect_short`, before the
+filename rule 2.9.1 tightened). A padding probe moved the same row 2.9 %
+with no code change at all: it is layout-sensitive like `content-python`.
+The audit's streaming fixes are in chunked feeds, which this bench does
+not run; `scripts/audit/stream-sweep.sh` times them (five inputs from
+over 10 s to under one).
 
 ## Bench note (2.9.0, 2026-10-21) — compacted blobs, A/B'd
 

@@ -5,8 +5,10 @@
 #   -b VYK   the binary to check (default: build/vyk, rebuilt first)
 #   -t SECS  per-file limit (default 30)
 #
-# For each file, `vyk FILE`. Exit 4 (no grammar) is counted and
-# skipped. For exits 0 and 1 the NDJSON is checked: every line a token
+# For each file, `vyk FILE`. Exit 4 (no grammar) and a file over the
+# CLI's 1 MiB input cap (exit 3, "file too large" — the library has no
+# such cap) are counted and skipped. For exits 0 and 1 the NDJSON is
+# checked: every line a token
 # record of one of the ten kinds, each token starting where the last
 # ended, none empty, the last ending at the file's size (the coverage
 # invariant); exit 1 must come with at least one error token and exit 0
@@ -18,6 +20,7 @@
 # version of this; it skipped the checks whenever vyk exited 1.)
 set -eu
 
+AUDIT_CWD=$(pwd)
 cd "$(dirname "$0")/../.."
 . scripts/audit/common.sh
 
@@ -39,14 +42,15 @@ fi
 if [ -z "$VYK" ]; then
     audit_build_vyk
     VYK=build/vyk
+else
+    case "$VYK" in /*) ;; *) VYK="$AUDIT_CWD/$VYK" ;; esac
 fi
 
-T=$(mktemp -d)
-trap 'rm -rf "$T"' EXIT INT TERM
+audit_tmpdir
 
-audit_files "$@" > "$T/list"
+audit_list "$T/list" "$@" || exit $?
 
-n=0; skipped=0; fails=0; errfiles=0; tokens=0
+n=0; skipped=0; overcap=0; fails=0; errfiles=0; tokens=0
 while IFS= read -r f; do
     n=$((n + 1))
     size=$(wc -c < "$f" | tr -d ' ')
@@ -55,6 +59,11 @@ while IFS= read -r f; do
     case $rc in
         4) skipped=$((skipped + 1)); continue ;;
         0|1) ;;
+        3)
+            if grep -q 'file too large' "$T/err"; then
+                overcap=$((overcap + 1)); echo "OVERCAP ($size bytes): $f"; continue
+            fi
+            fails=$((fails + 1)); echo "FAIL exit 3: $f :: $(head -c 160 "$T/err")"; continue ;;
         124) fails=$((fails + 1)); echo "FAIL timeout (${SECS}s): $f"; continue ;;
         *) fails=$((fails + 1)); echo "FAIL exit $rc: $f :: $(head -c 160 "$T/err")"; continue ;;
     esac
@@ -106,5 +115,5 @@ while IFS= read -r f; do
     fi
 done < "$T/list"
 
-echo "coverage-sweep: files=$n tokenized=$((n - skipped)) no-grammar=$skipped tokens=$tokens fails=$fails files-with-error-tokens=$errfiles"
+echo "coverage-sweep: files=$n tokenized=$((n - skipped - overcap)) no-grammar=$skipped over-cap=$overcap tokens=$tokens fails=$fails files-with-error-tokens=$errfiles"
 [ "$fails" -eq 0 ]

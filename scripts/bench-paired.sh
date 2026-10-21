@@ -40,11 +40,18 @@ if [ $# -lt 1 ] || [ $# -gt 2 ]; then
     echo "usage: sh scripts/bench-paired.sh [-r ROUNDS] [-d DIV] OLD [NEW]" >&2
     exit 2
 fi
+for v in "$ROUNDS" "$DIV"; do
+    case "$v" in
+        ''|*[!0-9]*|0) echo "bench-paired: -r and -d take a positive integer, not '$v'" >&2; exit 2 ;;
+    esac
+done
 OLD=$1
 NEW=${2:-$ROOT}
 
 T=$(mktemp -d)
-trap 'rm -rf "$T"' EXIT INT TERM
+trap 'rm -rf "$T"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # tree SRC DST — a copy of SRC (a directory, or a git ref of this repo)
 # at DST, without build/ or .git/.
@@ -74,6 +81,14 @@ sed 's/\(bench_run_batch(b, &[A-Za-z_0-9]*, [0-9]*\),/\1 \/ '"$DIV"',/' \
 if ! grep -q "/ $DIV," "$T/paired.bcyr"; then
     echo "bench-paired: no bench_run_batch(b, &fn, N, ...) line to scale" >&2
     exit 1
+fi
+# A divisor past the smallest iteration count would leave a bench with
+# none (2.9.1 audit).
+least=$(sed -n 's/.*bench_run_batch(b, &[A-Za-z_0-9]*, \([0-9]*\),.*/\1/p' \
+    "$T/new/tests/bcyr/vyakarana.bcyr" | sort -n | head -n 1)
+if [ -n "$least" ] && [ "$DIV" -gt "$least" ]; then
+    echo "bench-paired: -d $DIV leaves a bench with no iterations (the smallest count is $least)" >&2
+    exit 2
 fi
 cp "$T/paired.bcyr" "$T/old/tests/bcyr/paired.bcyr"
 cp "$T/paired.bcyr" "$T/new/tests/bcyr/paired.bcyr"

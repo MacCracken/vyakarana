@@ -58,7 +58,9 @@ typescript, go, zig, julia, ruby, crystal, elixir, ocaml, haskell,
 php, toml, cyrius; **`'`** — cpp. **Datetime** — toml, yaml, cyml.
 Not opted in: shell, makefile, dockerfile, ini (values are text), the
 two asm grammars, nix, and the markup / compose grammars (their
-embedded languages bring their own settings).
+embedded languages bring their own settings). *(Amended 2.9.1: nix is
+opted in for floats — it has them, its own grammar header said so, and
+nothing recorded why it was left out.)*
 
 **Streaming.** A number can now grow from bytes *after* its end —
 `1` + `.5`, `1_` + `000`, `1979` + `-05-27` — while the drain treated
@@ -75,9 +77,14 @@ none of the three, so their drains are unchanged.
 - One token per literal in 34 grammars. Over 4,500 real files, 773
   change — 7,451 fractions, 434 separated integers, 176 exponents, no
   exit-code change. Every new token is exactly the union of the tokens
-  it replaced, with one exception: a separated hex literal with a
-  suffix (`0xFF_FF_00_00u32`), whose old ident `_FF_00_00u32` now
-  splits into the number's tail and the suffix `u32`.
+  it replaced, with two exceptions, each an old ident that now splits
+  into the number's tail and what follows: a separated hex literal
+  with a suffix (`0xFF_FF_00_00u32` — `_FF_00_00u32` becomes the
+  tail + `u32`), and an exponent with a suffix (`1e5f` — `e5f`
+  becomes `e5` + `f`; also a hex-looking run such as a git SHA in
+  YAML, `34e114876b0b…`). *(Amended 2.9.1: this said "one exception";
+  the audit's reviewer A found the second in 8 local C / C++ / Rust
+  files.)*
 - The every-offset two-feed split stays clean on all 42 non-compose
   corpora; `fuzz/chunk_invariance.fcyr`'s six number shapes fail at 58
   offsets with the lookahead disabled.

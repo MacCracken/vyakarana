@@ -121,7 +121,7 @@ named in `cyrius.cyml`'s `[lib]` block, run
 regenerated bundle — otherwise every gate above passes locally
 and the PR still fails.
 
-At 2.9.0 green means 1074/1074 test assertions and 5/5 fuzz
+At 2.9.1 green means 1123/1123 test assertions and 5/5 fuzz
 harnesses. Run the gates yourself rather than trusting a doc that
 says "green" — 2.2.3 shipped with a test suite that did not
 compile, and nobody noticed because nobody re-ran it.

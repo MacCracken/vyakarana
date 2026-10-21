@@ -57,7 +57,18 @@ Layout of a recognized fence:
   (e.g. `` ```rust title="add"`` `` for renderer hints).
 - `<body>` — bytes routed through the grammar named by `<tag>`.
 - `<end>` — literal, e.g. `` ``` ``. Matched at start-of-line
-  (after an LF or at body_start).
+  (after an LF or at body_start). *(Amended 2.9.1: or after a run of
+  the rule's optional `end_indent` bytes from the line start —
+  markdown sets `" \t>"`, so a fence in a list item or a blockquote
+  closes at its own indented or quoted closer. Column 0 only, the
+  original rule, stayed in force until then: such a fence ran on to
+  the next column-0 fence and took its opener as the close, pairing
+  every later fence in the document one off. 830 indented or quoted
+  fence lines in 195 of one machine's 7,770 markdown files. The
+  candidate positions depend only on the bytes, never on the opener,
+  so the no-closer watermark holds. CommonMark allows three spaces
+  past the container's indent; with no containers tracked, any run
+  counts.)*
 
 Recognition pipeline: new step **0b** in
 `tokenize_with_grammar`, immediately after step 0 (compose).
@@ -71,6 +82,14 @@ When recognized, emit:
 2. Body tokens via the inner grammar, with offsets shifted into
    the outer coordinate system.
 3. `<end>` as one TK_PUNCTUATION token.
+
+The tag names a grammar. *(Amended 2.9.1: by name; failing that,
+ignoring ASCII case, by name, by an `extensions` entry `.tag` or by a
+`shebangs` entry — the detection data of ADR 0025 —
+`registry_find_fence_tag`. Through 2.9.0 only an exact name resolved:
+the example tag `bash` above never did, and 3,679 of 7,607 tagged
+fences on one machine — `sh` 1,936, `bash` 1,204, `cyr` 331 — came
+back as one string.)*
 
 Graceful degradation:
 - **Empty tag** (` ```\n`) → body emits as one TK_STRING.

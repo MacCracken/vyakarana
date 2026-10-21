@@ -4,6 +4,104 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.9.1] — 2026-10-21
+
+**Closeout audit** over 2.7.0 – 2.9.0 — number literals, grammar polish,
+the streaming engine, compacted blobs and the size budget:
+[docs/audit/2026-10-21-2.9.x-closeout-audit.md](docs/audit/2026-10-21-2.9.x-closeout-audit.md).
+Three independent reviewers, each reproducing every claim, then the
+sweeps from `scripts/audit/` over the whole library: 5,166 real files
+sampled per grammar plus the 2.6.x audit's 4,500, 2,384 streamed, vidya's
+samples under 97,600 mutants. Every fix was reproduced on 2.9.0 first,
+and every test added for one fails on 2.9.0's sources. Token output
+changes only where a fix says so: 98 of 8,476 sampled real files — 96
+markdown files, every change inside a fence body, and two detection
+routes. 1123/1123 tests, smoke OK, lint+fmt exit 0, fuzz 5/5, size
+budget OK.
+
+### Fixed
+
+- **Markdown: a fence in a list item or a blockquote closed at the wrong
+  place.** The closer had to be in column 0, so `   ```sh` … `   ````
+  ran on to the next column-0 fence and took its opener as the close —
+  every later fence in the document paired one off. 830 indented or
+  quoted fence lines in 195 of one machine's 7,770 markdown files. The
+  fenced rule takes an `end_indent` (markdown: space, tab, `>`).
+- **Markdown: fence tags resolved by exact grammar name only.** `sh`,
+  `bash`, `cyr`, `js`, `Python` came back as one plain string — 3,679 of
+  7,607 tagged fences. Tags resolve by name, then by a grammar's declared
+  extension or interpreter (ADR 0016).
+- **Streaming: a prefixed triple-quoted string whose body starts with
+  quotes closed at its own opener** when fed a byte at a time (or drained
+  twice): `f'''''hello'''` came back closed after 6 bytes. The
+  pending-pair fast path clamped its resume point to the start marker,
+  not to prefix + marker.
+- **Shell: an empty `<<''` heredoc body was a zero-length token** (single
+  feed and streaming alike) — the coverage contract says every token has
+  a length.
+- **Streaming: a heredoc whose delimiter quote removal rewrote
+  (`<<"E"OF`, `<<E\OF`) had no working terminator watch.** The scanner
+  handed the drain a heap address as a buffer offset: depending on the
+  heap the watch read outside its buffer (never firing; a probe faulted)
+  or none was armed, and every later drain re-scanned — 960 KB in
+  64-byte chunks took over 300 s. The stream keeps its own copy of such a
+  delimiter now: 0.03 s.
+- **Streaming: three more inputs defeated the watches (quadratic).** A
+  fence's watch fired on any mid-line ```` ``` ```` (100 KB in 64-byte
+  chunks: 11.6 s → 0.08 s); a heredoc line held open by a string fired on
+  every `\"` (0.58 s → 0.01 s); the run watch refused blank runs in
+  heredoc grammars (1 MiB in shell: 30 s → 0.03 s) and line-rule tokens
+  other than comments (a Zig `\\` string line: 3.4 s → 0.01 s).
+- **Two grammars whose `compose_region` rules route into each other
+  overflowed the stack** (a consumer's own `.cyml`; 20,000 nested regions).
+  Nesting stops at 32 levels; deeper bodies are one string.
+- **A heredoc delimiter over 255 bytes was no longer a heredoc** (since
+  2.7.1); only one that quote removal rewrote needs the 255-byte slot.
+- **SCSS: a lone `$` was an error token** (since 2.7.1's `ident_lead`).
+- **Detection: `Dockerfile.5.gz` was a dockerfile, `notaMakefile` a
+  makefile.** A `filenames` variant must start with a letter and not end
+  in a compression, patch or tool suffix; an ending must start the path
+  or follow `/ . - _` (ADR 0025). 2 of 239 matching files on one machine
+  change route.
+- **Grammar loader:** a `compose_region` without `end_before` loads again
+  and runs to EOF, as ADR 0019 says (2.5.2 rejected it); a blank,
+  line-break or letter `number_separator`, an `ident_lead` byte outside
+  `ident_start`, and `number_float` / `number_datetime` without
+  `number_decimal` are rejected instead of silently doing nothing.
+- **Memory:** the heredoc line index took 52 bytes per line of the scan
+  buffer (a 1 MiB newline flood after one opener: 60 MB); 36 now (43 MB).
+- **Tooling** (2.9.0's scripts): the audit sweeps passed when they swept
+  nothing (a mistyped path: `files=0 … fails=0`, exit 0) and resolved
+  relative paths from the repo root — they exit 2 now and take the
+  caller's paths; `stream-sweep.sh` reported false failures under dash;
+  `check-size.sh` passed an unreadable binary; Ctrl-C did not stop the
+  scripts; `check-detect.sh` accepted a route declared only in a comment;
+  two grammar names mapping to one blob symbol could fool the blob test;
+  the compactor rewrote malformed text the loader reads differently (a
+  blank inside a word or after a header's `[`) — it refuses it now;
+  `coverage-sweep.sh` failed files over the CLI's input cap;
+  `fuzz/streaming.fcyr` passed a case whose grammar did not load.
+
+### Changed
+
+- **Nix floats are one number** (`1.5`, `2.0e3`; ADR 0026 had left nix
+  out with no reason recorded).
+- The stream record is 216 bytes (internal): a delimiter copy (+192) and
+  where a mode-3 marker counts and its escape byte (+200, +208).
+- Docs: ADR 0026's "one exception" to its token rule was two (`1e5f`);
+  the heredoc bound is measured from the group's first opener; past a
+  compose bound the held bytes commit as that drain read them.
+
+### Added
+
+- `end_indent` on `compose_fenced` rules; `registry_find_fence_tag`;
+  `_grammar_blob_path(i)` in the generated blobs.
+- Tests: a 2.9.1 group (49 assertions, among them a 9 MB unclosed
+  `<style>` against the 8 MiB bound); `fuzz/chunk_invariance.fcyr` runs
+  every shape in 1-, 2- and 3-byte feeds too, and gains three shapes (49);
+  `stream-sweep.sh` gains five stress inputs, each over its time limit on
+  2.9.0.
+
 ## [2.9.0] — 2026-10-21
 
 **Size and tooling** ([ADR 0029](docs/adr/0029-compacted-blobs-posix-generator-size-budget.md)).

@@ -139,14 +139,24 @@ was removed in 2.0.0 (ADR 0017).
 
 ## Status
 
+**2.9.1** (2026-10-21) — the 2.9.x closeout audit
+([report](docs/audit/2026-10-21-2.9.x-closeout-audit.md)). Markdown
+fences in list items and blockquotes close where they should, and
+```` ```bash ```` / ```` ```sh ```` / ```` ```js ```` bodies are
+highlighted (half of all tagged fences weren't). Chunked streaming
+fixes: a prefixed triple-quoted string fed a byte at a time, an empty
+`<<''` heredoc, and five inputs that made it quadratic. Also nix floats,
+SCSS `$`, long heredoc delimiters, `Dockerfile.5.gz` no longer a
+Dockerfile, and the audit scripts hardened. 1123/1123 tests. Nothing
+else is pinned; the [roadmap](docs/development/roadmap.md) is
+consumer-driven.
+
 **2.9.0** (2026-10-21) — size and tooling
 ([ADR 0029](docs/adr/0029-compacted-blobs-posix-generator-size-budget.md)):
 the released `vyk` is 252 KB, down from 409 KB, because the embedded
 grammars no longer carry their comments — and a CI check now keeps it
 under 300 KB. Every consumer's binary drops the same ~156 KB. Output is
 unchanged. The audit sweeps live in [`scripts/audit/`](scripts/audit/README.md).
-Next on the [roadmap](docs/development/roadmap.md): the 2.9.1 closeout
-audit.
 
 **2.8.0** (2026-10-20) — streaming engine
 ([ADR 0028](docs/adr/0028-streaming-holds-watches-groups.md)): a chunked

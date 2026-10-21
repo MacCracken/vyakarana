@@ -8,14 +8,14 @@
 > 2.6.2 it carried a "What X changed" block for every release back to
 > 1.13.0 — trimmed in 2.7.0; the CHANGELOG has all of it.)
 >
-> **Last refresh:** 2026-10-21, at 2.9.0. Read this first, then run the
+> **Last refresh:** 2026-10-21, at 2.9.1. Read this first, then run the
 > gates (CLAUDE.md §Gates) — do not take the "green" below on trust.
 
 ---
 
 ## Current status
 
-- **Version:** `2.9.0` — `VERSION`, `src/version_str.cyr`,
+- **Version:** `2.9.1` — `VERSION`, `src/version_str.cyr`,
   `dist/vyakarana.cyr`, the CHANGELOG header and `docs/man/vyk.1`
   agree.
 - **Toolchain pin:** `cyrius = "6.7.15"` in `cyrius.cyml`, the single
@@ -35,24 +35,25 @@
   of four stdlib leaves (alloc, string, vec, io). The embedded grammars
   are compacted — comments and blanks outside strings dropped — by a
   POSIX sh + awk generator (ADR 0029); `grammars/` is the readable copy.
-- **Size:** the shipped (`CYRIUS_DCE=1`) `vyk` is 252,224 bytes against a
+- **Size:** the shipped (`CYRIUS_DCE=1`) `vyk` is 260,584 bytes against a
   307,200-byte budget that `scripts/check-size.sh` enforces in CI and at
-  release (ADR 0029); the default build is 342,336.
-- **Next release:** 2.9.1 — the closeout audit over 2.7.x – 2.9.x
-  ([roadmap](./roadmap.md)). Nothing else is pinned; the backlog is
-  consumer-driven.
+  release (ADR 0029); the default build is 354,792.
+- **Next release:** none pinned. The 2.9.x closeout audit
+  ([report](../audit/2026-10-21-2.9.x-closeout-audit.md)) closed the
+  train; the [roadmap](./roadmap.md)'s backlog is consumer-driven.
 
-## Gates (green at 2.9.0, 2026-10-21)
+## Gates (green at 2.9.1, 2026-10-21)
 
-- `cyrius build` OK, 0 warnings · `cyrius test` **1074/1074** · smoke
+- `cyrius build` OK, 0 warnings · `cyrius test` **1123/1123** · smoke
   OK (it runs `scripts/check-detect.sh`) · `scripts/lint-fmt.sh`
   exit 0 (a lint warning fails it; covers `src/` and
   `scripts/audit/`) · `scripts/check-size.sh` OK · `cyrius fuzz`
   **5/5**, also clean under `--poison=ab` and `--bounds`.
 - The audit sweeps are in `scripts/audit/` — real-file coverage,
   poison A/B, streaming invariance, mutation fuzz over vidya — with
-  2.9.0's clean numbers in its README. Not gates (minutes, real files);
-  CI builds the harness and syntax-checks the scripts.
+  2.9.1's clean numbers in its README. Not gates (minutes, real files);
+  CI builds the harness and syntax-checks the scripts. A sweep over
+  nothing, or a missing path, exits 2.
 
 ## Surface
 
@@ -67,7 +68,9 @@
   `grammar_load` for a consumer's own `.cyml`. The header of
   `src/tokenize.cyr` is the authoritative list.
 - **Grammar format:** CYML. Rule types line (with `start_after`,
-  ADR 0022), pair, words, compose, compose_fenced, compose_region,
+  ADR 0022), pair, words, compose, compose_fenced (with `end_indent`,
+  and tags resolved by name, extension or interpreter — ADR 0016),
+  compose_region (`end_before` optional: run to EOF, ADR 0019),
   heredoc (ADR 0023); line rules may also require or forbid a next
   byte (`followed_by` / `not_followed_by`, ADR 0027). `[defaults]`
   includes `number_float`, `number_separator`, `number_datetime`
@@ -86,18 +89,24 @@
   split offset for all 49 corpus files — the compose grammars
   (markdown, html, vue, svelte, cyml) included since 2.8.0 — gated by
   `fuzz/chunk_invariance.fcyr` (8 chunk sizes, two-feed splits every
-  37 bytes, 46 every-offset shapes). The drain commits only what the
+  37 bytes; 49 shapes at every split offset and in 1-, 2- and 3-byte
+  feeds). The drain commits only what the
   scanner reports settled: heredoc and compose holds, groups that
   commit whole, the marker window, watches that wait on new bytes
   (ADR 0028).
 - **Streaming bounds:** `VYK_STREAM_CAP` 16 MiB live buffer;
-  `VYK_COMPOSE_HOLD_MAX` 8 MiB and `VYK_HEREDOC_HOLD_MAX` 1 MiB (a
-  still-open compose region or heredoc longer than that, fed in chunks,
-  commits as the outer grammar read it past the bound); 4 GiB per stream
-  (ADR 0021). An unresolved compose region gives no tokens until it
-  closes or the stream finishes.
+  `VYK_COMPOSE_HOLD_MAX` 8 MiB for a still-open compose region and
+  `VYK_HEREDOC_HOLD_MAX` 1 MiB for a still-open heredoc group, measured
+  from its line's first opener. Past a bound, fed in chunks, the held
+  bytes commit as that drain's scan read them, which may differ from a
+  single feed from there on; 4 GiB per stream (ADR 0021). An unresolved
+  compose region gives no tokens until it closes or the stream
+  finishes.
 - **Detection:** compiled in `src/detect.cyr`, declared by the grammars,
-  checked both ways (ADR 0025). The content sniff is a shebang,
+  checked both ways (ADR 0025). A `filenames` entry matches an anchored
+  ending (`ci/app.Dockerfile`) or `name.` + a suffix that starts with a
+  letter and is not a compression, patch or tool suffix
+  (`Makefile.in`, not `Dockerfile.5.gz`). The content sniff is a shebang,
   `<?xml`, `<!DOCTYPE html>`, and the `.s` / `.S` asm vote (ADR 0015).
 
 ## Known limits (coverage holds; no `error` tokens)
@@ -111,7 +120,13 @@
   `r#"…"#`, C++ `R"d(…)d"`, Lua `[==[ … ]==]`, Ruby `<<~EOS`, PHP
   `<<<EOT`, Swift `#"…"#` — have no rule yet; ADR 0023 says to extend
   the heredoc rule rather than add a mechanism. Rust's nested
-  `/* /* */ */` is not nested.
+  `/* /* */ */` is not nested. Not error-free: a `r#"…"#` whose body
+  holds quotes and backslashes surfaces `error` tokens after the first
+  inner quote (2 of 5,166 sampled real files at the 2.9.x audit).
+- **Markdown fences:** `~~~` and four-or-more-backtick fences and
+  indented code blocks are not recognised (ADR 0016); a closer may be
+  indented by any run of spaces, tabs and `>`, so a column-0 fence whose
+  body holds an indented ```` ``` ```` line closes there.
 - **Streaming latency inside compose regions:** a long, still-open
   `<style>` / fence / cyml body is held whole until it closes (ADR 0028;
   a resumable region is in the roadmap backlog).
@@ -121,7 +136,10 @@
 ## Corpus
 
 `tests/corpus/` — 49 files: vidya snapshots where vidya ships a
-sample (ADR 0001; last re-synced in 2.6.2) and hand-written
+sample (ADR 0001; last re-synced in 2.6.2 — at the 2.9.x audit all are
+current but `dependencies.cyml`, which vidya has grown from 10.6 to
+42.5 KB; the snapshot is kept, since the every-offset sweep over the new
+one alone takes ten minutes, and the sweeps cover it) and hand-written
 `concept.<ext>` stand-ins elsewhere (ADR 0006). Provenance and the
 re-sync commands are in `tests/corpus/README.md`. A grammar passes when
 its corpus tokenizes with zero `error` tokens.
@@ -130,8 +148,7 @@ its corpus tokenizes with zero `error` tokens.
 
 - `owl` pins tag `2.4.2` (cyrius 6.6.2), `cyim` `2.4.0` (6.7.9), `vidya`
   `2.4.0` (6.6.2). All three build and pass their own tests against
-  the 2.9.0 bundle through a path dependency, each binary ~156 KB
-  smaller than on 2.8.0. Taking a newer tag is
+  the 2.9.1 bundle through a path dependency. Taking a newer tag is
   their call — it changes what they render (2.5.2's fixes, 2.6.x's
   shell, 2.7.0's numbers), not their API.
 - `vidya` is also the corpus supplier

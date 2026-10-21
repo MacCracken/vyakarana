@@ -39,7 +39,16 @@ The roadmap named two replacements: cyrius's `[embed]` manifest section
    the end of the line, and a value is a string, a string array or a
    bool, so no two bare words ever need a blank between them. A string
    that runs past the end of its line is refused (no grammar has one;
-   the loader would continue it onto the next line).
+   the loader would continue it onto the next line). *(Amended 2.9.1:
+   that holds for well-formed text. Where a blank in malformed text
+   changes what the loader reads — inside a word, `tr ue` or
+   `number_ 0x`, or right after a header's `[` — the generator now
+   refuses the file; it used to compact it into something the loader
+   read differently. It also refuses two grammar names that map to one
+   blob symbol (`zz-a`, `zz_a`), and the test walks the blobs through a
+   generated `_grammar_blob_path(i)` rather than the grammars that
+   loaded, which could not see such a collision. Found by the 2.9.1
+   audit's reviewer C.)*
 2. **Compaction is proven per grammar, in the tests.** A 2.9.0 test
    group parses each blob and its `grammars/<name>.cyml` with
    `_gp_parse` and compares the two grammar records field by field —

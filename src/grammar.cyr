@@ -207,17 +207,22 @@ fn compose_rule_inner(r) { return load64(r + 16); }
 # `inner` field. The inner grammar is captured per-fence-
 # instance from the bytes between `start` and the next newline
 # (the "info string" in CommonMark terms). See ADR 0016.
-var COMPOSE_FENCED_RULE_SIZE = 32;   # +16 in 2.5.2: no-closer watermark (gen @ 16, from @ 24)
+# +16 in 2.5.2: no-closer watermark (gen @ 16, from @ 24). +8 in 2.9.1:
+# `end_indent` @ 32, a cstr of the bytes that may precede the end marker
+# on its line (markdown: space, tab, `>`), or 0 for column 0 only.
+var COMPOSE_FENCED_RULE_SIZE = 40;
 fn compose_fenced_rule_new(start, end) {
     var r = alloc(COMPOSE_FENCED_RULE_SIZE);
     store64(r,     start);
     store64(r + 8, end);
     store64(r + 16, 0);
     store64(r + 24, 0);
+    store64(r + 32, 0);
     return r;
 }
 fn compose_fenced_rule_start(r) { return load64(r); }
 fn compose_fenced_rule_end(r)   { return load64(r + 8); }
+fn compose_fenced_rule_end_indent(r) { return load64(r + 32); }
 
 # Compose-region rule — routes an OPEN-ENDED region through
 # another grammar. Differs from ComposeRule (ADR 0013) in the two
@@ -573,7 +578,15 @@ fn _gp_apply_kv(g, current_rule, section, buf, len, key_pos, key_len, value_pos)
             if (nsv != 0) {
                 if (strlen(nsv) == 0) { store64(g + 208, 0); }
                 if (strlen(nsv) == 1) {
-                    if (_ds_is_digit(load8(nsv)) == 0) { store64(g + 208, load8(nsv)); }
+                    # Printable ASCII punctuation only (2.9.1): a blank or a
+                    # line break joined `1\n2\n3` into one number, a letter
+                    # ran numbers into identifiers (reviewer C).
+                    var nsb = load8(nsv);
+                    var nsok = 1;
+                    if (_ds_is_digit(nsb) == 1) { nsok = 0; }
+                    if ((nsb <= 32) || (nsb >= 127)) { nsok = 0; }
+                    if (((nsb | 32) >= 97) && ((nsb | 32) <= 122)) { nsok = 0; }
+                    if (nsok == 1) { store64(g + 208, nsb); }
                 }
             }
             return 0;
@@ -683,6 +696,13 @@ fn _gp_apply_kv(g, current_rule, section, buf, len, key_pos, key_len, value_pos)
             store64(current_rule + 72, load64(out_str_slot));
             return 0;
         }
+        if (_gp_slice_eq(buf, key_pos, key_len, "end_indent") == 1) {
+            # compose_fenced rules only (2.9.1): bytes that may precede
+            # the end marker on its line.
+            _gp_parse_string(buf, len, value_pos, out_str_slot);
+            store64(current_rule + 96, load64(out_str_slot));
+            return 0;
+        }
         if (_gp_slice_eq(buf, key_pos, key_len, "followed_by") == 1) {
             _gp_parse_string(buf, len, value_pos, out_str_slot);
             var fbs = load64(out_str_slot);
@@ -787,6 +807,9 @@ fn _gp_close_rule(g, rule_acc) {
     var indent = load64(rule_acc + 72);
     var fby = load64(rule_acc + 80);
     var nfby = load64(rule_acc + 88);
+    var eind = load64(rule_acc + 96);
+    if ((eind != 0) && (mt != 5)) { return 1; }           # end_indent: compose_fenced only
+    if ((eind != 0) && (_gp_nonempty(eind) == 0)) { return 1; }
     if ((mt < 1) || (mt > 7)) { return 1; }               # unknown `match`
     if ((indent != 0) && (mt != 7)) { return 1; }         # indent: heredoc rules only
     if ((indent != 0) && (_gp_nonempty(indent) == 0)) { return 1; }
@@ -803,8 +826,13 @@ fn _gp_close_rule(g, rule_acc) {
     if ((mt == 7) && (endp != 0)) { return 1; }           # a heredoc's end is its delimiter
     if ((mt != 3) && (_gp_nonempty(start) == 0)) { return 1; }   # all but `words` need `start`
     if (((mt <= 3) || (mt == 7)) && (kind_given == 0)) { return 1; }   # line / pair / words / heredoc need `kind`
-    if (((mt == 2) || (mt == 4) || (mt == 5) || (mt == 6)) && (_gp_nonempty(endp) == 0)) {
-        return 1;                                         # `end` / `end_before`
+    # pair / compose / compose_fenced need an `end`. compose_region's
+    # `end_before` may be absent or empty — its region then runs to EOF
+    # (ADR 0019); the 2.5.2 validation required it, which left that
+    # documented case, and the drain's until-finish hold, unreachable
+    # (2.9.1 audit, reviewer C).
+    if (((mt == 2) || (mt == 4) || (mt == 5)) && (_gp_nonempty(endp) == 0)) {
+        return 1;                                         # `end`
     }
     if ((mt == 3) && ((slot40 != 1) || (words == 0))) { return 1; }
     if (((mt == 4) || (mt == 6)) && ((slot40 != 2) || (_gp_nonempty(words) == 0))) {
@@ -839,8 +867,9 @@ fn _gp_close_rule(g, rule_acc) {
         # Compose-fenced: no `inner` — captured per-instance from
         # the input bytes between `start` and the next newline.
         # See ADR 0016.
-        vec_push(grammar_compose_fenced_rules(g),
-          compose_fenced_rule_new(start, endp));
+        var fr = compose_fenced_rule_new(start, endp);
+        store64(fr + 32, eind);
+        vec_push(grammar_compose_fenced_rules(g), fr);
         return 0;
     }
     if (mt == 7) {
@@ -860,11 +889,15 @@ fn _gp_close_rule(g, rule_acc) {
     return 0;
 }
 
+# Accumulator slots: 0 kind, 8 match, 16 start, 24 end / end_before,
+# 32 escape, 40 words / inner, 48 slot-40 tag, 56 kind given,
+# 64 start_after, 72 indent, 80 followed_by, 88 not_followed_by,
+# 96 end_indent (2.9.1).
 fn _gp_new_rule_acc() {
-    var r = alloc(96);
+    var r = alloc(104);
     if (r == 0) { return 0; }
     var i = 0;
-    while (i < 96) { store8(r + i, 0); i = i + 1; }
+    while (i < 104) { store8(r + i, 0); i = i + 1; }
     return r;
 }
 
@@ -879,8 +912,24 @@ fn _gp_new_rule_acc() {
 # the grammar itself recursed without bound.
 fn _gp_validate(g) {
     if (grammar_number_sep(g) < 0) { return 1; }
+    # Keys that would be accepted and then do nothing (2.9.1 audit,
+    # reviewer C): a float or datetime shape without decimal numbers, a
+    # lead byte that `ident_start` does not hold.
+    if ((grammar_number_decimal(g) == 0) && (grammar_number_float(g) == 1)) { return 1; }
+    if ((grammar_number_decimal(g) == 0) && (grammar_number_datetime(g) == 1)) { return 1; }
     var st = grammar_ident_start(g);
     var ct = grammar_ident_cont(g);
+    var lt = grammar_ident_lead(g);
+    if (lt != 0) {
+        var lb = 0;
+        while (lb < 256) {
+            if (char_class_match(lt, lb) == 1) {
+                if (st == 0) { return 1; }
+                if (char_class_match(st, lb) == 0) { return 1; }
+            }
+            lb = lb + 1;
+        }
+    }
     # A string prefix is matched as a whole identifier (ADR 0027): one that
     # is not identifier-shaped could never match, so reject it.
     var pv = vec_new();
@@ -1156,6 +1205,65 @@ fn registry_find_by_name(name) {
             if (streq(gn, name) == 1) { return g; }
         }
         i = i + 1;
+    }
+    return 0;
+}
+
+# 1 if cstr `a` is the `bl` bytes at `b`, ignoring ASCII case.
+fn _reg_ieq(a, b, bl) {
+    if (strlen(a) != bl) { return 0; }
+    var i = 0;
+    while (i < bl) {
+        var x = load8(a + i);
+        var y = load8(b + i);
+        if ((x >= 65) && (x <= 90)) { x = x + 32; }
+        if ((y >= 65) && (y <= 90)) { y = y + 32; }
+        if (x != y) { return 0; }
+        i = i + 1;
+    }
+    return 1;
+}
+
+# The grammar a code-fence tag names (2.9.1, ADR 0016): the grammar of
+# that name; else, ignoring ASCII case, the first grammar in registry
+# order whose name is the tag, whose `extensions` hold `.tag`, or whose
+# `shebangs` hold the tag — `Python`, `sh`, `bash`, `cyr`, `js`, `node`.
+# Through 2.9.0 only an exact name resolved: 3,679 of the 7,607 tagged
+# fences in one machine's 7,770 markdown files (`sh` and `bash` alone
+# 3,140) came back as one plain string.
+fn registry_find_fence_tag(tag) {
+    if (tag == 0) { return 0; }
+    var g = registry_find_by_name(tag);
+    if (g != 0) { return g; }
+    var tl = strlen(tag);
+    if (tl == 0) { return 0; }
+    registry_init();
+    var n = vec_len(_registry);
+    var pass = 0;
+    while (pass < 3) {
+        var i = 0;
+        while (i < n) {
+            var gg = vec_get(_registry, i);
+            if ((pass == 0) && (grammar_name(gg) != 0)) {
+                if (_reg_ieq(grammar_name(gg), tag, tl) == 1) { return gg; }
+            }
+            var v = 0;
+            if (pass == 1) { v = grammar_extensions(gg); }
+            if (pass == 2) { v = grammar_shebangs(gg); }
+            var e = 0;
+            while ((v != 0) && (e < vec_len(v))) {
+                var w = vec_get(v, e);
+                if (pass == 1) {
+                    if ((load8(w) == 46) && (_reg_ieq(w + 1, tag, tl) == 1)) { return gg; }
+                }
+                if (pass == 2) {
+                    if (_reg_ieq(w, tag, tl) == 1) { return gg; }
+                }
+                e = e + 1;
+            }
+            i = i + 1;
+        }
+        pass = pass + 1;
     }
     return 0;
 }

@@ -15,6 +15,7 @@
 # Exit: 0 when no file differs and nothing was overwritten.
 set -eu
 
+AUDIT_CWD=$(pwd)
 cd "$(dirname "$0")/../.."
 . scripts/audit/common.sh
 
@@ -41,10 +42,9 @@ if ! CYRIUS_POISON=1 cyrius build src/main.cyr build/vyk-poisonA > build/vyk-poi
     exit 1
 fi
 
-T=$(mktemp -d)
-trap 'rm -rf "$T"' EXIT INT TERM
+audit_tmpdir
 
-audit_files "$@" > "$T/list"
+audit_list "$T/list" "$@" || exit $?
 
 n=0; diffs=0; overwrites=0; timeouts=0
 while IFS= read -r f; do

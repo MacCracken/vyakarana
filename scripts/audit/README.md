@@ -11,14 +11,18 @@ Run each from anywhere; each `cd`s to the repo root and builds what it
 needs (the harness is always rebuilt, so a stale one cannot report
 another tree's bugs). FILE arguments may be files, directories
 (searched, skipping `.git/` and `node_modules/`) or `-` for a list of
-paths on stdin. Each exits non-zero when it finds a failure.
+paths on stdin; relative paths are taken from where you ran the
+script. A missing argument, or nothing to check, exits 2 — through
+2.9.0 a mistyped path reported a clean sweep of zero files. Each exits
+1 when it finds a failure. All of them run under dash, mawk and
+busybox as well as bash and gawk.
 
-| Script | Checks | Input | Clean at 2.9.0 |
+| Script | Checks | Input | Clean at 2.9.1 |
 |---|---|---|---|
-| `coverage-sweep.sh` | `vyk FILE` over real files: every NDJSON line a token of a known kind, tokens tiling the file (the coverage invariant), exit 1 if and only if an error token, no crash, no timeout | real files | 4,500 files (4,418 with a grammar), 12.05 M tokens, 0 fails, 2 m 43 s |
-| `poison-ab.sh` | two `CYRIUS_POISON` builds (fill 0xA5 / 0x5A) print the same bytes and exit for every file — no output depends on unwritten memory; exit 86 is a redzone overwrite | real files | 2,949 files, 0 diffs, 0 overwrites, 1 m |
-| `stream-sweep.sh` | chunked feeds equal one feed (ADR 0017 / 0028). No FILE: the every-offset split over all 49 corpora, the heredoc shapes under every offset and every pair of offsets, and twelve generated stress inputs under a time limit. With FILEs: `chunks`, `rand` and `cutfirst` per file | corpora + `shapes/`, or real files | fixed set 159 runs, 0 fails, 5 m 30 s; 879 real files 2,637 runs, 0 fails, 1 m |
-| `mutate-fuzz.sh` | mutants of real code (bytes overwritten; quote, comment, heredoc and compose markers inserted; ranges deleted or duplicated) tile their bytes and match one feed under random chunking | vidya's `content/` by default | 976 files, 48,800 mutants, 0 fails, 5 m 15 s (vidya `f753c5a`) |
+| `coverage-sweep.sh` | `vyk FILE` over real files: every NDJSON line a token of a known kind, tokens tiling the file (the coverage invariant), exit 1 if and only if an error token, no crash, no timeout; files over the CLI's 1 MiB cap are counted, not failed (`stream-sweep.sh` takes them through the library) | real files | 4,500 files (2.6.x list): 0 fails; 5,166 sampled per grammar (2.9.x list): 0 fails, 4 over the cap |
+| `poison-ab.sh` | two `CYRIUS_POISON` builds (fill 0xA5 / 0x5A) print the same bytes and exit for every file — no output depends on unwritten memory; exit 86 is a redzone overwrite | real files | 5,166 files, 0 diffs, 0 overwrites |
+| `stream-sweep.sh` | chunked feeds equal one feed (ADR 0017 / 0028). No FILE: the every-offset split over all 49 corpora, the heredoc shapes under every offset and every pair of offsets, and twelve generated stress inputs under a time limit. With FILEs: `chunks`, `rand` and `cutfirst` per file | corpora + `shapes/`, or real files | fixed set 164 runs, 0 fails, about 6 m; 2,384 real files 6,702 runs, 0 fails |
+| `mutate-fuzz.sh` | mutants of real code (bytes overwritten; quote, comment, heredoc and compose markers inserted; ranges deleted or duplicated) tile their bytes and match one feed under random chunking | vidya's `content/` by default | 976 files, 97,600 mutants (`-i 100`), 0 fails (vidya `f753c5a`) |
 
 `scripts/bench-paired.sh` (one level up) is the latency protocol —
 `performance.md` explains it.
@@ -36,6 +40,11 @@ Built against the 2.7.1 tree, which had the chunking bugs 2.8.0 fixed:
   on 2.7.1) and the 20,000 heredoc openers pass;
 - `mutate-fuzz.sh` fails cyml mutants 99 / 100 and 100 / 100, markdown
   14 / 100, html 5 / 100.
+
+Against 2.9.0 (2.9.1 audit): the five stress inputs added then — a
+rewritten heredoc delimiter, a fence of mid-line "```", a heredoc line
+held open by `\"`, a blank run in shell, a Zig `\\` string line — each
+time out at 10 s; 2.9.1 takes well under one.
 
 `coverage-sweep.sh` was checked against stub binaries (a gap, an
 unknown kind, exit 1 without an error token, a crash, a hang): each is

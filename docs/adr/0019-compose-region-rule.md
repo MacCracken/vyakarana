@@ -85,7 +85,10 @@ Semantics, and how each differs from `compose`:
   immediately before it and the marker bytes are left at the
   cursor for the outer grammar. No end token is emitted, because
   the terminator was never the region's to consume. An empty or
-  absent `end_before` means "always run to EOF".
+  absent `end_before` means "always run to EOF". *(2.5.2 to 2.9.0
+  rejected such a rule — a blanket "`end` required" check — so this
+  case, and the drain's until-finish hold for it, were unreachable;
+  restored in 2.9.1.)*
 - `inner` — grammar name, resolved through the registry exactly as
   `compose` does, with the same graceful degrade to a single
   TK_STRING when the grammar is missing.

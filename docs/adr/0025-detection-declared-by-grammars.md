@@ -69,7 +69,14 @@ What the declarations mean:
   +192, `grammar_filenames(g)`) — a path ending in the name matches
   (`Dockerfile`, `ci/app.Dockerfile`), and so does a basename
   `<name>.<anything>` (`Dockerfile.dev`, `Makefile.am`) when no
-  extension matched first.
+  extension matched first. *(Amended 2.9.1: the ending must start
+  the path or follow `/`, `.`, `-` or `_` — `notaMakefile` was a
+  makefile; and the `<anything>` must start with a letter and its
+  last dot component must not be a compression, patch or tool suffix
+  — `gz bz2 xz zst lz lz4 lzma z br zip 7z tar tgz rej patch diff
+  dockerignore cmake`. On one machine that changed 2 of 239 matching
+  files, the man page and CMake's file below; the 237 others,
+  `Makefile.in.in` and `Makefile.orig` included, route as before.)*
 - `shebangs` — interpreter basenames, prefix-matched (`python3`,
   `bash5`). A grammar that lists any must have `shebang = true`, so
   the line it was detected by is one token.
@@ -138,6 +145,9 @@ before.
   binary) tokenizes as Dockerfile with error tokens, and CMake's
   `Makefile.cmake` and source-highlight's `makefile.lang` tokenize
   cleanly but wrongly as makefile. 2.6.1 refused all three (exit 4).
+  *(2.9.1: the first two are refused again; `makefile.lang` is still
+  routed — `.lang` is one program's convention, and a list of every
+  such suffix has no end.)*
 
 ### When to revisit
 

@@ -207,8 +207,7 @@ fn _ds_try_line_rules(g, src, src_len, i, prev0) {
 #
 # Recursion: `tokenize_with_grammar` itself runs compose-rule
 # step (step 0 below), so embedded grammars that themselves
-# have compose rules nest correctly. Real-world depth is ≤2
-# (HTML <script> with a JS template literal containing CSS, say).
+# have compose rules nest correctly, up to DS_MAX_DEPTH (2.9.1).
 #
 # See ADR 0013 for the design.
 # ── Per-call scanner state (2.5.2) ─────────────────────────────────
@@ -226,14 +225,26 @@ var _ds_inner_pool = 0;
 var _ds_nolf_gen = 0;
 var _ds_nolf_from = 0;
 
+# Compose nesting cap (2.9.1). Two grammars whose compose_region rules
+# route into each other (a consumer's own `.cyml`; `_gp_validate` only
+# refuses a grammar composing itself) recursed once per region —
+# `--- ` x 20,000 (80 KB) overflowed the stack (2.9.1 audit, reviewer C).
+# Past this depth a body degrades to one string span, as for a missing
+# inner grammar. The bundled grammars nest three deep at most (cyml →
+# markdown → html → css).
+var DS_MAX_DEPTH = 32;
+
 # Scratch tokenbuf for a compose body's inner tokens at the current
-# nesting depth, emptied for reuse; 0 if it cannot be allocated.
+# nesting depth, emptied for reuse; 0 if it cannot be allocated, or
+# when the body would nest past DS_MAX_DEPTH — every caller then emits
+# the body as one string span.
 # Each compose match used to allocate a fresh one, and the bump
 # allocator never frees: `<style>a</style>` x 65,000 (1 MB) took
 # 57.8 MB of heap (2.5.2 audit P3-e). Safe to reuse because every
 # caller copies the inner tokens out before returning, and a nested
 # call runs one depth deeper, on its own slot.
 fn _ds_inner_tb() {
+    if (_ds_depth >= DS_MAX_DEPTH) { return 0; }
     if (_ds_inner_pool == 0) {
         _ds_inner_pool = vec_new();
         if (_ds_inner_pool == 0) { return 0; }
@@ -267,7 +278,7 @@ fn _ds_try_compose_rules(g, src, src_len, i, tb) {
             # to EOF: `<style>` x 150k with no `</style>` (1 MiB html)
             # ran past 300 s (2.5.2 audit P2-5).
             if ((load64(r + 24) == _ds_cur_gen) && (body_start >= load64(r + 32))) {
-                _ds_cp_hold(i, 3, endp);
+                _ds_cp_hold(i, 3, endp, 0);
                 return 0;
             }
             var j = body_start;
@@ -318,7 +329,7 @@ fn _ds_try_compose_rules(g, src, src_len, i, tb) {
             # starts share a prefix (no bundled grammar).
             store64(r + 24, _ds_cur_gen);
             store64(r + 32, body_start);
-            _ds_cp_hold(i, 3, endp);
+            _ds_cp_hold(i, 3, endp, 0);
             return 0;
         }
         r_i = r_i + 1;
@@ -369,8 +380,8 @@ fn _ds_try_compose_region_rules(g, src, src_len, i, tb) {
             # Running into the buffer's end is not the EOF case until the
             # stream finishes: hold it (2.8.0).
             if (found == 0) {
-                if (elen > 0) { _ds_cp_hold(i, 3, endb); }
-                if (elen == 0) { _ds_cp_hold(i, 4, 0); }
+                if (elen > 0) { _ds_cp_hold(i, 3, endb, 0); }
+                if (elen == 0) { _ds_cp_hold(i, 4, 0, 0); }
             }
             if (found == 1) { _ds_grp_add(i, body_end); }
             tokenbuf_push(tb, TK_PUNCTUATION, i, slen);
@@ -432,8 +443,10 @@ fn _ds_is_tag_byte(b) {
 #   <tag>        [A-Za-z0-9_+-]+ (captured language identifier)
 #   <info-tail>  ignored bytes up to first \n
 #   <body>       routed through grammar named by <tag>
-#   <end>        literal, e.g. "```"; matches at start-of-line
-#                or end-of-buffer
+#                (`registry_find_fence_tag`: a name, an extension,
+#                or an interpreter — 2.9.1)
+#   <end>        literal, e.g. "```"; matches at start-of-line,
+#                or after the rule's `end_indent` bytes (2.9.1)
 #
 # Pipeline placement: same step 0 region as compose, executed
 # before the regular pair / line / words steps so the outer
@@ -490,22 +503,36 @@ fn _ds_scan_to_lf(src, src_len, start) {
 }
 
 # Find the closing fence — earliest offset in [body_start, src_len)
-# where the end marker appears at start-of-line (or == body_start
-# for an empty-body fence). Returns the offset, or (0 - 1) if no
-# match.
-fn _ds_find_fenced_close(src, src_len, body_start, endp, elen) {
-    var close_pos = (0 - 1);
+# where the end marker starts a line (body_start counts: it follows the
+# open line's LF), or follows a run of the rule's `end_indent` bytes
+# from the line start. Returns the offset, or (0 - 1) if no match.
+#
+# markdown's `end_indent` is space, tab and `>` (2.9.1): a fence in a
+# list item (`   ```sh` … `   ````) or a blockquote (`> ```c` … `> ````)
+# closes at its own closer. Through 2.9.0 the closer had to be in column
+# 0, so such a fence ran on to the next column-0 fence and took its
+# opener as the close, pairing every later fence in the document one
+# off. The candidates depend only on position — a line start plus such
+# a run — never on the opener, so the no-closer watermark's subset
+# argument still holds.
+fn _ds_find_fenced_close(src, src_len, body_start, endp, elen, ind) {
     var j = body_start;
-    while ((j + elen <= src_len) && (close_pos < 0)) {
-        var line_start = 0;
-        if (j == body_start) { line_start = 1; }
-        if ((j > 0) && (load8(src + j - 1) == 10)) { line_start = 1; }
-        if ((line_start == 1) && (memeq(src + j, endp, elen) == 1)) {
-            close_pos = j;
+    var at_start = 1;
+    while (j + elen <= src_len) {
+        if (at_start == 1) {
+            if (memeq(src + j, endp, elen) == 1) { return j; }
         }
-        if (close_pos < 0) { j = j + 1; }
+        var b = load8(src + j);
+        if (b == 10) { at_start = 1; }
+        if (b != 10) {
+            if (ind == 0) { at_start = 0; }
+            if (ind != 0) {
+                if (_ds_byte_in(ind, b) == 0) { at_start = 0; }
+            }
+        }
+        j = j + 1;
     }
-    return close_pos;
+    return 0 - 1;
 }
 
 fn _ds_try_compose_fenced_rules(g, src, src_len, i, tb) {
@@ -526,7 +553,7 @@ fn _ds_try_compose_fenced_rules(g, src, src_len, i, tb) {
             var tag_start = i + slen;
             var tag_end = _ds_scan_tag(src, src_len, tag_start);
             var nl_pos  = _ds_scan_to_lf(src, src_len, tag_end);
-            if (nl_pos >= src_len) { _ds_cp_hold(i, 2, 0); }
+            if (nl_pos >= src_len) { _ds_cp_hold(i, 2, 0, 0); }
 
             if (nl_pos < src_len) {
                 # Real fence: has a closing LF on the open line.
@@ -545,13 +572,18 @@ fn _ds_try_compose_fenced_rules(g, src, src_len, i, tb) {
                 }
                 if (fen_known_none == 0) {
                     close_pos = _ds_find_fenced_close(src, src_len,
-                      body_start, endp, elen);
+                      body_start, endp, elen,
+                      compose_fenced_rule_end_indent(r));
                     if (close_pos < 0) {
                         store64(r + 16, _ds_cur_gen);
                         store64(r + 24, body_start);
                     }
                 }
-                if (close_pos < 0) { _ds_cp_hold(i, 3, endp); }
+                if (close_pos < 0) {
+                    var flead = compose_fenced_rule_end_indent(r);
+                    if (flead == 0) { flead = 1; }
+                    _ds_cp_hold(i, 3, endp, flead);
+                }
                 if (close_pos >= 0) {
                     # Resolve inner grammar from captured tag.
                     var tag_len = tag_end - tag_start;
@@ -567,7 +599,7 @@ fn _ds_try_compose_fenced_rules(g, src, src_len, i, tb) {
                         }
                         if (tag_buf != 0) {
                             store8(tag_buf + tag_len, 0);
-                            inner_g = registry_find_by_name(tag_buf);
+                            inner_g = registry_find_fence_tag(tag_buf);
                         }
                     }
 
@@ -675,6 +707,7 @@ fn _ds_try_pair_rules(g, src, src_len, i) {
 # buffer, stamped with the scan's generation (2.8.0).
 var _ds_pair_eof_gen = 0;
 var _ds_pair_eof_end = 0;
+var _ds_pair_eof_esc = 0;   # that string's escape byte, 0 = none (2.9.1)
 
 # As `_ds_try_pair_rules`; `noesc` = 1 ignores the rule's escape byte
 # (a raw-string prefix, ADR 0027: Rust's `r"C:\"` ends at its quote).
@@ -709,6 +742,7 @@ fn _ds_try_pair_rules_x(g, src, src_len, i, noesc) {
             var len_eof = src_len - i;
             _ds_pair_eof_gen = _ds_cur_gen;
             _ds_pair_eof_end = endp;
+            _ds_pair_eof_esc = esc;
             return (pair_rule_kind(r) << 56) | len_eof;
         }
         r_i = r_i + 1;
@@ -1092,7 +1126,12 @@ var _ds_hd_hold_dpos = 0;
 var _ds_hd_hold_dlen = 0;
 var _ds_hd_hold_ind = 0;
 var _ds_hd_hold_body = 0;
+# With _ds_hd_hold_dpos = -1: the delimiter's bytes, which quote removal
+# rewrote into the scratch slot (valid until this depth's next scan; the
+# drain copies them at once). 2.9.1.
+var _ds_hd_hold_dptr = 0;
 var _ds_hd_hold_marker = 0;   # with _ds_hd_hold_fast = 3: the close to wait for (2.8.0)
+var _ds_hd_hold_esc = 0;      #   and its escape byte: an escaped close is no close (2.9.1)
 
 # The last depth-1 heredoc GROUP fully emitted — the opener line's first
 # `<<` through the end of its last body token. Every token in it is
@@ -1146,13 +1185,21 @@ fn _ds_grp_add(from, to) {
 var _ds_cp_hold_from = (0 - 1);
 var _ds_cp_hold_mode = 0;
 var _ds_cp_hold_marker = 0;
+# Where a mode-3 marker counts (2.9.1): 0 anywhere (`</style>`, a cyml
+# region's `\n[[`); 1 only at a line start; else a cstr of the bytes
+# that may come between the line start and it (a fence's `end_indent`).
+# Through 2.9.0 a fence's watch fired on every mid-line "```" and
+# re-scanned the whole held fence each time: 1 MB of `s = "```" + x`
+# lines in 4 KB chunks took 36 s (2.9.1 audit, reviewer B, F3).
+var _ds_cp_hold_lead = 0;
 
-fn _ds_cp_hold(i, mode, marker) {
+fn _ds_cp_hold(i, mode, marker, lead) {
     if (_ds_depth != 1) { return 0; }
     if ((_ds_cp_hold_from < 0) || (i < _ds_cp_hold_from)) {
         _ds_cp_hold_from = i;
         _ds_cp_hold_mode = mode;
         _ds_cp_hold_marker = marker;
+        _ds_cp_hold_lead = lead;
     }
     return 0;
 }
@@ -1182,6 +1229,23 @@ var _ds_hdi_pool = 0;
 # here; a plain or singly-quoted one points into `src`.
 var DS_HD_DELIM_MAX = 255;
 var _ds_hd_dpool = 0;
+
+# 1 if queue entry `e`'s delimiter lies inside src[0..src_len) — the
+# drain's terminator watch takes it as an offset into its buffer. A
+# delimiter that quote removal rewrote (`<<"E"OF`, `<<E\OF`) lives in
+# the per-depth scratch slot instead, a separate allocation; the opener
+# path already gated its fast path on that (`dcontig`), the body step
+# did not, and handed the drain a heap address minus `src` as an offset:
+# the watch then compared new lines against bytes outside its buffer —
+# never firing, or faulting (2.9.1 audit, reviewers A and B). Such a
+# delimiter is now reported as offset -1 plus its address
+# (`_ds_hd_hold_dptr`), and the drain watches a copy of it.
+fn _ds_hd_in_src(e, src, src_len) {
+    var d = load64(e);
+    if (d < src) { return 0; }
+    if (d + load64(e + 8) > src + src_len) { return 0; }
+    return 1;
+}
 
 fn _ds_hd_dscratch() {
     if (_ds_hd_dpool == 0) {
@@ -1218,6 +1282,7 @@ fn _ds_hd_parse_delim(src, src_len, p, slot) {
     var n = 0;
     var segs = 0;
     var first = (0 - 1);      # src offset of the first delimiter byte
+    var contig = 1;           # every byte so far at src[first + its index]
     var quoted = 0;
     var go = 1;
     var rc = 0;
@@ -1248,6 +1313,7 @@ fn _ds_hd_parse_delim(src, src_len, p, slot) {
                 }
                 if (closed == 0) {
                     if (first < 0) { first = q; }
+                    if (first + n != q) { contig = 0; }
                     if (n < DS_HD_DELIM_MAX) { store8(slot + n, c); }
                     n = n + 1;
                     q = q + 1;
@@ -1265,6 +1331,7 @@ fn _ds_hd_parse_delim(src, src_len, p, slot) {
             if (x == 10) { go = 0; }
             if (x != 10) {
                 if (first < 0) { first = p + 1; }
+                if (first + n != p + 1) { contig = 0; }
                 if (n < DS_HD_DELIM_MAX) { store8(slot + n, x); }
                 n = n + 1;
                 p = p + 2;
@@ -1274,24 +1341,27 @@ fn _ds_hd_parse_delim(src, src_len, p, slot) {
             if ((n == 0) && (quoted == 0) && (b >= 48) && (b <= 57)) { return 2; }
             if ((n == 0) || (load8(src + p - 1) == 39) || (load8(src + p - 1) == 34)) { segs = segs + 1; }
             if (first < 0) { first = p; }
+            if (first + n != p) { contig = 0; }
             if (n < DS_HD_DELIM_MAX) { store8(slot + n, b); }
             n = n + 1;
             p = p + 1;
         }
     }
     if ((n == 0) && (quoted == 0)) { return 2; }
-    if (n > DS_HD_DELIM_MAX) { return 2; }
+    # Only a delimiter quote removal rewrote needs the slot, so only it is
+    # capped. Through 2.9.0 every delimiter was (contiguity was judged by
+    # comparing against the capped slot): a 300-byte `<<AAA…` stopped
+    # being a heredoc in 2.7.1 (2.9.1 audit, reviewer A, F2).
+    if ((n > DS_HD_DELIM_MAX) && (contig == 0)) { return 2; }
     _ds_hdd_len = n;
     _ds_hdd_end = p;
     _ds_hdd_ptr = slot;
     _ds_hdd_pos = (0 - 1);
     # The common forms keep pointing into `src` (the drain's terminator
     # watch needs an offset): the decoded bytes are one contiguous run.
-    if ((first >= 0) && (first + n <= src_len)) {
-        if (memeq(src + first, slot, n) == 1) {
-            _ds_hdd_ptr = src + first;
-            _ds_hdd_pos = first;
-        }
+    if ((first >= 0) && (contig == 1)) {
+        _ds_hdd_ptr = src + first;
+        _ds_hdd_pos = first;
     }
     if (n == 0) {
         _ds_hdd_ptr = src + start;
@@ -1397,8 +1467,12 @@ fn _ds_hdi_build(x, src, src_len) {
         }
         store64(x + 16, cap);
     }
+    # Buckets: the next power of two at or above the line count (load
+    # factor <= 1). 2.8.0 doubled that: four u32 arrays of 2n made the
+    # index 52 bytes a line, so a 1 MiB newline flood after one opener
+    # held 60 MB, a 16 MiB one about 0.9 GB (2.9.1 audit). Now 36.
     var b = 16;
-    while (b < n * 2) { b = b * 2; }
+    while (b < n) { b = b * 2; }
     if (b > load64(x + 40)) {
         var hk = 96;
         while (hk <= 120) {
@@ -1558,6 +1632,7 @@ fn _ds_heredoc_open(g, src, src_len, i, hdq, hd_n, in_arith) {
         var undecided = 0;
         var fast_ok = 0;
         var f_dpos = 0;
+        var f_dptr = 0;
         var f_dlen = 0;
         var f_ind = 0;
         var f_body = 0;
@@ -1633,9 +1708,11 @@ fn _ds_heredoc_open(g, src, src_len, i, hdq, hd_n, in_arith) {
                 }
                 if (complete == 0) {
                     undecided = 1;
-                    if ((term < 0) && (lf < src_len) && (dcontig == 1)) {
+                    if ((term < 0) && (lf < src_len)) {
                         fast_ok = 1;
                         f_dpos = ds;
+                        if (dcontig == 0) { f_dpos = (0 - 1); }
+                        f_dptr = dptr;
                         f_dlen = dl;
                         f_ind = ind;
                         f_body = lf + 1;
@@ -1658,6 +1735,7 @@ fn _ds_heredoc_open(g, src, src_len, i, hdq, hd_n, in_arith) {
                 _ds_hd_hold_from = hfrom;
                 _ds_hd_hold_fast = fast_ok;
                 _ds_hd_hold_dpos = f_dpos;
+                _ds_hd_hold_dptr = f_dptr;
                 _ds_hd_hold_dlen = f_dlen;
                 _ds_hd_hold_ind = f_ind;
                 _ds_hd_hold_body = f_body;
@@ -1742,6 +1820,7 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
             var h_hold = 0;
             var h_fast = 0;
             var h_dpos = 0;
+            var h_dptr = 0;
             var h_dlen = 0;
             var h_ind = 0;
             var h_body = 0;
@@ -1754,13 +1833,18 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
                     if (te == (0 - 1)) {
                         h_fast = 1;
                         h_dpos = load64(e) - src;
+                        if (_ds_hd_in_src(e, src, src_len) == 0) { h_dpos = (0 - 1); }
+                        h_dptr = load64(e);
                         h_dlen = load64(e + 8);
                         h_ind = load64(e + 16);
                         h_body = cur;
                     }
                 }
                 if (te >= 0) {
-                    tokenbuf_push(tb, load64(e + 24), cur, te - cur);
+                    # An empty `<<''` body ends at once (its terminator is
+                    # the empty line): no token — a zero-length one broke
+                    # the coverage contract (2.9.1 audit, reviewer B, F6).
+                    if (te > cur) { tokenbuf_push(tb, load64(e + 24), cur, te - cur); }
                     var tdone = 0;
                     if (te < src_len) {
                         if (load8(src + te) == 10) { tdone = 1; }
@@ -1772,6 +1856,8 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
                         h_hold = 1;
                         h_fast = 1;
                         h_dpos = load64(e) - src;
+                        if (_ds_hd_in_src(e, src, src_len) == 0) { h_dpos = (0 - 1); }
+                        h_dptr = load64(e);
                         h_dlen = load64(e + 8);
                         h_ind = load64(e + 16);
                         h_body = cur;
@@ -1798,6 +1884,7 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
                         _ds_hd_hold_from = g_from;
                         _ds_hd_hold_fast = h_fast;
                         _ds_hd_hold_dpos = h_dpos;
+                        _ds_hd_hold_dptr = h_dptr;
                         _ds_hd_hold_dlen = h_dlen;
                         _ds_hd_hold_ind = h_ind;
                         _ds_hd_hold_body = h_body;
@@ -2068,6 +2155,7 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
                   (_ds_pair_eof_gen == _ds_cur_gen) && (_ds_pair_eof_end != 0)) {
                     _ds_hd_hold_fast = 3;
                     _ds_hd_hold_marker = _ds_pair_eof_end;
+                    _ds_hd_hold_esc = _ds_pair_eof_esc;
                 }
             }
         }

@@ -170,15 +170,26 @@ fn _detect_5plus(path, n) {
     return 0;
 }
 
-# A grammar `filenames` entry `name` matches a path that ENDS in it
-# (`Dockerfile`, `ci/app.Dockerfile` — the pre-2.6.2 rule, kept), or
-# whose basename is `name.` + anything (`Dockerfile.dev`,
-# `Makefile.am`, `Makefile.in`; new in 2.6.2). Only reached when no
-# extension matched, so `Makefile.py` is still python.
+# A grammar `filenames` entry `name` matches (ADR 0025):
+#   - a path that ends in it, where it starts the path or follows `/`,
+#     `.`, `-` or `_` (`Dockerfile`, `ci/app.Dockerfile`,
+#     `prod-Dockerfile`). Through 2.9.0 any ending matched, so
+#     `notaMakefile` was a makefile;
+#   - a basename `name.` + a suffix that starts with a letter and whose
+#     last dot component is not a tool's (`_detect_tool_suffix`):
+#     `Dockerfile.dev`, `Makefile.am`, `Makefile.in.in`, `Makefile.orig`
+#     — but not `Dockerfile.5.gz` (a man page), `Makefile.rej`,
+#     `Dockerfile.dockerignore` or `Makefile.cmake`. 2.6.2 took any
+#     suffix; on one machine that misrouted 3 of 124 files (2.9.1 audit).
+# Only reached when no extension matched, so `Makefile.py` is python.
 fn _detect_fname(path, n, name) {
     var nl = strlen(name);
     if (n >= nl) {
-        if (memeq(path + n - nl, name, nl) == 1) { return 1; }
+        if (memeq(path + n - nl, name, nl) == 1) {
+            if (n == nl) { return 1; }
+            var pb = load8(path + n - nl - 1);
+            if ((pb == 47) || (pb == 46) || (pb == 45) || (pb == 95)) { return 1; }
+        }
     }
     var b = n;
     var looking = 1;
@@ -189,6 +200,48 @@ fn _detect_fname(path, n, name) {
     if (b + nl + 1 >= n) { return 0; }
     if (memeq(path + b, name, nl) == 0) { return 0; }
     if (load8(path + b + nl) != 46) { return 0; }         # '.'
+    var c = load8(path + b + nl + 1) | 32;                # ASCII lower
+    if ((c < 97) || (c > 122)) { return 0; }              # `.5`, `.1`, `._x`
+    var d = n;
+    while (load8(path + d - 1) != 46) { d = d - 1; }      # stops at b + nl + 1
+    if (_detect_tool_suffix(path + d, n - d) == 1) { return 0; }
+    return 1;
+}
+
+# 1 if the `len` bytes at `s` (no dot) name a compressed, patch or tool
+# file rather than a variant of a build file, ignoring ASCII case.
+fn _detect_tool_suffix(s, len) {
+    if (_detect_ieq(s, len, "gz") == 1) { return 1; }
+    if (_detect_ieq(s, len, "bz2") == 1) { return 1; }
+    if (_detect_ieq(s, len, "xz") == 1) { return 1; }
+    if (_detect_ieq(s, len, "zst") == 1) { return 1; }
+    if (_detect_ieq(s, len, "lz") == 1) { return 1; }
+    if (_detect_ieq(s, len, "lz4") == 1) { return 1; }
+    if (_detect_ieq(s, len, "lzma") == 1) { return 1; }
+    if (_detect_ieq(s, len, "z") == 1) { return 1; }
+    if (_detect_ieq(s, len, "br") == 1) { return 1; }
+    if (_detect_ieq(s, len, "zip") == 1) { return 1; }
+    if (_detect_ieq(s, len, "7z") == 1) { return 1; }
+    if (_detect_ieq(s, len, "tar") == 1) { return 1; }
+    if (_detect_ieq(s, len, "tgz") == 1) { return 1; }
+    if (_detect_ieq(s, len, "rej") == 1) { return 1; }
+    if (_detect_ieq(s, len, "patch") == 1) { return 1; }
+    if (_detect_ieq(s, len, "diff") == 1) { return 1; }
+    if (_detect_ieq(s, len, "dockerignore") == 1) { return 1; }   # BuildKit's per-Dockerfile ignore file
+    if (_detect_ieq(s, len, "cmake") == 1) { return 1; }          # CMake's generated Makefile.cmake
+    return 0;
+}
+
+# 1 if the `len` bytes at `s` are cstr `w` (lower case), ignoring ASCII case.
+fn _detect_ieq(s, len, w) {
+    if (len != strlen(w)) { return 0; }
+    var i = 0;
+    while (i < len) {
+        var c = load8(s + i);
+        if ((c >= 65) && (c <= 90)) { c = c + 32; }
+        if (c != load8(w + i)) { return 0; }
+        i = i + 1;
+    }
     return 1;
 }
 

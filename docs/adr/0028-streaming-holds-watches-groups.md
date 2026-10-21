@@ -73,6 +73,23 @@ Keep rescan-and-commit, and change who knows what:
    understands string prefixes (and raw prefixes' lack of escapes). A
    watch only ever delays a scan that would have committed nothing — a
    hold is always safe — so none can change a token.
+   *(Amended 2.9.1. The audit's streaming reviewer confirmed that half
+   structurally — every watch returns having committed nothing, or
+   clears itself and falls through to a full scan — and found the
+   other half, "linear", broken four ways, each quadratic on chunked
+   input: a heredoc whose delimiter quote removal rewrote got no
+   working watch (a garbage offset, or none); mode 3 fired on a
+   fence's "```" anywhere though a fence closes only at a line
+   start, and on an escaped `\"`; the run watch refused whitespace in
+   heredoc grammars and line-rule tokens of kinds other than comment.
+   Fixed: the stream keeps a copy of a rewritten delimiter (+192),
+   mode 3 carries where its marker counts and its escape byte (+200,
+   +208; record 216 bytes), the run watch classifies line-rule
+   tokens by origin. The one commit made outside a full scan, the
+   pending-pair fast path, did change tokens: a prefixed triple-quoted
+   string whose body starts with quotes, fed a byte at a time, closed
+   at its own opener — its resume point is clamped to the body start
+   now.)*
 5. **Heredoc terminators are looked up in a per-scan line index**
    (content hashed into buckets of line numbers, walked from a
    forward-only cursor) instead of searched under a budget: linear, and
@@ -97,9 +114,12 @@ Keep rescan-and-commit, and change who knows what:
 - **An unresolved compose region gives no incremental output** until it
   closes: a cyml body running to the end of the document, or an
   unclosed `<style>`, commits only at finish (or past 8 MiB, after which
-  it commits as the outer grammar read it — the documented bound). The
+  the held bytes commit as that drain's scan read them — for `<style>`
+  the outer grammar's reading, for a cyml region the region's own tokens
+  up to the buffer's end; either may differ from a single feed from
+  there on — the documented bound). The
   tokens are the single feed's; only their arrival is later.
-- The stream record grows to 192 bytes (internal); the scanner keeps a
+- The stream record grows to 192 bytes (internal; 216 in 2.9.1); the scanner keeps a
   per-depth line index for heredoc grammars.
 
 ### When to revisit
