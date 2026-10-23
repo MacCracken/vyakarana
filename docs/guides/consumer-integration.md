@@ -25,7 +25,7 @@ project's `cyrius.cyml`:
 ```toml
 [deps.vyakarana]
 git     = "https://github.com/MacCracken/vyakarana.git"
-tag     = "2.9.1"
+tag     = "2.9.2"
 modules = ["dist/vyakarana.cyr"]
 ```
 
@@ -48,7 +48,7 @@ your own `cyrius = "X.Y.Z"` pin silently left `lib/alloc.cyr`
 and friends at their old vintage — vyakarana's own tree ran on
 a 6.0.x-vintage `lib/` from 2.2.2 until that cut caught it.
 By cyrius 6.6.20 a plain `cyrius deps` refreshes a stale `lib/`
-(CHANGELOG 2.4.3; re-checked at 6.7.15). On an older pin,
+(CHANGELOG 2.4.3; re-checked at 6.7.18). On an older pin,
 re-vendor with `rm -rf lib && cyrius deps`.
 
 > **1.11.0 and earlier are broken.** Through 1.11.0 the bundle

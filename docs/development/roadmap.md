@@ -42,7 +42,7 @@ a closeout audit at the end. Each entry ships only when the gates are
 green and, where it adds a gate, that gate is shown to fail on the
 release before.
 
-### 2.9.2 — Literal data gaps *(patch)*
+### 2.9.3 — Literal data gaps *(patch)*
 
 - **Block comments in rust, javascript and typescript** — none of the
   three declares `/* … */` (found in the 2.9.x doc sweep; their corpora
@@ -61,7 +61,7 @@ release before.
   if they read `0 . 1`, give the number step a per-grammar way to skip
   the fraction after a single `.` (an ADR 0026 amendment).
 
-### 2.9.3 — Heredoc line-index memory *(patch)*
+### 2.9.4 — Heredoc line-index memory *(patch)*
 
 - 36 bytes per line of the scan buffer since 2.9.1 (52 in 2.8.0): line
   ends recomputed from the next line's start, and the tab-stripped half
@@ -71,7 +71,7 @@ release before.
   is re-measured, and `stream-sweep.sh`'s heredoc stress inputs keep
   their times.
 
-### 2.9.4 — Variable-length delimiters *(patch)*
+### 2.9.5 — Variable-length delimiters *(patch)*
 
 - One ADR extending the heredoc rule, as ADR 0023 says to, rather than
   a new mechanism: bracket-counted closers (Rust `r#"…"#`, Swift
@@ -83,21 +83,21 @@ release before.
 - Streaming: each new terminator gets a hold and a watch (ADR 0028);
   every-offset and small-feed shapes in `fuzz/chunk_invariance.fcyr`.
 
-### 2.9.5 — Non-identifier string prefixes *(patch)*
+### 2.9.6 — Non-identifier string prefixes *(patch)*
 
 - C# verbatim and interpolated strings — `@"…"` (`""` escapes a quote),
   `$"…"`, `$@"…"` / `@$"…"`. Today `@` and `$` are operators before an
   ordinary string. The scanner has to try such a prefix before the
   operator step; an ADR 0027 amendment.
 
-### 2.9.6 — Number shapes *(patch)*
+### 2.9.7 — Number shapes *(patch)*
 
 - Leading- and trailing-dot floats (`.5`, `1.`) where the language has
   them, and type suffixes as part of the literal (`1.5f`, `10L`, `2j`,
   `1u32`, `1e5f`) — per-grammar `[defaults]` keys, an ADR 0026
   extension. Ranges (`0..10`) and member access (`1.max`) stay split.
 
-### 2.9.7 — Detection for consumers *(patch)*
+### 2.9.8 — Detection for consumers *(patch)*
 
 - `detect_language_registered(path)` — an additive public function that
   walks the registry's declared `extensions` / `filenames` / `shebangs`
@@ -106,14 +106,14 @@ release before.
   languages' routing in `src/lang.cyr` and a second name table in
   `src/highlight.cyr`. Public API — an ADR first (CLAUDE.md §Do not).
 
-### 2.9.8 — New grammars *(patch)*
+### 2.9.9 — New grammars *(patch)*
 
 - NASM (it would retake `.asm`, which 2.6.2 stopped claiming, with ADR
   0015's content vote against GAS), MDX, Lean 4 — each with a corpus
   (vidya's sample, or an ADR 0006 stand-in) and the every-offset sweep.
   Shell variants beyond bash / zsh / sh / dash only if one is asked for.
 
-### 2.9.9 — Tokens inside a long, still-open compose region *(patch)*
+### 2.9.10 — Tokens inside a long, still-open compose region *(patch)*
 
 - Today a `<style>`, fence or cyml body that has not closed yields no
   tokens until it does (ADR 0028's known limit). Make the region
@@ -124,7 +124,7 @@ release before.
   corpora as now, and a long open region's live buffer and latency are
   bounded by the inner grammar's own, not by the region.
 
-### 2.9.10 — Incremental retokenization *(patch)*
+### 2.9.11 — Incremental retokenization *(patch)*
 
 - An edit API for live editors (`retokenize_range` or an edit-feed
   form): re-tokenize from the first token an edit can affect to the
@@ -136,7 +136,7 @@ release before.
   shown to fail on a deliberately broken resync. Additive public API —
   an ADR first; breaking would be 3.0.0.
 
-### 2.9.11 — Closeout audit *(patch)*
+### 2.9.12 — Closeout audit *(patch)*
 
 - The CLAUDE.md hardening step over the arc, with the sweeps from
   `scripts/audit/` over the whole library (their README holds 2.9.1's
@@ -163,5 +163,5 @@ release before.
 | Consumers want parsing, not tokens | Point them at a parser library; vyakarana stops at tokens |
 | Streaming complexity keeps concentrating in the drain (holds, watches, groups, the marker window) | Every drain decision reads scanner-reported state (ADR 0028); every drain change is gated by the every-offset split over all 49 corpora |
 | Gates that pass on inputs too narrow to fail — the recurring theme of the 2.3.4, 2.5.2, 2.6.x and 2.9.x audits | Every new gate is shown to fail against the previous release before it ships |
-| The arc adds public API in patches (2.9.7, 2.9.10) | Additive only, each behind an ADR; a contract break is 3.0.0, not a 2.9.x |
+| The arc adds public API in patches (2.9.8, 2.9.11) | Additive only, each behind an ADR; a contract break is 3.0.0, not a 2.9.x |
 | Resumable regions and incremental retokenization reopen the streaming engine the 2.9.x audit just closed | Last in the arc; each brings its own invariance gate, and the closeout audit follows directly |

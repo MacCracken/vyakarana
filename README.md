@@ -73,7 +73,7 @@ ten.
 # From source — the supported path today
 git clone https://github.com/MacCracken/vyakarana
 cd vyakarana
-cyriusly use 6.7.15                 # match the pin in cyrius.cyml first
+cyriusly use 6.7.18                 # match the pin in cyrius.cyml first
 cyrius deps                         # vendors lib/ from the pinned toolchain
 sh scripts/embed-grammars.sh        # inlines grammars/*.cyml; gitignored
 cyrius build src/main.cyr build/vyk
@@ -138,6 +138,13 @@ was removed in 2.0.0 (ADR 0017).
 ---
 
 ## Status
+
+**2.9.2** (2026-10-23) — toolchain pinned at `cyrius 6.7.18`, with
+token output byte-identical to 2.9.1. `cyrius.cyml` is configuration
+only, its notes moved to
+[distribution.md](docs/development/distribution.md); every living doc
+was brought up to date, and the release tarball now ships
+`dist/vyakarana.deps`. 1123/1123 tests.
 
 **2.9.1** (2026-10-21) — the 2.9.x closeout audit
 ([report](docs/audit/2026-10-21-2.9.x-closeout-audit.md)). Markdown

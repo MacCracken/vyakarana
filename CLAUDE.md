@@ -46,7 +46,7 @@ Through the 6.5.x pins it treated a present `lib/<mod>.cyr` as
 satisfied, so the vendored stdlib silently stayed at whatever
 snapshot first populated it — between 2.2.2 and 2.3.0 `lib/` sat at
 a 6.0.x vintage across two pin bumps. Since 6.6.20 a plain `cyrius
-deps` refreshes it (CHANGELOG 2.4.3; re-checked at 6.7.15 on 2026-10-21).
+deps` refreshes it (CHANGELOG 2.4.3; re-checked at 6.7.18 on 2026-10-23).
 **After any pin change, `rm -rf lib && cyrius deps` anyway** — it
 costs nothing, and an older pin may not refresh.
 

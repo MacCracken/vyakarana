@@ -4,16 +4,48 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-A documentation sweep and the roadmap rework, after the 2.9.1 tag. Token
-output is unchanged (byte-identical on the corpora and the heredoc
-shapes); 1123/1123 tests, fuzz 5/5, lint+fmt exit 0, size budget OK.
+## [2.9.2] — 2026-10-23
+
+Toolchain `6.7.15` → `6.7.18`, `cyrius.cyml` cut back to configuration,
+and a documentation sweep with the roadmap rework. Token output is
+unchanged (byte-identical on the corpora and the heredoc shapes); 1123/1123
+tests, smoke OK, lint+fmt exit 0, fuzz 5/5 (plain, `--poison=ab`,
+`--bounds`), size budget OK, `cyrius distlib --check` clean. No token
+kind, `Token` layout, public-API or grammar change.
 
 ### Changed
 
-- **The roadmap schedules the backlog as the 2.9.x arc** — 2.9.2 to
-  2.9.10, from literal data gaps (including block comments that rust,
+- **Toolchain `6.7.15` → `6.7.18`.** `lib/` re-vendored at the new pin —
+  16 of its 28 files changed (`fmt`, `fs`, `io`, `vec`, `fnptr`, the seven
+  `syscalls*` and four platform variants) — and `cyrius.lock` regenerated;
+  `cyrius deps --locked` and `--verify` clean. No source change: the
+  6.7.16 – 6.7.18 migration notes were checked against the source and
+  nothing reaches it (the enum- and struct-separator rules, statements
+  headed by a value builtin, the network, TLS and fold changes). Measured
+  on the bump alone: output byte-identical to the 6.7.15 binary over 209
+  outputs — all 48 corpus files × 4 modes (NDJSON and the three themes),
+  `--handcoded` on both shell corpora, `--list-kinds`, `--list-languages`
+  and `--export-theme` in 3 formats × 3 palettes — from the default and
+  the DCE build alike. `vyk` 354,792 → 354,800 bytes, the shipped DCE
+  build 260,584 → 260,592 (+8 each); `dist/vyakarana.cyr` changes only in
+  its version line. A plain `cyrius deps` still replaces a stale `lib/`
+  (re-checked: a 6.7.15 tree seeded into `lib/`, all 16 stale files
+  refreshed).
+- **`cyrius.cyml` is configuration only.** Its comment blocks are gone —
+  the `[lib]` module notes, the stdlib footprint's history (`hashmap`
+  dropped, `cyml` folded into `bayan`) and the `[test]` scope note — and
+  one pointer line replaces them. What still holds moved to
+  `docs/development/distribution.md` § The manifest: a table of what each
+  `[lib]` module may use, why the list sits in `[lib]` and not `[build]`,
+  and what each stdlib module is for. The history was already here
+  (2.3.0, 2.5.1). The table corrects one claim: `src/detect.cyr` uses only
+  the stdlib, not `token`.
+- **The roadmap schedules the backlog as the 2.9.x arc** — 2.9.3 to
+  2.9.11, from literal data gaps (including block comments that rust,
   javascript and typescript never declared — found by the sweep) to
-  incremental retokenization, and a closeout audit at 2.9.11.
+  incremental retokenization, and a closeout audit at 2.9.12. It was
+  drafted as 2.9.2 – 2.9.11; the toolchain catch-up took 2.9.2, as
+  catch-ups carry no arc work.
 - **A documentation sweep** brought every living doc and code comment up
   to date: the architecture notes (rule types, record sizes, the module
   list, a corpus table whose counts had drifted), the consumer guide,

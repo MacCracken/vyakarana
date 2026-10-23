@@ -34,7 +34,7 @@ so it can never drift from the pin. *(Amended 2.9.2: it could,
 through the 6.5.x pins — `cyrius deps` treated a `lib/` that already
 existed as satisfied, and this tree's sat at a 6.0.x vintage across
 two pin bumps before 2.3.0. Since 6.6.20 a plain `cyrius deps`
-refreshes it (CHANGELOG 2.4.3; re-checked at 6.7.15); after a pin
+refreshes it (CHANGELOG 2.4.3; re-checked at 6.7.18); after a pin
 move, `rm -rf lib && cyrius deps` all the same — CLAUDE.md §Gates.)*
 
 ## Decision
