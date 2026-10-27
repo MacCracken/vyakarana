@@ -26,10 +26,10 @@ sub-blocks).
 | 0010 | [`char_literal` default](0010-char-literal-default.md)                                    | Accepted (escape forms widened by 0024) | 2026-05-08 |
 | 0011 | [`case_insensitive_keywords` default](0011-case-insensitive-keywords-default.md)         | Accepted | 2026-05-08 |
 | 0012 | [LSP semantic-tokens bridge mapping](0012-lsp-semantic-tokens-bridge.md)                  | Accepted | 2026-05-08 |
-| 0013 | [Grammar composition rule](0013-grammar-composition-rule.md)                              | Accepted | 2026-05-08 |
+| 0013 | [Grammar composition rule](0013-grammar-composition-rule.md)                              | Accepted (unclosed body amended by 0032) | 2026-05-08 |
 | 0014 | [Embedded grammar blobs in the dist bundle](0014-embedded-grammar-blobs.md)                | Accepted (blob encoding amended by 0029) | 2026-05-08 |
 | 0015 | [Content-based language detection](0015-content-based-detection.md)                        | Accepted | 2026-05-08 |
-| 0016 | [`compose_fenced` rule type for markdown fences](0016-compose-fenced-rule.md)              | Accepted | 2026-05-08 |
+| 0016 | [`compose_fenced` rule type for markdown fences](0016-compose-fenced-rule.md)              | Accepted (unclosed fence amended by 0032 in 2.9.10, reverted 2.9.12) | 2026-05-08 |
 | 0017 | [Streaming tokenizer API (2.0)](0017-streaming-api.md)                                     | Accepted | 2026-05-08 |
 | 0018 | [Vendored stdlib snapshot is gitignored, not committed](0018-vendored-stdlib-gitignored.md) | Accepted | 2026-05-27 |
 | 0019 | [`compose_region` rule type for open-ended regions](0019-compose-region-rule.md)           | Accepted | 2026-07-31 |
@@ -41,7 +41,7 @@ sub-blocks).
 | 0025 | [Grammars declare their detection routes; `detect.cyr` stays compiled](0025-detection-declared-by-grammars.md) | Accepted | 2026-10-20 |
 | 0026 | [Number literal shapes: floats, digit separators, datetimes](0026-number-literal-shapes.md) | Accepted | 2026-10-20 |
 | 0027 | [String prefixes, identifier lead bytes, next-byte line rules](0027-prefixes-lead-bytes-next-byte-rules.md) | Accepted | 2026-10-20 |
-| 0028 | [Streaming engine: scanner-reported holds, watches and groups](0028-streaming-holds-watches-groups.md) | Accepted | 2026-10-20 |
+| 0028 | [Streaming engine: scanner-reported holds, watches and groups](0028-streaming-holds-watches-groups.md) | Accepted (supersedes 0023's search budget; open regions stream since 2.9.10, 0032) | 2026-10-20 |
 | 0029 | [Compacted grammar blobs, a POSIX generator, a checked size budget](0029-compacted-blobs-posix-generator-size-budget.md) | Accepted (amends 0014; size limit removed in 2.9.8) | 2026-10-21 |
 | 0030 | [Heredoc rule: computed closers and Ruby / PHP terminators](0030-heredoc-computed-closers.md) | Accepted (extends 0023) | 2026-10-27 |
 | 0031 | [`detect_language_registered`: routing by the registry's declarations](0031-detect-language-registered.md) | Accepted | 2026-10-27 |

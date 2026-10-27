@@ -24,7 +24,10 @@
 #
 # `.asm` is not claimed: it is NASM / MASM / armasm territory, whose
 # `;` comments this grammar does not have (AArch64 GAS uses `//`).
-# Listed until 2.6.2 but never routed (ADR 0025).
+# Listed until 2.6.2 but never routed (ADR 0025). `.asm` belongs to
+# nasm.cyml (2.9.9); `detect_language_combined` sends an `.asm` or
+# `.nasm` file that reads as GNU as to the asm flavour vote above
+# (ADR 0015, amended 2.9.9).
 #
 # Opcodes (`mov`, `bl`, `stp`, `ldp`, `ldrb`, `cmp`, `b.eq`,
 # `ret`, …) and registers (`x0`-`x30`, `w0`-`w30`, `sp`, `pc`,

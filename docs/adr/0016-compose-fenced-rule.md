@@ -1,6 +1,6 @@
 # 0016 — `match = "compose_fenced"` rule type for markdown fences
 
-- **Status:** Accepted
+- **Status:** Accepted — an unclosed fence's reading amended by [ADR 0032](0032-resumable-compose-regions.md) (2.9.10), reverted in 2.9.12
 - **Date:** 2026-05-08
 - **Deciders:** RM (1.13.2 cut)
 - **Relates to:** [ADR 0013](0013-grammar-composition-rule.md)

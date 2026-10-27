@@ -37,7 +37,8 @@ tokenizes the vidya sample cleanly with zero `error` kinds.
 vyakarana picks one thing: a **small, stable token-kind palette**, a
 **CYML grammar format**, and a **streaming tokenizer** that reads
 source once and yields `(kind, start, len)` spans into the caller's
-buffer. Zero copies, zero allocations per token, zero external deps.
+buffer. A token is an offset and a length, never a copy of its text;
+no allocation per token, no external deps.
 
 ---
 
@@ -57,8 +58,8 @@ growth requires a design review.
 | `operator`    | `+`, `==`, `->`, `&&`                 |
 | `punctuation` | `{`, `}`, `,`, `;`, `(`               |
 | `whitespace`  | spaces, tabs, newlines                |
-| `preprocessor`| `#include`, `#define`, `use`/`import` |
-| `error`       | unrecognized input (token lost)       |
+| `preprocessor`| a shebang line, Cyrius `#define`, NASM `%define`, Lean `#eval`, XML `<?…?>` |
+| `error`       | unrecognized input (its bytes are kept, flagged) |
 
 Ten kinds, ten palette slots, done. Themes that want finer distinctions
 (keyword-kind vs. keyword-control, string-regular vs. string-regex) can
@@ -104,8 +105,9 @@ option, missing or invalid value) · 3 I/O error reading the input or
 writing the output · 4 no grammar matched. `vyk --help` and
 [`docs/man/vyk.1`](docs/man/vyk.1) have the details.
 
-`--theme=<name> file.py` previews the grammar via owl's palette
-without running owl; `--handcoded file.sh` exercises the M1 hand-
+`--theme=<name> file.py` renders ANSI colour with one of vyk's
+bundled themes (`default`, `dark`, `none` — the palette contract owl
+also follows) without running owl; `--handcoded file.sh` exercises the M1 hand-
 coded shell oracle for regression diffs.
 
 ---
@@ -113,7 +115,10 @@ coded shell oracle for regression diffs.
 ## Using vyakarana as a library
 
 The 2.0+ public surface is a streaming primitive. Push bytes via
-`_feed`, drain tokens whenever you want, finish to flush:
+`_feed`, drain tokens between feeds, finish to flush. A feed only
+appends: what has not been drained stays in the stream's buffer, so
+feeding without draining caps the total input at `VYK_STREAM_CAP`
+(16 MiB):
 
 ```cyrius
 # After adding a [deps.vyakarana] block to your cyrius.cyml,
@@ -138,6 +143,12 @@ was removed in 2.0.0 (ADR 0017).
 ---
 
 ## Status
+
+**2.10.0** (2026-10-27) — the 2.9.x arc's documentation brought up to
+date: four reviewers checked every guide, example, ADR, man page, script
+header, grammar header and code comment against the code and fixed what
+had gone stale. No change to tokens, the API or the streaming contract;
+`vyk --help` names the 1 MiB input cap. 1495/1495 tests.
 
 **2.9.12** (2026-10-27) — the closeout audit of the 2.9.x arc: four
 reviewers and every audit sweep. A markdown fence with no closer is no

@@ -12,7 +12,7 @@
 # tokenize as TK_IDENT rather than TK_ERROR. A JSON parser layered
 # on top is free to reject.
 #
-# Out of scope (first pass):
+# Notes:
 #   - Fraction / exponent form (`0.1`, `1e5`, `1.5e-3`) is one
 #     number since 2.7.0 (`number_float`, ADR 0026). The sign of a
 #     negative number stays its own `-` operator.

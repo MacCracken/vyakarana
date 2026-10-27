@@ -38,8 +38,9 @@
 #     punctuation list for `.5`-style input, which still splits.
 #   - Timing literals (`100ns`, `2us`, `1dt` — OpenQASM 3 durations).
 #     The number scanner stops at the unit, yielding `number` +
-#     `ident`. Same shape as java.cyml's numeric suffixes; coverage
-#     and the zero-error bar both hold.
+#     `ident`. Unlike java.cyml's suffixes, which join since 2.9.7,
+#     units are not declared here; coverage and the zero-error bar
+#     both hold.
 #   - Bit-string literals (`"1011"` with a width, 3.x). Tokenize as
 #     ordinary strings, which is the right span either way.
 #   - `pragma` / `defcalgrammar` free-text bodies run to end of line

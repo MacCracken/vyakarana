@@ -43,15 +43,14 @@
 #     in the operator list as of 2.3.2, because real GNU `as` from
 #     /usr/lib produced 91 error tokens in a single file without
 #     them. See ADR 0020.)
-#   - `;` line comments (NASM/MASM convention). GAS uses `#`,
-#     which is what vidya's sample uses; if a NASM corpus shows
-#     up, switch the line-comment rule.
 #
 # `.asm` is not claimed: it is NASM / MASM / armasm territory, whose
 # `;` comments this grammar does not have (in GAS `;` separates
 # statements). Listed until 2.6.2 but never routed; forced through
 # here, all 1,611 `;` comment lines in 81 real `.asm` files came out
-# as code. A NASM grammar would take it (ADR 0025).
+# as code (ADR 0025). `.asm` belongs to nasm.cyml (2.9.9);
+# `detect_language_combined` sends an `.asm` or `.nasm` file that reads
+# as GNU as here or to asm_aarch64 (ADR 0015, amended 2.9.9).
 
 [grammar]
 name = "asm_x86_64"
@@ -111,7 +110,7 @@ punctuation = [
 
 # ── Rules ──────────────────────────────────────────────────────────
 
-# GAS line comments. NASM-style `;` could be added in a fork.
+# GAS line comments. NASM's `;` comments are nasm.cyml's.
 [[rules]]
 kind = "comment"
 match = "line"

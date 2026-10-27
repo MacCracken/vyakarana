@@ -23,13 +23,15 @@ to color, inspect, or analyze source files.
 - A grammar format (Cyrius-native CYML) and a loader for it
 - A streaming tokenizer that reads source once and yields zero-copy
   `(kind, start, len)` spans
-- Bundled grammars for a starter set of ten languages
+- Bundled grammars for a starter set of eleven languages (§7; 49
+  bundled since 2.9.9)
 - A demo CLI (`vyk`) for inspecting grammar behavior
 
 **Out of scope:**
 - Parsing (structural tree, AST) — vyakarana stops at the token level
 - Semantic analysis (name resolution, type-checking)
-- Incremental / edit-driven retokenization (post-v1)
+- Incremental / edit-driven retokenization (post-v1; shipped in
+  2.9.11 as `tokenize_doc_edit` — ADR 0033)
 - Language servers, formatters, linters
 
 ---
@@ -144,12 +146,17 @@ escape = "\\"
 
 [[rules]]
 kind = "keyword"
+match = "words"
 words = ["if", "then", "else", "fi", "for", "while", "do", "done", "case", "esac"]
 ```
 
 `extensions`, `shebangs` and (2.6.2) `filenames` declare which paths
-and interpreters `src/detect.cyr` routes to the grammar. Detection is
-compiled; tests hold the two equal (ADR 0025).
+and interpreters `src/detect.cyr` routes to the grammar. Detection of
+the bundled grammars is compiled, and tests hold the two equal (ADR
+0025); `detect_language_registered` (2.9.8, ADR 0031) also routes a
+consumer's own grammars by these declarations. A grammar that tokenizes
+also needs a `[defaults]` table — `grammars/json.cyml` is a small
+complete one.
 
 Rule types (M2 set):
 
@@ -190,7 +197,10 @@ streaming guarantee is a non-functional
 requirement: token production for line N must not depend on reading
 line N+k for any k > 0 (except when a token itself spans multiple
 lines, e.g. a multi-line string — and then production happens at the
-closing marker).
+closing marker). (As built, a few constructs whose reading depends on
+their closer are held whole until it arrives — a markdown fence, a
+heredoc group — and their tokens follow it; `docs/development/state.md`
+lists them.)
 
 ---
 
@@ -211,7 +221,10 @@ Starter set (ships in M3):
 - markdown
 
 Each grammar's test corpus is its `content/lexing_and_parsing/<lang>.*`
-sample from `vidya`. A grammar passes when:
+sample from `vidya`. (As built: vidya's `lexing_and_parsing/` has samples for 12 of the 49
+grammars and cyml's two corpora come from elsewhere in vidya; the rest
+use hand-written `concept.<ext>` stand-ins — ADR 0006 — and
+`tests/corpus/` is a checked-in snapshot, ADR 0001.) A grammar passes when:
 
 1. Tokenizing the vidya sample produces zero `error` tokens
 2. Concatenating every token's bytes reproduces the vidya sample
@@ -280,7 +293,9 @@ rendering is owl's job.
 Two-way:
 
 - **vidya supplies corpus.** `content/lexing_and_parsing/*` is the
-  canonical test corpus for every bundled grammar.
+  canonical test corpus for every bundled grammar it has a sample
+  for (12 of 49, plus cyml from elsewhere in vidya; `concept.<ext>`
+  stand-ins cover the rest — ADR 0006).
 - **vyakarana renders vidya.** vidya's reference-library pages that
   show code samples can route through vyakarana for tokenization; a
   rendering layer (owl for terminal, a future web layer for the GUI)
@@ -289,7 +304,9 @@ Two-way:
 This relationship means vyakarana **cannot** depend on vidya at the
 build level (cycles are forbidden), but vidya content drives
 vyakarana's tests. Keep the corpus in vidya; mirror it for tests via
-a vendor-copy or submodule pattern once M3 lands.
+a vendor-copy or submodule pattern once M3 lands. (It is a vendor
+copy: `tests/corpus/`, re-synced by hand — ADR 0001 and
+`tests/corpus/README.md`.)
 
 ---
 

@@ -1,6 +1,6 @@
 # ADR 0013 — Grammar composition rule
 
-- **Status:** Accepted
+- **Status:** Accepted — an unclosed body's reading amended by [ADR 0032](0032-resumable-compose-regions.md) (2.9.10)
 - **Date:** 2026-05-08
 - **Deciders:** 1.11.1 grammar-composition work / user (accepted)
 - **Relates to:** [ADR 0005](0005-m2-rule-type-scope.md)

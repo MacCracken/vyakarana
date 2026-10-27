@@ -63,7 +63,7 @@ adds a gate, that gate is shown to fail on the release before.
 |---|---|
 | A grammar needs a distinction the ten kinds cannot express | Defer adding a kind; check whether a theme can distinguish by token text first |
 | Consumers want parsing, not tokens | Point them at a parser library; vyakarana stops at tokens |
-| Streaming complexity keeps concentrating in the drain (holds, watches, groups, the marker window) | Every drain decision reads scanner-reported state (ADR 0028); every drain change is gated by the every-offset split over all 52 corpora |
+| Streaming complexity keeps concentrating in the drain (holds, watches, groups, the marker window) | Every drain decision reads scanner-reported state (ADR 0028); every drain change is gated by `fuzz/chunk_invariance.fcyr` (all 52 corpora at 8 chunk sizes and two-feed splits every 37 bytes, 92 shapes at every offset) and swept by `stream-sweep.sh`'s every-offset split of every corpus at each audit |
 | Gates that pass on inputs too narrow to fail — the recurring theme of the 2.3.4, 2.5.2, 2.6.x, 2.9.x and 2.9.12 audits | Every new gate is shown to fail against the previous release before it ships, and against deliberately broken code |
 | A change that reads a construct further than before — to the end of the input — swallows real documents without an error token (2.9.10's fences, the 2.9.12 audit) | `scripts/audit/ab-sweep.sh` over real files before it ships, read by largest token, not only by error count |
 | Public API added in patches (2.9.8, 2.9.11) | Additive only, each behind an ADR; a contract break is 3.0.0 |

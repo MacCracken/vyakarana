@@ -85,7 +85,7 @@ jobs:
           for f in scripts/audit/*.sh scripts/bench-paired.sh; do sh -n "$f"; done
 
       # Fuzz harnesses. Random / adversarial inputs through the
-      # streaming API, the three detect_language* entries, and the
+      # streaming API, the four detect_language* entries, and the
       # CYML grammar parser, all holding the documented invariants
       # (coverage, no crash, registered-name return).
       #

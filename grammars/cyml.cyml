@@ -43,8 +43,10 @@
 # across nine minor releases (1.9 through 2.3).
 #
 # Stand-in corpus: NOT a stand-in! `tests/corpus/dependencies.cyml`
-# is a real vidya snapshot from
-# `vidya/content/cyrius/dependencies.cyml` (233 lines). First
+# is a real vidya snapshot of `vidya/content/cyrius/dependencies.cyml`
+# — 233 lines, kept on purpose while vidya's copy grows — and
+# `tests/corpus/phase_d.cyml` one of
+# `vidya/content/cyrius/field_notes/mabda_v3_gpu/phase_d.cyml`. First
 # bundled grammar where vidya already shipped a sample for the
 # language.
 #

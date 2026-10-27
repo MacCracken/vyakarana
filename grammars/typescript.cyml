@@ -15,7 +15,7 @@
 #   - Regex literals `/pat/flags`. Context-sensitive vs. division.
 #     The vidya sample has zero regex; not blocking.
 #   - JSX / TSX elements (`.tsx`). Not included in extension mapping;
-#     a JSX rule set is a future grammar, not this one.
+#     no bundled grammar covers them.
 
 [grammar]
 name = "typescript"

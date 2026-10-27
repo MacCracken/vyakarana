@@ -172,7 +172,8 @@ fn _td_fail(d) {
 }
 
 # A hold gave up at its bound while the text streamed (+280; a heredoc
-# group over 1 MiB, a compose body over 8 MiB that is one token): those
+# group over 1 MiB, or a compose hold over 8 MiB — a fence waiting for
+# its closer, an inline literal, a body that is one token): those
 # bytes committed as a drain read them, which one feed would not. So the
 # text is tokenized in one feed instead, and the document keeps no
 # checkpoint but the first — the next edit streams from the start and

@@ -1,6 +1,6 @@
 # 0030 — Heredoc rule: computed closers and Ruby / PHP terminators
 
-- **Status:** Accepted
+- **Status:** Accepted (extends [ADR 0023](0023-heredoc-rule.md))
 - **Date:** 2026-10-27
 - **Deciders:** 2.9.5 variable-length-delimiter work (proposed) / user
   (accepted via the 2.9.5 roadmap entry)

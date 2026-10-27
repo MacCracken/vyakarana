@@ -31,9 +31,9 @@
 # Known gaps:
 #   - **Nested block comments** `#= a #= b =# c =#`. Spec says
 #     they nest; our pair scanner is greedy and closes at the
-#     first `=#`. Outer `c =#` becomes stray tokens. Same
-#     scanner-shape limitation as Lua's `[==[...]==]` long
-#     brackets. Documented; revisit if a corpus surfaces real
+#     first `=#`. Outer `c =#` becomes stray tokens. haskell,
+#     ocaml, rust, swift and lean document the same nesting
+#     limit. Documented; revisit if a corpus surfaces real
 #     nesting.
 #   - **Unicode operators** like `≠`, `≤`, `≥`, `∈`, `∪`. Tokenize
 #     as TK_IDENT (since unicode_ident=true). Theme can re-pair

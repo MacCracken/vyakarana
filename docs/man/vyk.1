@@ -8,7 +8,7 @@
 .\" file, which is how the .TH line sat at 1.13.1 across the whole
 .\" 2.x line.  Smoke probes `--help` output, never this page.
 .\"
-.TH VYK 1 "2026-10-27" "vyakarana 2.9.12" "User Commands"
+.TH VYK 1 "2026-10-27" "vyakarana 2.10.0" "User Commands"
 .SH NAME
 vyk \- source-code tokenizer (vyakarana demo CLI)
 .SH SYNOPSIS
@@ -42,7 +42,7 @@ or
 after any UTF-8 BOM), and two asm votes: GNU as x86-64 or AArch64 for
 .IR .s / .S ,
 and GNU as or NASM for
-.IR .asm .
+.IR .asm " and " .nasm .
 Override with
 .B \-\-language=<name>\fR.
 .PP
@@ -128,9 +128,9 @@ for syntax.
 .B 3
 I/O error: cannot read
 .I FILE
-(not found, not readable, or over the 1 MiB CLI cap), or cannot
-write the output (a full disk, a closed or failing standard
-output).
+(not found, not readable, or larger than 1,048,574 bytes, the CLI's
+cap of 1 MiB less two), or cannot write the output (a full
+disk, a closed or failing standard output).
 .TP
 .B 4
 No grammar matched

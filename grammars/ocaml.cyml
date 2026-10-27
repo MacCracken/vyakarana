@@ -27,9 +27,8 @@
 #
 # Known gaps (not triggered by the stand-in):
 #   - Quoted strings `{|…|}` and `{tag|…|tag}`. Not in the
-#     stand-in. Variable-length-delimiter form — same scanner-
-#     shape gap as Lua's `[==[…]==]`, Ruby/PHP heredocs, Swift
-#     raw strings.
+#     stand-in. A tagged closer, the shape ADR 0030's inline
+#     heredoc rule gives C++ `R"d(…)d"`; not declared here.
 #   - `1_000_000` and floats (`1.5`, `1e5`) are one number since
 #     2.7.0 (ADR 0026); the trailing-dot `1.` and `10L` since 2.9.7.
 

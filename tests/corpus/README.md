@@ -41,9 +41,9 @@ cmp -s "$V/cyrius/field_notes/mabda_v3_gpu/phase_d.cyml" phase_d.cyml    || echo
 
 After a re-sync, run the gates — the every-offset sweep
 (`scripts/audit/stream-sweep.sh`) covers every corpus file. At the
-2.9.x audit only `dependencies.cyml` differed: vidya's has grown to
-42.5 KB, and the 10.6 KB snapshot is kept on purpose (`state.md`,
-Corpus).
+2.9.12 audit only `dependencies.cyml` differed: vidya's has grown to
+50.7 KB (865 lines), and the 10.6 KB, 233-line snapshot is kept on
+purpose (`state.md`, Corpus).
 
 ## Status
 

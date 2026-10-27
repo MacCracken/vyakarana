@@ -19,7 +19,8 @@
 # build/audit/mutants/<path, `/` as `_`>-<iter>, ready for the
 # harness's other modes.
 #
-# Exit: 0 when every mutant passed.
+# Exit: 0 when every mutant passed, 1 when one failed or a file timed
+# out, 2 when nothing was fuzzed (no file had a grammar).
 set -eu
 
 AUDIT_CWD=$(pwd)

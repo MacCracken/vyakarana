@@ -4,7 +4,7 @@ How to integrate vyakarana into a downstream Cyrius project
 (owl, cyim, vidya, or anything else that needs to tokenize
 source code).
 
-> **Last updated:** 2026-10-27 (2.9.12)
+> **Last updated:** 2026-10-27 (2.10.0)
 >
 > Audience: implementers writing the *renderer*, *editor*,
 > *theme*, or *content pipeline* that sits on top of vyakarana.
@@ -25,7 +25,7 @@ project's `cyrius.cyml`:
 ```toml
 [deps.vyakarana]
 git     = "https://github.com/MacCracken/vyakarana.git"
-tag     = "2.9.12"
+tag     = "2.10.0"
 modules = ["dist/vyakarana.cyr"]
 ```
 
@@ -109,6 +109,11 @@ fn has_grammar(name) -> i64                # 1 if known, 0 otherwise
 fn list_languages_into(out_vec) -> i64     # populates a vec of cstr names
 fn bootstrap_grammars()                    # explicit load (see Lazy loading)
 
+# Your own grammars (see "Routing your own grammars" below).
+fn grammar_load(path)           -> grammar  # parse a .cyml; 0 if invalid
+fn registry_add(g)                          # register it (first wins a name)
+fn registry_find_by_name(name)  -> grammar  # 0 if not registered
+
 # Language detection (1.11.2+). All four return a language
 # name (cstr) suitable for tokenize_stream_new, or 0 if no match.
 fn detect_language(path) -> cstr                    # extension + basename suffix match
@@ -124,11 +129,12 @@ fn lsp_kind_from_token_type(name) -> i64       # by name (one of LSP's 23 standa
 fn lsp_kind_from_standard_index(idx) -> i64    # by integer index in LSP 3.17 legend
 ```
 
-These are the **stable** entry points. Their names and arg
-order do not change across the 2.x line — see
+These, the tokenbuf functions and the kind helpers below are the
+**stable** entry points. Their names and arg order do not change
+across the 2.x line — see
 [docs/architecture/overview.md](../architecture/overview.md)
 "Frozen public contracts." The header of `src/tokenize.cyr` is
-the authoritative list of the stream, registry and document symbols.
+the authoritative list.
 
 ### Routing your own grammars
 
@@ -151,19 +157,28 @@ should win a route a bundled grammar also declares. The function
 bootstraps the bundled grammars itself, as `has_grammar` does.
 
 The compiled three stay pure and know only the bundled grammars; they
-also carry what declarations cannot say — the `.s` / `.S` and `.asm`
-content votes and the `<?xml` signature sniff
+also carry what declarations cannot say — the `.s` / `.S`, `.asm` and
+`.nasm` content votes and the `<?xml` signature sniff
 (`detect_language_combined`). For the bundled grammars the two paths
-agree on every declared route. They differ by design in two places: a
-declared shebang is a plain prefix (`#!/usr/bin/shellcheck` routes to
-shell), where the compiled sniff bounds `sh` to three bytes; and an
-`.asm` file whose content reads as GNU as routes to the asm grammars
-through `detect_language_combined`, to `nasm` (the declaration) through
-`detect_language_registered`.
+agree on every declared route, and differ by design wherever content
+decides:
+
+- the asm votes: `detect_language_combined` reads the content of a
+  `.s` / `.S` (AArch64 code goes to `asm_aarch64`) and of an `.asm` /
+  `.nasm` (GNU as goes to the asm grammars), where
+  `detect_language_registered` takes the declaration — `asm_x86_64`,
+  registered first, for `.s` / `.S`, and `nasm` for `.asm` / `.nasm`;
+- the signature sniff: an extensionless file starting `<?xml` is `xml`
+  through `detect_language_combined` and unrouted through
+  `detect_language_registered`;
+- a declared shebang is a plain prefix (`#!/usr/bin/shellcheck` routes
+  to shell), where the compiled sniff bounds `sh` to three bytes.
 
 ### Tokenbuf accessors
 
 ```cyrius
+fn tokenbuf_new()        -> tokenbuf  # 0 if the allocation failed
+fn tokenbuf_push(tb, kind, start, len)  # used by the scanner; yours to call too
 fn tokenbuf_count(tb) -> i64
 fn tokenbuf_kind(tb, i)  -> i64    # one of TK_* (see src/token.cyr)
 fn tokenbuf_start(tb, i) -> i64    # byte offset into your `src`
@@ -189,6 +204,7 @@ var TK_PREPROCESSOR = 8;
 var TK_ERROR        = 9;
 var TK_COUNT        = 10;
 fn kind_name(k)     -> cstr;       # "ident" / "keyword" / ...
+fn kind_is_valid(k) -> i64;        # 1 for 0 .. TK_COUNT - 1
 ```
 
 The integer values, the string names, and the count of 10 are
@@ -265,9 +281,9 @@ removes the temptation).
 The contract is documented in
 [architecture note 004](../architecture/004-theme-palette-contract.md).
 
-The reference reader is `src/theme.cyr` in vyakarana itself —
-the bundled `vyk --theme=default` mode is the canonical
-implementation.
+vyk's own themes (`src/theme.cyr`, `vyk --theme=default`) key by the
+`TK_*` values internally, since they ship in the same binary; owl's
+`src/theme.cyr` is the reference reader that keys by `kind_name`.
 
 ### Zero-copy
 
@@ -307,18 +323,24 @@ tokenize_doc_free(d);
 - The text must be contiguous for the call, and the document does
   not keep it.
 - A text whose stream passes a hold's bound (a heredoc group over
-  1 MiB, a one-token compose body over 8 MiB) is tokenized in one feed
-  on each set and edit, so the result still equals tokenizing from
-  scratch, at the cost of the whole text (2.9.12).
+  1 MiB; a fence awaiting its closer, a one-token compose body or an
+  inline literal over 8 MiB) is tokenized in one feed on each set and
+  edit, so the result still equals tokenizing from scratch, at the
+  cost of the whole text (2.9.12) — for a text of up to
+  `VYK_STREAM_CAP` (16 MiB); past that the streamed tokens stand.
 - A one-byte edit costs about one interval re-scanned either side
-  (under 2 ms on a 937 KB C file, against 226 ms for the whole
-  file); an edit that changes the rest of the text, such as an
-  opened comment, re-scans the rest.
+  (about 1.6 ms on average, 2.5 ms at most, on a 937 KB C file,
+  against 226 ms for the whole file). Moving the tokens after the
+  edit is linear in their number: an insert at the start of that
+  file costs 4.9 ms. An edit that changes the rest of the text, such
+  as an opened comment, re-scans the rest.
 
 ## Lazy loading
 
-Grammars are loaded the first time `tokenize_stream_new` /
-`has_grammar` is called for any language. If your renderer
+Grammars are loaded the first time `tokenize_stream_new`,
+`has_grammar`, `detect_language_registered` or `tokenize_doc_new` is
+called. `list_languages_into` does not load them: before that it lists
+only what you registered yourself. If your renderer
 wants to pre-load the registry at startup (e.g., to validate
 that `--language=foo` will work later), call:
 
@@ -346,21 +368,23 @@ if (s == 0) {
 `tokenize_stream_feed` returns:
 - `VYK_OK` (0) — bytes accepted.
 - `VYK_ERR_OVERFLOW` (-1) — buffer cap (`VYK_STREAM_CAP`,
-  16 MiB) would be exceeded. Since 2.0.1's rolling buffer
-  compacts after every drain, this bounds the longest
-  *in-progress* span — one block comment, string, or fence
-  body — not the total bytes you feed. Total input is capped at
+  16 MiB) would be exceeded. A feed only appends; the rolling
+  buffer (2.0.1) compacts on drain. So when you drain (or `_next`)
+  between feeds, this bounds the longest *in-progress* span — one
+  block comment, string, or held fence — not the total bytes you
+  feed; feed without draining and it caps the total input. Total input is capped at
   4 GiB per stream (`VYK_OFFSET_CAP`, 2.3.4,
   [ADR 0021](../adr/0021-token-span-width-ceiling.md)): past it
   `feed` returns this code rather than wrap token offsets. A
   still-open heredoc group is held for at most
   `VYK_HEREDOC_HOLD_MAX` (1 MiB) before its bytes commit
   ([ADR 0028](../adr/0028-streaming-holds-watches-groups.md);
-  state.md has the exact bounds). A still-open compose region whose
-  body has an inner grammar is not held: its body streams as that
-  grammar's own, so its live buffer is the inner grammar's (2.9.10,
-  [ADR 0032](../adr/0032-resumable-compose-regions.md)); one whose body
-  is a single token (an untagged fence) holds for at most
+  state.md has the exact bounds). A still-open `<style>`, `<script>`,
+  cyml or MDX body with an inner grammar is not held: it streams as
+  that grammar's own, so its live buffer is the inner grammar's (2.9.10,
+  [ADR 0032](../adr/0032-resumable-compose-regions.md)). A markdown
+  fence, tagged or not, is held until its closer arrives (2.9.12), as
+  is a body that is a single token — each for at most
   `VYK_COMPOSE_HOLD_MAX` (8 MiB).
 - `VYK_ERR_FINISHED` (-2) — `tokenize_stream_finish` already
   ran on this stream; create a fresh one for new input.
@@ -396,11 +420,11 @@ manual re-sync step.
   identifier, whitespace or digit run, or a long fence or `<style>`
   body, fed in small chunks — are linear since 2.8.0
   ([ADR 0028](../adr/0028-streaming-holds-watches-groups.md)). Since
-  2.9.10 a long, still-open compose region streams too: a fence,
-  `<style>`, `<script>` or cyml body commits as its inner grammar
-  settles it, before its end marker arrives
-  ([ADR 0032](../adr/0032-resumable-compose-regions.md)). An untagged
-  fence's body, one token, still waits for its closer (state.md, Known
+  2.9.10 a long, still-open compose region streams too: a `<style>`,
+  `<script>`, cyml or MDX body commits as its inner grammar settles it,
+  before its end marker arrives
+  ([ADR 0032](../adr/0032-resumable-compose-regions.md)). A markdown
+  fence, tagged or not, waits for its closer (2.9.12; state.md, Known
   limits).
 - `tokenbuf` allocates by doubling, not per-token (ADR 0002).
   For an N-byte input expect ≤ log₂(N) allocations.

@@ -67,7 +67,7 @@ path can never silently drift away from the M1 reference.
 
 ## File-by-file
 
-- **`grammars/*.cyml`** — 46 grammar files (see "Bundled
+- **`grammars/*.cyml`** — 49 grammar files (see "Bundled
   grammars" below). Each is a `[grammar]` header (name, plus the
   `extensions` / `filenames` / `shebangs` that detection routes
   on — [ADR 0025](../adr/0025-detection-declared-by-grammars.md)),
@@ -113,10 +113,13 @@ path can never silently drift away from the M1 reference.
   text from scratch
   ([ADR 0033](../adr/0033-incremental-retokenization.md)).
 - **`src/detect.cyr`** — `detect_language` (path),
-  `detect_language_from_content` (shebang / signature sniff) and
+  `detect_language_from_content` (shebang / signature sniff),
   `detect_language_combined`, which the CLI uses
   ([ADR 0015](../adr/0015-content-based-detection.md),
-  [ADR 0025](../adr/0025-detection-declared-by-grammars.md)).
+  [ADR 0025](../adr/0025-detection-declared-by-grammars.md)), and
+  `detect_language_registered`, which routes by the registry's
+  declarations, a consumer's own grammars included (2.9.8,
+  [ADR 0031](../adr/0031-detect-language-registered.md)).
 - **`src/lsp.cyr`** — LSP semantic-token type → `TK_*` mapping
   ([ADR 0012](../adr/0012-lsp-semantic-tokens-bridge.md)).
 - **`src/token.cyr`** — palette, `Token` layout, `tokenbuf` (see
@@ -167,8 +170,8 @@ user's explicit ACK.
 3. **Public entry shape (2.0+).** The streaming primitive —
    `tokenize_stream_new` / `_feed` / `_drain` / `_finish` /
    `_free` — is the consumer contract, with the pull adapter,
-   registry and (2.9.11) document calls listed in
-   `src/tokenize.cyr`'s header. Names and arg order stable across the
+   registry, detection, (2.9.11) document, token and LSP-bridge calls
+   listed in `src/tokenize.cyr`'s header. Names and arg order stable across the
    2.x line. The 1.x `tokenize_source`
    is gone (ADR 0017). Implementation internals (per-token-resume,
    rolling buffer) can change without breaking consumers.
@@ -207,16 +210,16 @@ tokens and exact coverage.
 | java        | stand-in `concept.java` | Added in 1.3.0. ADR 0006 stand-in (vidya doesn't ship Java yet). `@` in `ident_start` so `@Override` is one ident. Standard C-family operators plus `->` (lambda), `::` (method ref), `>>>` (unsigned right shift). |
 | kotlin      | stand-in `concept.kt` | Added in 1.3.0. ADR 0006 stand-in. `@` and `$` in `ident_start`. Operators include `?:` (Elvis), `?.` (safe-call), `!!` (not-null assert), `..` (range), `===` / `!==` (referential). |
 | cpp         | stand-in `concept.cpp` | Added in 1.3.0. ADR 0006 stand-in. `::` scope-resolution, `<=>` three-way compare, `->*` / `.*` member-pointer, `...` parameter packs. Templates / generics handled by existing `<` `>` operator pair (consumer-side disambiguation). |
-| csharp      | stand-in `concept.cs` | Added in 1.3.0. ADR 0006 stand-in. `??=` / `??` / `?.` null-safety operators, `=>` (lambda / expression body / switch arms), `..` ranges. `@` and `$` as 1-byte operators (verbatim / interpolated string prefixes). |
+| csharp      | stand-in `concept.cs` | Added in 1.3.0. ADR 0006 stand-in. `??=` / `??` / `?.` null-safety operators, `=>` (lambda / expression body / switch arms), `..` ranges. `@"…"`, `$"…"` and `$@"…"` are one string with their prefix (2.9.6, ADR 0027); `@` and `$` stay 1-byte operators elsewhere (`@class`). |
 | php         | stand-in `concept.php` | Added in 1.4.0. ADR 0006 stand-in. `$` in `ident_start` (variables); `\` in operators (namespace separator); both `//` and `#` line comments; `?->` null-safe member access, `<=>` spaceship, `**`/`**=` power. |
 | ruby        | stand-in `concept.rb` | Added in 1.4.0. ADR 0006 stand-in. `@` and `$` in `ident_start`; `=begin`/`=end` block comments via pair rule (caveat: spec requires column-0; scanner has no column-state); `<=>`, `===`, `=~`/`!~`, `&.` safe-nav, `..`/`...` ranges. |
-| lua         | stand-in `concept.lua` | Added in 1.4.0. ADR 0006 stand-in. **Both comment forms expressed as pair rules** (`--[[…]]` and `--…\n`) so the longer prefix can win — line-rule pipeline step would otherwise eat `--` greedily before `--[[` could match. Variable-padded `[==[…]==]` deferred. |
+| lua         | stand-in `concept.lua` | Added in 1.4.0. ADR 0006 stand-in. **Both comment forms expressed as pair rules** (`--[[…]]` and `--…\n`) so the longer prefix can win — line-rule pipeline step would otherwise eat `--` greedily before `--[[` could match. Level-n long brackets `[==[…]==]` / `--[==[…]==]` are inline heredoc rules (2.9.5, ADR 0030). |
 | swift       | stand-in `concept.swift` | Added in 1.4.0. ADR 0006 stand-in. `@` and `$` in `ident_start` (attributes / closure shorthand `$0`); `"""…"""` multi-line strings via pair rule ahead of `"…"`; `..<` half-open range, `&+`/`&-`/`&*` overflow ops, `===`/`!==` identity. |
 | elixir      | stand-in `concept.ex` | Added in 1.5.0. ADR 0006 stand-in. `@` in `ident_start` (module attributes). `\|>` pipe, `<-`, `=>`, `::`, `<>`, `++`/`--`, `=~` regex match, `&&&`/`\|\|\|` bitwise. `%` in operators (struct/map literal prefix, NOT modulo). `"""…"""` heredoc strings via pair rule ahead of `"…"`. |
-| ocaml       | stand-in `concept.ml` | Added in 1.5.0. ADR 0006 stand-in. `(* … *)` block comments (nestable in spec, simple greedy match — same gap as Rust). `'a` type variables fall through char_literal helper (ADR 0010 lifetime-preservation logic). Operators include `\|>`, `<-`, `:=`, `->`, `@@`, `<>`. |
+| ocaml       | stand-in `concept.ml` | Added in 1.5.0. ADR 0006 stand-in. `(* … *)` block comments (nestable in spec; the rule closes at the first `*)` — same gap as Rust). `'a` type variables fall through char_literal helper (ADR 0010 lifetime-preservation logic). Operators include `\|>`, `<-`, `:=`, `->`, `@@`, `<>`. |
 | haskell     | stand-in `concept.hs` | Added in 1.5.0. ADR 0006 stand-in. `{- … -}` block comments (nestable in spec — same Rust-shared gap). **`'` in `ident_cont`** (but not `ident_start`) so prime-suffixed names `rest'`, `f''` are one ident. Operators include `>>=`, `<$>`, `<*>`, `<>`, `<-`, `->`, `=>`, `::`, `++`, `\` (lambda), `` ` `` (infix-function marker). |
 | sql         | stand-in `concept.sql` | Added in 1.6.0. ADR 0006 stand-in. **First grammar to use `case_insensitive_keywords = true`** ([ADR 0011](../adr/0011-case-insensitive-keywords-default.md)) — `SELECT` / `select` / `Select` all match the upper-case keyword list. Dialect-neutral baseline (ANSI SQL:1992 core); MySQL `` ` ``-quoted idents are one `ident` since 2.3.2 (ADR 0020); PostgreSQL `$$`-quoted strings are documented as a fork candidate. |
-| graphql     | stand-in `concept.graphql` | Added in 1.6.0. ADR 0006 stand-in. `$variable` and `@directive` via `ident_start`; `"""…"""` block strings ahead of `"…"`; `#` line comments; minimal operator set (`!`, `=`, `\|`, `&`, `...`). |
+| graphql     | stand-in `concept.graphql` | Added in 1.6.0. ADR 0006 stand-in. `$variable` and `@directive` via `ident_start`; `"""…"""` block strings ahead of `"…"`; `#` line comments; minimal operator set (`!`, `=`, `\|`, `&`, `...`, plus `.`, `+`, `-` for numbers). |
 | protobuf    | stand-in `concept.proto` | Added in 1.6.0. ADR 0006 stand-in. `//` and `/* */` comments; primitive type names (`int32`/`string`/`bool`/etc.) and SDL heads (`message`/`enum`/`service`/`rpc`/`oneof`) as keywords. Mechanical. |
 | html        | stand-in `concept.html` | Added in 1.7.0. ADR 0006 stand-in. `<!-- … -->` block comments (4/3-byte pair); `<` `>` `=` `/` as operators; tag names tokenize as plain ident (HTML5's open element set + custom elements is too large for a keyword list). `#` op for hex colors / numeric refs. **1.11.1: `<style>` body routes to `css`, `<script>` body routes to `javascript` via [ADR 0013](../adr/0013-grammar-composition-rule.md) compose rules.** |
 | xml         | stand-in `concept.xml` | Added in 1.7.0. ADR 0006 stand-in. HTML's pair-rule pattern plus `<![CDATA[…]]>` data sections (9-byte / 3-byte pair, body uninterpreted) and `<?…?>` processing instructions (kind = preprocessor). `-` in operators for ISO-8601 date components. Default extension for `.xml`/`.xsl`/`.xsd`/`.svg`. |
@@ -229,7 +232,7 @@ tokens and exact coverage.
 | llvm_ir     | stand-in `concept.ll` | Added in 1.9.0. ADR 0006 stand-in. `@`/`%`/`!` in `ident_start` so `@global_count`, `%struct.Token`, `!llvm.module.flags` all tokenize as one ident — same trick used for Java annotations / Zig builtins / Rust macros / Elixir attrs / PHP variables. `;` line comments. Type literals (`i8`/`i32`/`i64`/`ptr`/`void`/`label`/`metadata`) and the LLVM instruction set as keywords. |
 | powershell  | stand-in `concept.ps1` | Added in 2.1.0. ADR 0006 stand-in. Cmdlet `Verb-Noun` idents via `-` in `ident_cont`; alphabetic operators (`-eq`, `-and`, `-not`); `$` in `ident_start` for variables; both `'…'` and `"…"` strings; `<# … #>` block + `# …` line comments. Case-insensitive keywords via ADR 0011. |
 | crystal     | stand-in `concept.cr` | Added in 2.1.0. ADR 0006 stand-in. Ruby-shaped: `?`/`!` in `ident_cont` (`empty?`, `push!`); `@` in `ident_start` for instance vars; `<=>` spaceship, `===` case-equality, `**` power, `=~` / `!~` regex match. `# …` line comments. |
-| julia       | stand-in `concept.jl` | Added in 2.1.0. ADR 0006 stand-in. `@` in `ident_start` for macros; `!` in `ident_cont` for mutating methods; `::` type annotations; `"""…"""` triple-quoted + backtick command literals; `\`` strings. **Both `#=…=#` block and `#…\n` line comments expressed as pair rules** so the longer prefix can win — same Lua trick (architecture note 003). |
+| julia       | stand-in `concept.jl` | Added in 2.1.0. ADR 0006 stand-in. `@` in `ident_start` for macros; `!` in `ident_cont` for mutating methods; `::` type annotations; `"""…"""` triple-quoted strings; `` `…` `` command literals; `b"…"` / `r"…"` / `raw"…"` / `v"…"` are one string with their prefix. **Both `#=…=#` block and `#…\n` line comments expressed as pair rules** so the longer prefix can win — same Lua trick (architecture note 003). |
 | vue         | stand-in `concept.vue` | Added in 2.1.1. ADR 0006 stand-in. HTML-shaped outer with Vue-specific `@` / `#` event/slot operators; `<script>` body routes to `javascript`, `<style>` body routes to `css` via [ADR 0013](../adr/0013-grammar-composition-rule.md) compose rules. `<template>` body stays in the outer Vue tokenizer (routing through html would lose Vue's operators). |
 | svelte      | stand-in `concept.svelte` | Added in 2.1.1. ADR 0006 stand-in. Vue-shape minus `<template>` (template lives at file top level). `$` in operators for reactive declarations. Same compose-rule routing for `<script>` / `<style>` bodies. |
 | nix         | stand-in `concept.nix` | Added in 2.1.2. ADR 0006 stand-in. Functional config language for NixOS / home-manager. `//` is set-merge (NOT line comment); `++` list concat, `->` implication, `@` "as" pattern, `?` has-attribute. `'` (Haskell-prime) and `-` in `ident_cont` (kebab-case). `''…''` indented multi-line strings as 2-byte pair rule. Block + `# …` line comments. |

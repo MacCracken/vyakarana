@@ -86,7 +86,7 @@ following reasons:**
    consumers don't switch on the new kind, so their renderers
    silently fall back to the default palette colour — which
    may not be the colour the new kind logically deserves.
-4. **The 10-slot palette is what owl, cyim, kybernet, and
+4. **The 10-slot palette is what owl, cyim, vidya and
    themes-of-themes were sized against.** Pre-1.0 design was
    intentional ([design spec §3, §12](../development/vyakarana-design-spec.md):
    the `Token` type locked in M0);
@@ -94,16 +94,19 @@ following reasons:**
 
 ## How `vyk --theme=<name>` uses the contract
 
-`src/theme.cyr` (added in 1.10.0) maps each `kind_name` to an
-ANSI escape string. The `default` theme is the canonical
+`src/theme.cyr` (added in 1.10.0) maps each kind to an ANSI
+escape string. It switches on the `TK_*` values, since it ships in
+the same binary as the tokenizer; a consumer's theme keys by
+`kind_name`, as owl's `src/theme.cyr` does. The `default` theme is the canonical
 **reference palette**: it's what consumers should aim for if
 they want their theme to match vyakarana's own diagnostic
 output. The `dark` theme is a variant tuned for dark-background
 terminals; `none` strips colour entirely (useful in pipes /
 non-tty contexts).
 
-A new theme is a new clause in `src/theme.cyr`'s `theme_color()`
-and a name in `theme_resolve()`. `vyk` reads no theme files —
+A new theme is a new clause in `src/theme.cyr`'s `theme_color()`,
+a name in `theme_resolve()`, and a clause in `src/theme_export.cyr`'s
+`_te_hex()` so `--export-theme` can write it. `vyk` reads no theme files —
 themes are compiled in. The other direction shipped instead:
 `vyk --export-theme=vscode|helix|iterm` (1.11.1, 1.12.1;
 `src/theme_export.cyr`) writes a bundled palette out in an

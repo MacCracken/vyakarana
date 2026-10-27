@@ -4,6 +4,115 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.10.0] — 2026-10-27
+
+**The 2.9.x arc's documentation, brought up to date.** Four independent
+reviewers checked every present-tense claim against the code and what
+running it shows: the project docs; the consumer guide, the examples and
+the architecture notes; the man page, the scripts, CI and the grammar
+headers; the code comments and the ADRs. They compiled and ran every
+example. Each finding was checked again before it was fixed. No token
+kind, `Token` layout or public API changes, and single-feed output is
+unchanged: `scripts/audit/ab-sweep.sh` over the 2.9.12 audit's 13,619
+real files finds 0 that differ from 2.9.12.
+
+Gates: 1495/1495 tests; fuzz 6/6, also under `--poison=ab` and
+`--bounds`; smoke OK; lint+fmt exit 0; `cyrius distlib --check` clean; a
+clean build from the tracked files is byte-identical; owl, cyim and vidya
+build and pass their tests against the bundle. `vyk` 416,232 → 416,256
+bytes (the version string and one `--help` line); the shipped DCE build
+317,928 → 317,952; `dist/vyakarana.cyr` 471,121 → 473,365 (comments).
+
+### Changed
+
+- **`vyk --help`** names the 1 MiB input cap on its exit-3 line. The man
+  page now gives the exact figure, 1,048,574 bytes.
+- **`docs/development/performance.md`**: a 2.10.0 latency baseline, the
+  first from a quiet host since 2.7.0's, and the arc's paired bench,
+  2.9.0 → 2.9.12. Every row is under the 20 % line: grammar loading
+  +11.2 %, the tokenize rows +1.1 to +4.8 %, detection +0.2 to +3.3 %.
+  The 2.9.0 – 2.9.1 sizes and the 2.7.0 table moved under §History.
+- **CLAUDE.md §Gates and CONTRIBUTING** list the harness run CI makes
+  (`build/vyk-audit auto tests/corpus/openqasm.qasm every`), so a green
+  local run is a green CI run again.
+- **The public list in `src/tokenize.cyr`'s header** names the LSP bridge
+  (`lsp_kind_from_token_type`, `lsp_kind_from_standard_index`) and
+  `kind_name` / `kind_is_valid`. All four were in the bundle and the
+  guide all along; state.md, the guide, overview.md and CLAUDE.md point
+  at that list.
+
+### Fixed — documentation that misled
+
+- **Fences.** The consumer guide, two code comments and ADRs 0028 / 0032
+  still said a tagged markdown fence streams as its inner grammar. Since
+  2.9.12 every fence is held until its closer arrives. ADR 0032 is
+  amended at points 2 and 3 and under Consequences: the fence fields
+  +248 / +264 are unused and the stream record is 296 bytes.
+- **Feeding without draining.** README and the guide said the stream cap
+  bounds only the longest in-progress span. A feed only appends, so with
+  no drain between feeds it caps the total input at 16 MiB.
+- **README's token table** gave `#include` and `use` / `import` as
+  preprocessor tokens; no grammar emits those as preprocessor. It now
+  names ones that are: a shebang, Cyrius `#define`, NASM `%define`, Lean
+  `#eval`, XML `<?…?>`. `error` loses no bytes, and `--theme` uses vyk's
+  own themes, not owl's palette.
+- **The design spec's grammar sketch did not load**: its `words` rule had
+  no `match`, and `grammar_load` returned 0.
+- **SECURITY.md.** Its "State at 2.3.0" listed FINDING-002 – 005 as open,
+  but its own audit list says 2.3.4 fixed them. The 2.9.12 audit was
+  missing, the trust boundary named an internal function and left out
+  documents and content detection, and the known heredoc-collision case
+  is now listed.
+- **state.md.** vidya pins 2.9.1 on 6.7.15, not 2.4.0, and the consumers
+  were last checked against the 2.9.12 bundle, not 2.9.1's. cyim routes
+  45 languages plus `plain`.
+- **roadmap.md.** CI's chunking gate splits the corpora every 37 bytes;
+  the every-offset split is the `stream-sweep.sh` audit sweep.
+- **CLAUDE.md.**
+  - At 6.7.18 a stale `lib/` builds with no warning.
+  - The compiler is `cycc`.
+  - `return;` and `-N` compile at 6.7.18; the house style keeps
+    `return 0;` and `(0 - N)`.
+  - The `[deps.<name>]` example is owl's manifest.
+  - The closeout clean build needs `embed-grammars.sh`.
+- **Code comments.**
+  - The compose-hold bound.
+  - `tokenize_stream_discard_consumed`: lazy since 2.9.12.
+  - The heredoc line index: chained by key, four key kinds.
+  - The stream record's +104 / +128.
+  - `main.cyr`'s "no total-input ceiling": `VYK_OFFSET_CAP`.
+  - The accumulator and `_gp_heredoc_opts_bad` notes.
+  - Fence-tag resolution: `.s` still resolves.
+  - Another dozen smaller corrections.
+- **ADRs.**
+  - Status lines and the index agree both ways for 0013, 0016, 0028,
+    0030 and 0032.
+  - 0028 point 5 describes the index as built.
+  - 0015 and 0021 carry removal and size notes.
+- **Grammar headers** (14 of 49):
+  - `.asm` and `.nasm` belong to nasm.cyml, with the content vote.
+  - Seven "same scanner-shape gap as Lua / Ruby / PHP / Swift" notes
+    from before 2.9.5's rules now say "not declared".
+  - sql.cyml's "46 bundled grammars"; openqasm against Java's suffixes;
+    JSX in javascript / typescript; cyml's two corpora.
+- **Scripts and CI.**
+  - Every sweep header gives its exit codes, 2 included.
+  - The audit README notes that `ab-sweep.sh` exits 2 only on an empty
+    list, and lists the 2.9.12 subsets.
+  - Smaller fixes: ci.yml's four detection entries, release.yml's tag
+    pattern, `version-bump.sh`'s header, `lint-fmt.sh`.
+- **The man page.** `.nasm` gets the content vote, and the input cap is
+  exact.
+- **Architecture notes.**
+  - overview: 49 grammar files, `detect_language_registered`, and the
+    csharp, lua, graphql, julia and ocaml rows.
+  - 002: heredocs in ruby and php, `end_blank`.
+  - 003: `not_followed_by` lets a line rule yield; Rust block comments
+    shipped.
+  - 004: vyk's themes key by `TK_*`; a new theme needs `_te_hex`.
+- **distribution.md.** `cyrius package` re-checked at 6.7.18; release.yml
+  calls `ci.yml` and smoke-tests the DCE build.
+
 ## [2.9.12] — 2026-10-27
 
 **The closeout audit of the 2.9.x arc** (roadmap 2.9.12): four independent

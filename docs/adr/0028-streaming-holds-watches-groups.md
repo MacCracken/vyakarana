@@ -1,6 +1,8 @@
 # 0028 — Streaming engine: scanner-reported holds, watches and groups
 
-- **Status:** Accepted — open compose regions stream since 2.9.10 ([ADR 0032](0032-resumable-compose-regions.md))
+- **Status:** Accepted — supersedes [ADR 0023](0023-heredoc-rule.md)'s
+  terminator search budget; open compose regions stream since 2.9.10
+  ([ADR 0032](0032-resumable-compose-regions.md))
 - **Date:** 2026-10-20
 - **Deciders:** 2.8.0 streaming-engine work (proposed) / user (accepted
   via the pinned 2.8.0 roadmap entry)
@@ -108,7 +110,13 @@ Keep rescan-and-commit, and change who knows what:
    line's end is derived from the next line's start, and each half —
    exact content for `<<`, tab-stripped for `<<-` — is built on its
    first lookup: 16 bytes a line for `<<`, 20 for `<<-`, 32 for both; 52
-   in 2.8.0, 36 from 2.9.1.)*
+   in 2.8.0, 36 from 2.9.1.)* *(Amended 2.10.0: since 2.9.12 lines are
+   chained by key, not by bucket — a bucket lists its distinct keys,
+   each with its own chain of lines, and a lookup finds its key, then
+   walks only that key's lines from the key's own cursor. There are
+   four key kinds since 2.9.5 (exact, after tabs, after blanks, a
+   leading identifier — ADR 0030), each built on its first lookup: 20
+   bytes a line for exact keys, 24 for the others.)*
 
 ## Consequences
 
@@ -138,9 +146,11 @@ Keep rescan-and-commit, and change who knows what:
   body is read as that grammar's own stream, the live buffer its
   grammar's (ADR 0032). Still held: an untagged fence, a region whose
   inner grammar is not loaded, and a region open inside an open
-  region.)*
+  region.)* *(Amended 2.10.0: since 2.9.12 every fence whose closer has
+  not arrived is held, tagged or not — as outer text, ADR 0032.)*
 - The stream record grows to 192 bytes (internal; 216 in 2.9.1, 224 in 2.9.3); the scanner keeps a
-  per-depth line index for heredoc grammars.
+  per-depth line index for heredoc grammars. *(Amended 2.10.0: 280 in
+  2.9.10, 296 in 2.9.12.)*
 
 ### When to revisit
 

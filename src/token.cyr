@@ -183,8 +183,8 @@ fn tokenbuf_len(tb, i) {
 # `tokenize_stream_discard_consumed` to reclaim staging memory
 # in long-running pull-adapter streams. No-op when `n <= 0`;
 # clamps to count when `n >= count`. Source and destination
-# regions can overlap (src > dst), so a forward byte copy is
-# safe.
+# regions can overlap (src > dst, a record or more apart), so
+# `_tb_move`'s forward copy, 8 bytes at a time, is safe.
 fn tokenbuf_drop_front(tb, n) {
     if (n <= 0) { return 0; }
     var count = load64(tb + 8);

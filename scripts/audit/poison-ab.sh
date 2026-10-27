@@ -12,7 +12,9 @@
 # reporting a write past a block. (`cyrius fuzz --poison=ab` does the
 # same for the fuzz harnesses; this does it for vyk over real input.)
 #
-# Exit: 0 when no file differs and nothing was overwritten.
+# Exit: 0 when no file differs, nothing was overwritten and neither
+# leg crashed or timed out, 1 otherwise, 2 when nothing was tokenized
+# (no file had a grammar).
 set -eu
 
 AUDIT_CWD=$(pwd)

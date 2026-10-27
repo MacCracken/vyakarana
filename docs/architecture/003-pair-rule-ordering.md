@@ -95,7 +95,11 @@ rule whose `start` strings share a prefix, the line rule ALWAYS
 wins because step 2 fires first. Even declaring the pair rule
 in the grammar file before the line rule won't help — the line-
 vs-pair priority is wired into the scanner pipeline, not into
-the rule list.
+the rule list. *(Since 2.7.1 a line rule can step aside instead:
+with `not_followed_by = "["` on the `--` line rule, a `--[[` pair
+rule takes the opener — ADR 0027. And step 1b, inline heredoc rules
+(2.9.5, ADR 0030), runs before line rules: lua's level-n long
+brackets `--[==[…]==]` are one.)*
 
 The 1.4.0 Lua grammar hit this. Two comment forms:
 - `--[[ … ]]` long comment (pair-rule shape).
@@ -131,7 +135,8 @@ newline is part of the comment span rather than a separate
 whitespace token. Coverage holds; theme renderers don't care.
 
 When a future grammar has both line and pair forms with a
-shared prefix, do this same dance. Don't try to "make line
+shared prefix, do this same dance, or give the line rule a
+`not_followed_by` (ADR 0027). Don't try to "make line
 rules respect pair-rule priority" — that would change the
 scanner pipeline order, which is documented as normative in
 [architecture note 002](002-scanner-pipeline-priority.md) and
@@ -140,12 +145,12 @@ holds across all 49 bundled grammars.
 ## When it can break (and how to spot it)
 
 - **Adding a new pair rule with a multi-byte start to a grammar
-  that already has the single-byte version.** The classic case is
-  Rust's nestable `/* … */` block comments — when those land,
-  whoever adds them must remember to put them *before* any
-  single-`/` operator handling. Today the operator path is at
-  step 8, after pair rules at step 3, so the issue is
-  pair-vs-pair, not pair-vs-operator.
+  that already has the single-byte version.** Rust's `/* … */`
+  block comments (2.9.3) are the case in point: the pair rule has to
+  come before any pair rule on a single `/`. The operator path is
+  at step 8, after pair rules at step 3, so the issue is
+  pair-vs-pair, not pair-vs-operator. (The rule closes at the first
+  `*/`; Rust's nesting is not modelled — `rust.cyml`.)
 - **Reordering rules during a refactor.** A "tidy up the
   `.cyml`" pass that alphabetises rules will silently break this
   contract. The gates catch it for the corpora we have; they may

@@ -5,7 +5,7 @@
 # [ADR 0011](../docs/adr/0011-case-insensitive-keywords-default.md)).
 # `SELECT`, `select`, `Select`, `sElEcT` all match the canonical
 # (upper-case) keyword list — same byte-equality cost as the
-# rest of the 46 bundled grammars, plus an A–Z to a–z fold on
+# other bundled grammars, plus an A–Z to a–z fold on
 # each comparison when the flag is on.
 #
 # Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
@@ -31,8 +31,8 @@
 #
 # Known gaps (not triggered by the stand-in):
 #   - Dollar-quoted strings (PostgreSQL `$$ … $$`, `$tag$ … $tag$`).
-#     Variable-length-delimiter form — same scanner-shape gap
-#     as Lua's `[==[…]==]`, Ruby/PHP heredocs, Swift raw strings.
+#     A tagged closer, the shape ADR 0030's inline heredoc rule
+#     gives C++ `R"d(…)d"`; not declared here.
 #   - Floats and scientific notation (`1.5e3`) are one number since
 #     2.7.0 (ADR 0026); `.5` and `1.` since 2.9.7.
 

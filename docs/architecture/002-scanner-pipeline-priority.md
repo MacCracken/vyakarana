@@ -14,10 +14,10 @@ the steps below in order. The first step that returns a non-zero
 
 | #  | Step                                         | Source                                              |
 |----|----------------------------------------------|-----------------------------------------------------|
-| H  | Queued heredoc bodies — at the first byte after a top-level line break that follows their opener(s); body + terminator line = one token each | `[[rules]] match = "heredoc"` ([ADR 0023](../adr/0023-heredoc-rule.md), shell; 2.6.0) |
+| H  | Queued heredoc bodies — at the first byte after a top-level line break that follows their opener(s); body + terminator line = one token each | `[[rules]] match = "heredoc"` ([ADR 0023](../adr/0023-heredoc-rule.md), shell, 2.6.0; ruby and php, 2.9.5, [ADR 0030](../adr/0030-heredoc-computed-closers.md)) |
 | 0a | Compose rules (recursive — push start marker, inner-grammar body, end marker) | `[[rules]] match = "compose"` (HTML → CSS / JS) |
 | 0b | Compose-fenced rules (info-string picks the inner grammar) | `[[rules]] match = "compose_fenced"` ([ADR 0016](../adr/0016-compose-fenced-rule.md), markdown ``` fences) |
-| 0c | Compose-region rules (open-ended region: up to an optional `end_before` lookahead, else to EOF) | `[[rules]] match = "compose_region"` ([ADR 0019](../adr/0019-compose-region-rule.md), CYML markdown bodies) |
+| 0c | Compose-region rules (open-ended region from `start` — optionally only after a `start_after` byte, with `start_inner` keeping the marker in the body, 2.9.9 — up to an optional `end_before` lookahead or, with `end_blank`, a blank line (2.9.12), else to EOF) | `[[rules]] match = "compose_region"` ([ADR 0019](../adr/0019-compose-region-rule.md), CYML markdown bodies) |
 | 1  | Shebang (`#!…\n` at file start)              | `[defaults] shebang = true`                         |
 | 1b | Inline heredoc — a raw literal through the closer its opener computes (`r#"…"#`, `[==[…]==]`, `R"d(…)d"`) | `[[rules]] match = "heredoc"`, `body = "inline"` ([ADR 0030](../adr/0030-heredoc-computed-closers.md), 2.9.5) |
 | 2  | Line rules — optionally only after a `start_after` byte, and only when the next byte is in `followed_by` / not in `not_followed_by` | `[[rules]] match = "line"` (e.g. `#`, `//`); `start_after` [ADR 0022](../adr/0022-line-rule-start-after.md) (shell `#` at word start, 2.6.0); next-byte keys [ADR 0027](../adr/0027-prefixes-lead-bytes-next-byte-rules.md) (2.7.1) |

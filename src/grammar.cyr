@@ -271,8 +271,10 @@ fn compose_fenced_rule_end_indent(r) { return load64(r + 32); }
 #      `[[entries]]` that begins CYML's next TOML header.
 #   2. Reaching EOF without the terminator is SUCCESS, not
 #      failure — the region simply runs to the end of input.
-#      `compose` bails and emits nothing, so CYML's final body
-#      (always EOF-terminated) got no routing at all.
+#      Through 2.9.9 `compose` bailed and emitted nothing, so
+#      CYML's final body (always EOF-terminated) would have got
+#      no routing at all; an unclosed `compose` body runs to the
+#      end too since 2.9.10 (ADR 0032).
 #
 # An empty `end_before` means "always run to EOF". Since 2.9.9 (MDX's
 # `import` / `export` blocks, ADR 0019 amended): `start_after` (cstr @
@@ -736,10 +738,11 @@ fn _gp_apply_kv(g, current_rule, section, buf, len, key_pos, key_len, value_pos)
         # end @ 24, escape_byte @ 32, words @ 40 (Vec) or inner @ 40
         # (cstr), slot-40 tag @ 48 (1 words / 2 inner), kind-given
         # flag @ 56 (those two exist only for `_gp_close_rule`'s
-        # validation, 2.5.2), start_after @ 64 (cstr, line rules only;
-        # ADR 0022, 2.6.0), indent @ 72 (cstr, heredoc rules only;
-        # ADR 0023, 2.6.0), followed_by @ 80 / not_followed_by @ 88
-        # (char-class tables, line rules only; ADR 0027, 2.7.1).
+        # validation, 2.5.2), start_after @ 64 (cstr, line rules, and
+        # compose_region since 2.9.9; ADR 0022, 2.6.0), indent @ 72
+        # (cstr, heredoc rules only; ADR 0023, 2.6.0), followed_by @
+        # 80 / not_followed_by @ 88 (char-class tables, line rules
+        # only; ADR 0027, 2.7.1).
         if (_gp_slice_eq(buf, key_pos, key_len, "kind") == 1) {
             _gp_parse_string(buf, len, value_pos, out_str_slot);
             var kname = load64(out_str_slot);
@@ -785,8 +788,10 @@ fn _gp_apply_kv(g, current_rule, section, buf, len, key_pos, key_len, value_pos)
             return 0;
         }
         if (_gp_slice_eq(buf, key_pos, key_len, "indent") == 1) {
-            # Heredoc rules only (ADR 0023): the byte after `start` that
-            # allows a tab-indented terminator (`-` for shell's `<<-`).
+            # Heredoc rules only (ADR 0023): the bytes after `start` that
+            # allow an indented terminator (`-` for shell's `<<-`, `-~`
+            # for Ruby's) — by tabs, or by blanks with `indent_by`
+            # (ADR 0030, 2.9.5).
             _gp_parse_string(buf, len, value_pos, out_str_slot);
             store64(current_rule + 72, load64(out_str_slot));
             return 0;
@@ -1135,7 +1140,7 @@ fn _gp_close_rule(g, rule_acc) {
 # 64 start_after, 72 indent, 80 followed_by, 88 not_followed_by,
 # 96 end_indent (2.9.1), 104 – 160 the heredoc options (2.9.5; see the
 # parser), 168 start_inner (compose_region, 2.9.9), 176 which of `end`
-# (1) / `end_before` (2) was given (2.9.12).
+# (1) / `end_before` (2) / `end_blank` (4) was given (2.9.12).
 fn _gp_new_rule_acc() {
     var r = alloc(184);
     if (r == 0) { return 0; }
@@ -1147,9 +1152,12 @@ fn _gp_new_rule_acc() {
 # 1 if a rule's heredoc options (ADR 0030) are given where they mean
 # nothing or would do nothing: on another rule type; an unknown `body`,
 # `indent_by` or `delim` value; line options on an inline body or inline
-# keys on a line body; an inline body without `open` and `close`, or
-# with both or neither of `repeat` (one byte) and `tag`; `indent_by`
-# with nothing to indent; `term_rest` without `indent_always`.
+# keys on a line body; an inline body without `open` and `close`, with
+# both or neither of `repeat` (one byte) and `tag`, with a `repeat` byte
+# that is `open`'s first, or with a `tag` and no `start`; `indent_by`
+# with nothing to indent; `term_rest` unless `indent_always`,
+# `indent_by = "blanks"` and `delim = "ident"` are all given (the
+# `repeat` check and the last two, 2.9.12).
 fn _gp_heredoc_opts_bad(mt, start, indent, acc) {
     if (load64(acc + 160) == 0) { return 0; }
     if (mt != 7) { return 1; }
@@ -1581,8 +1589,10 @@ fn _reg_ieq(a, b, bl) {
 # `shebangs` hold the tag — `Python`, `sh`, `bash`, `cyr`, `js`, `node`.
 # Through 2.9.0 only an exact name resolved: 3,679 of the 7,607 tagged
 # fences in one machine's 7,770 markdown files (`sh` and `bash` alone
-# 3,140) came back as one plain string. An extension the content decides
-# between grammars (`.asm`) resolves no tag (2.9.12).
+# 3,140) came back as one plain string. `.asm` resolves no tag: GNU as
+# or NASM is the content's to decide (2.9.12). `.s`, though detection
+# votes on it too, still does — to the first grammar listing it,
+# asm_x86_64.
 fn registry_find_fence_tag(tag) {
     if (tag == 0) { return 0; }
     var g = registry_find_by_name(tag);

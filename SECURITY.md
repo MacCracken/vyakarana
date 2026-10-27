@@ -14,20 +14,26 @@ with you on disclosure timing.
 ## Threat model
 
 vyakarana is a **library that tokenizes arbitrary source bytes**.
-It has no network surface, no syscalls beyond `mmap`/`read` for
-the optional file-reading entry points, and no privileged
-operations. The tokenizer's correctness contract is the
+It has no network surface and no privileged operations; its only
+syscalls are memory allocation and, in `grammar_load`, opening and
+reading one grammar file (the `vyk` CLI also reads its input and
+writes its output). The tokenizer's correctness contract is the
 **coverage invariant**: every input byte is accounted for in
 exactly one output token, with `error` kinds emitted (not
 silently dropped) when no other rule matches.
 
 Trust boundary:
 
-- **Source bytes** (the bytes handed to `tokenize_stream_feed`, or
-  the `src` argument to `tokenize_with_grammar`) are
-  **untrusted**. Bounds checks on every `load8 / store8 / alloc(N)`
-  derived from input length are the contract — see
-  `tests/vyakarana.tcyr` and the `docs/audit/` reports.
+- **Source bytes** are **untrusted**: the bytes handed to
+  `tokenize_stream_feed`, to `tokenize_doc_set` and `tokenize_doc_edit`,
+  and to `detect_language_from_content`, `_combined` and `_registered`.
+  Bounds checks on every `load8 / store8 / alloc(N)` derived from input
+  length are the contract — see `tests/vyakarana.tcyr` and the
+  `docs/audit/` reports. An edit's description is checked only for
+  its lengths: `tokenize_doc_edit` refuses an edit that does not fit
+  the text, but trusts that the text it is passed is the old text with
+  that edit applied (ADR 0033; `docs/development/state.md`, Known
+  limits).
 - **Grammar files** (`grammars/*.cyml`, parsed by `src/grammar.cyr`)
   ship in the repo and are part of the library's trusted
   surface. A consumer that loads its own `.cyml` from an
@@ -36,8 +42,8 @@ Trust boundary:
   also REJECTS (returns 0 for) a grammar whose rules are
   incomplete or inconsistent, which before then loaded and
   crashed the scanner later.
-- **`vyk` CLI** reads files up to `VYK_SRC_CAP` (1 MiB) via
-  `file_read_all`. A larger file is refused loudly — exit 3 with
+- **`vyk` CLI** reads files of up to 1,048,574 bytes (`VYK_SRC_CAP`,
+  1 MiB, less two) via `file_read_all`. A larger file is refused loudly — exit 3 with
   an error on stderr — since 2.3.4 (P1-1 of that audit; through
   2.3.3 it was silently truncated, and this paragraph said that
   was "accepted"). The streaming API bounds its live buffer
@@ -69,8 +75,13 @@ Trust boundary:
   with no closer were quadratic until 2.5.2 (1 MiB of `<style>`
   ran past 300 s), and in the STREAMING API a long token or block
   fed in small chunks was re-scanned per drain until 2.8.0
-  (ADR 0028), and the cases 2.8.0 missed until 2.9.1.
-  `scripts/audit/stream-sweep.sh` times each of these.
+  (ADR 0028), the cases 2.8.0 missed until 2.9.1, and four more until
+  2.9.12 (a string ending in a run of `\`, a long shebang line, a
+  number of `_1` separators, colliding heredoc delimiters).
+  `scripts/audit/stream-sweep.sh` times each of these. One case is
+  known and not scheduled: heredoc delimiters crafted to collide in
+  the heredoc line index's unkeyed hash make building it quadratic
+  (`docs/development/state.md`, Known limits).
 - Adversarial `.cyml` grammar files crashing or hanging the
   loader.
 - Public-API misuse that produces undefined behaviour rather
@@ -163,19 +174,30 @@ Trust boundary:
 - [2026-10-21 — 2.9.x closeout audit](docs/audit/2026-10-21-2.9.x-closeout-audit.md)
   — 2.7.0 through 2.9.0. 2 P1, 8 P2, 10 P3, 11 gate holes; 2.9.1
   fixed all but one P3 and the rest of P2-4 (the heredoc line
-  index's memory), both on the roadmap. Among them: two consumer
-  grammars composing into each other overflowed the stack, and
-  chunked streaming was still quadratic on some inputs.
+  index's memory), which shipped in 2.9.3 and 2.9.4. Among them: two
+  consumer grammars composing into each other overflowed the stack,
+  and chunked streaming was still quadratic on some inputs.
+- [2026-10-27 — 2.9.12 closeout audit](docs/audit/2026-10-27-2.9.12-closeout-audit.md)
+  — 2.9.2 through 2.9.11, the end of the 2.9.x arc. 4 P1, 14 P2,
+  12 P3, 13 gate holes; 2.9.12 fixed all but one P2 and three P3,
+  which are documented as known limits. Among them: `grammar_load`
+  crashed on an unquoted `match` value, a heredoc delimiter cut off
+  by the buffer's end was hashed through a pointer into an earlier
+  caller's freed buffer (SIGSEGV after an unmap), an unclosed markdown fence
+  swallowed the rest of real documents without an error token,
+  documents differed from one feed past the heredoc hold bound, and
+  chunked streaming took 10–29 s on four inputs.
 
-State at 2.3.0: 0 CRITICAL, 0 HIGH, 0 MEDIUM open. Every
-numbered finding from FINDING-006 on is closed — 006 in 1.0.1,
-007 in the 1.11.x pass, 008 and 009 in the 2.0.x pass, 010 in
-2.1.4, 011 in 2.2.1. What carries forward unchanged is the
-2026-04-23 baseline's accepted LOW set (FINDING-002 to 005:
-unchecked `alloc()` returns, silent truncation at `VYK_SRC_CAP`
-and `GRAMMAR_FILE_CAP`, u32 `Token.start` / `Token.len`) — all
-defense-in-depth, all deliberately left as-is for the reasons
-recorded in that report.
+State at 2.10.0 (the code of 2.9.12): 0 CRITICAL, 0 HIGH open. Every numbered finding of
+the 2026-04-23 baseline and the 1.x / 2.x passes is closed —
+FINDING-002 to 005 (unchecked `alloc()` returns, silent truncation at
+`VYK_SRC_CAP` and `GRAMMAR_FILE_CAP`, u32 `Token.start` /
+`Token.len`) in 2.3.4: allocation failures are checked, oversized
+input and grammars are refused, and a stream refuses input past
+`VYK_OFFSET_CAP` (2³² − 1). What stays open is the 2.9.12 audit's four
+documented items (P2-A7 and P3-A9, A11, D10 — token boundaries that
+differ from a reference lexer; none is a memory or time defect) and
+the heredoc-collision case above.
 
 No audit was cut for 2.2.x or 2.3.0. 2.2.1 *was* the audit queue
 being drained — FINDING-011's fix plus the 2.1.5
@@ -186,6 +208,5 @@ None of them touched the scanner, the public API, the token
 layout, or the 45-grammar set; the next audit was 2.3.4's, above.
 CLAUDE.md §Hardening step 6 is the only gate that mandates a
 security review — the §Closeout pass checklist has never carried
-one — so audits run as hardening passes; the next is the closeout
-audit that ends the 2.9.x arc in the
-[roadmap](docs/development/roadmap.md).
+one — so audits run as hardening passes, one at the close of each
+arc of releases ([roadmap](docs/development/roadmap.md)).

@@ -417,6 +417,8 @@ fn _ci_main() {
     # marker split, "```" mid-line, a closer after `end_indent` bytes, a
     # partial `</sty` that is body after all, a `#!` at a body's start,
     # bodies with no end at all, a cyml `\n[[` and an mdx blank line.
+    # (Fences hold for their closer since 2.9.12: the markdown shapes
+    # now exercise that hold, not region mode.)
     if (_ci_every("markdown", "a\n\n```python\nx = 'a'  # c\ny = \"\"\"doc\n```\nz = 1.5\n```\nafter `x` ``y``\n") != 0) { rc = 1; }
     if (_ci_every("markdown", "x\n```python\ns = \"```\" + t\nu = 1 ```\n  v ```\n> ```\nw\n```\nend\n") != 0) { rc = 1; }
     if (_ci_every("markdown", "```python\n#!/usr/bin/env python\nprint('x')\n``` \n``` trailing\n````\n```\n") != 0) { rc = 1; }

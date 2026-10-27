@@ -16,8 +16,10 @@
 # line. Files with error tokens are listed (ERRTOK) but are not failures
 # — real files can be invalid.
 #
-# Exit: 0 when nothing FAILed. (2.5.x – 2.8.0 audits ran a Python
-# version of this; it skipped the checks whenever vyk exited 1.)
+# Exit: 0 when nothing FAILed, 1 when something did, 2 when nothing
+# was tokenized (each file had no grammar or was over the cap).
+# (2.5.x – 2.8.0 audits ran a Python version of this; it skipped the
+# checks whenever vyk exited 1.)
 set -eu
 
 AUDIT_CWD=$(pwd)

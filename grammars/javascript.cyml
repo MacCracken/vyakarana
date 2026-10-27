@@ -15,7 +15,7 @@
 #   - Regex literals `/pat/flags` — not handled; `\` is an operator
 #     so escapes inside regex don't error, but regex isn't a
 #     distinguished token.
-#   - JSX — a separate grammar, not this one.
+#   - JSX — not handled; no bundled grammar covers it.
 
 [grammar]
 name = "javascript"

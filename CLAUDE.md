@@ -29,6 +29,7 @@ cyrius test tests/vyakarana.tcyr
 sh scripts/smoke.sh build/vyk
 sh scripts/check-size.sh               # shipped (DCE) binary's size, reported
 cyrius build scripts/audit/harness.cyr build/vyk-audit \
+    && build/vyk-audit auto tests/corpus/openqasm.qasm every \
     && for f in scripts/audit/*.sh scripts/bench-paired.sh; do sh -n "$f"; done
 cyrius fuzz                            # the fuzz/*.fcyr harnesses
 cyrius distlib --check                 # dist/vyakarana.cyr current; exit 1 if stale
@@ -36,10 +37,10 @@ cyrius distlib --check                 # dist/vyakarana.cyr current; exit 1 if s
 
 These are CI's steps (`.github/workflows/ci.yml`), in CI's order, so
 a green run here is a green CI run — through 2.9.1 this list left out
-the last three. Run them all on session entry. Don't take
-`docs/development/state.md` / `README.md` claims of "green" at
-face value until you've seen the commands pass. Use `cyrius build`,
-never raw `cc3`/`cc5`.
+the last three, and through 2.9.12 the harness's one run. Run them all
+on session entry. Don't take `docs/development/state.md` / `README.md`
+claims of "green" at face value until you've seen the commands pass. Use `cyrius build`,
+never the raw compiler (`cycc`).
 
 **`cyrius deps` used not to refresh a `lib/` that already existed.**
 Through the 6.5.x pins it treated a present `lib/<mod>.cyr` as
@@ -67,8 +68,12 @@ done
 at build time. Verified in 2.3.3 by appending garbage to
 `lib/str.cyr` and rebuilding: still `OK`. So a stale `lib/` does
 **not** silently build you against the wrong stdlib; it makes the
-tree *describe* a version it isn't on, emits a `shadow lib`
-warning, and misleads anyone reading it. (This paragraph used to
+tree *describe* a version it isn't on and misleads anyone reading
+it — silently: at 6.7.18 garbage appended to `lib/str.cyr` builds
+byte-identical with no warning (re-checked in 2.10.0; the driver
+carries a "shadows version-pinned" warning that does not fire on
+`build`, `test` or `distlib`), so only the whole-tree diff above
+catches it. (This paragraph used to
 claim the opposite — that a stale `lib/` made the pin ignored.
 That was wrong; the reverse is true.) Keep them in sync anyway:
 CI populates `lib/` fresh on every checkout, so a mismatch means
@@ -195,8 +200,9 @@ Run a closeout pass before the user cuts `0.Y.0` or `1.0.0`:
    version header; `docs/development/state.md`'s "Current status"
    matches reality; ROADMAP updated if the milestone boundary
    shifted.
-7. Clean build — `rm -rf build && cyrius deps && cyrius build`
-   passes from scratch.
+7. Clean build — `rm -rf build && cyrius deps && sh
+   scripts/embed-grammars.sh && cyrius build src/main.cyr build/vyk`
+   passes from scratch (a bare `cyrius build` writes `./vyk`).
 8. Downstream check — `owl` (and any other consumer that has
    picked up `[deps.vyakarana]`) still builds against the new tag.
 
@@ -219,9 +225,10 @@ Cyrius code. When dialect is unclear, read `cyrius/programs/*.cyr`
 - No closures — use named functions.
 - `break` inside a `while` with `var` declarations is unreliable;
   use a flag + `continue` pattern instead.
-- `return;` without a value is invalid — always `return 0;` (or
-  the real value).
-- No negative literals. Write `(0 - N)`, not `-N`.
+- Write `return 0;` (or the real value), never a bare `return;`,
+  and `(0 - N)`, never `-N`. Older pins rejected both; at 6.7.18 both
+  compile and evaluate right (re-checked in 2.10.0), but the house
+  style reads the same at every pin.
 - `var` is **block-scoped**. Re-declaring a name already bound in
   the *same* block is a `duplicate variable` error; shadowing an
   enclosing block or reusing a name in a sibling block is legal;
@@ -249,8 +256,9 @@ Cyrius code. When dialect is unclear, read `cyrius/programs/*.cyr`
   already in it. For single-file programs outside a project (e.g.
   `cyrius/programs/*.cyr`), explicit `include "lib/..."` at the
   top is the pattern. See `yukti/cyrius.cyml` for the canonical
-  `[deps] stdlib`, `[deps.<name>]` git deps, and
-  `[lib] modules = [...]` distlib shapes.
+  `[deps] stdlib` and `[lib] modules = [...]` distlib shapes, and
+  `owl/cyrius.cyml`'s `[deps.vyakarana]` (or distribution.md §1) for
+  a `[deps.<name>]` git dep.
 - Heap-allocate large buffers with `alloc(N)` — `var buf[256000]`
   bloats the binary by 256KB.
 - Enum values for constants — don't consume `gvar_toks` slots.
@@ -273,8 +281,9 @@ Cyrius code. When dialect is unclear, read `cyrius/programs/*.cyr`
 - Do not add a token kind, change the `Token` layout, or change
   the public streaming API — `tokenize_stream_new` / `_feed` /
   `_drain` / `_finish` / `_free`, plus `has_grammar`,
-  `list_languages_into`, `bootstrap_grammars` (the list in
-  `src/tokenize.cyr`'s header is authoritative) — without an ADR
+  `list_languages_into`, `bootstrap_grammars` and the rest of the
+  list in `src/tokenize.cyr`'s header (pull adapter, registry,
+  detection, documents, tokens), which is authoritative — without an ADR
   under `docs/adr/` and a CHANGELOG entry. This rule used to name
   `tokenize_source`, which 2.0.0 **removed** with no compat shim
   ([ADR 0017](./docs/adr/0017-streaming-api.md)); the only

@@ -34,9 +34,10 @@ var EXIT_NO_GRAMMAR   = 4;
 # file into one buffer, so this is a hard ceiling on what `vyk`
 # will tokenize.
 #
-# It is NOT a library limit: `tokenize_stream_*` has no total-input
-# ceiling (VYK_STREAM_CAP bounds only the live unconsumed window),
-# so consumers are unaffected. Routing the CLI through the stream
+# It is NOT a library limit: `tokenize_stream_*` has no 1 MiB
+# ceiling — VYK_STREAM_CAP bounds the undrained window, and total
+# input stops at 4 GiB - 1 (VYK_OFFSET_CAP, ADR 0021) — so
+# consumers are unaffected. Routing the CLI through the stream
 # would lift this — tracked in CHANGELOG 2.3.4 §Notes, not done
 # here because detection and themed output both want the whole
 # buffer addressable.
@@ -88,7 +89,8 @@ fn print_help() {
     out_line("  0  success");
     out_line("  1  tokenization produced an `error` token kind");
     out_line("  2  bad usage: unknown option, missing or invalid value, extra FILE");
-    out_line("  3  I/O error: cannot read FILE, or cannot write output");
+    out_line("  3  I/O error: cannot read FILE (or it is over 1 MiB),");
+    out_line("     or cannot write output");
     out_line("  4  no grammar matched FILE");
     out_line("");
     out_line("Examples:");

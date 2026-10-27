@@ -36,8 +36,8 @@ Thanks for wanting to help vyakarana see more grammar.
 5. Branch from `main`
 6. Make your change
 7. Run every gate below before opening a PR — CI runs the same
-   set plus the audit-tools build and a `dist/vyakarana.cyr` drift
-   check
+   set, in the same order (its drift check re-runs `cyrius distlib`
+   and diffs, to the same end as `--check`)
 8. Reference the roadmap release your change belongs to, if it has
    one
 
@@ -101,6 +101,7 @@ cyrius test tests/vyakarana.tcyr
 sh scripts/smoke.sh build/vyk
 sh scripts/check-size.sh                # the shipped (DCE) binary's size, reported
 cyrius build scripts/audit/harness.cyr build/vyk-audit \
+    && build/vyk-audit auto tests/corpus/openqasm.qasm every \
     && for f in scripts/audit/*.sh scripts/bench-paired.sh; do sh -n "$f"; done
 cyrius fuzz                             # the harnesses in fuzz/*.fcyr
 cyrius distlib --check                  # dist/vyakarana.cyr current; exit 1 if stale
@@ -126,13 +127,13 @@ change touches a module named in `cyrius.cyml`'s `[lib]` block, run
 `sh scripts/embed-grammars.sh && cyrius distlib` and commit the
 regenerated bundle.
 
-At 2.9.1 green means 1123/1123 test assertions and 5/5 fuzz
+At 2.10.0 green means 1495/1495 test assertions and 6/6 fuzz
 harnesses. Run the gates yourself rather than trusting a doc that
 says "green" — 2.2.3 shipped with a test suite that did not
 compile, and nobody noticed because nobody re-ran it.
 
 There is no Makefile — `cyrius <subcommand>` is the whole build system.
-Never shell out to `cc5` directly.
+Never shell out to the compiler (`cycc`) directly.
 
 ## Token-kind palette is stable
 

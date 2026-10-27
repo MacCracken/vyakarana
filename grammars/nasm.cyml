@@ -22,8 +22,8 @@
 # Detection: `.nasm`, and `.asm` — which no grammar claimed from 2.6.2
 # to 2.9.8 (GAS forced on 81 real files turned their 1,611 `;` comment
 # lines into code). `detect_language_combined` lets content vote an
-# `.asm` file that reads as GAS back to the asm grammars (ADR 0015,
-# amended 2.9.9).
+# `.asm` or `.nasm` file that reads as GAS back to the asm grammars
+# (ADR 0015, amended 2.9.9).
 #
 # Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
 # vidya ships no NASM sample. `tests/corpus/concept.asm` is a small

@@ -32,8 +32,7 @@
 #
 # Known gaps (not triggered by the stand-in):
 #   - **Here-strings** `@'...'@` and `@"..."@`. Multi-line
-#     pair markers; same scanner-shape limitation as Lua's
-#     `[==[...]==]` long brackets and Ruby heredocs.
+#     pair markers, the closer at a line start; not declared.
 #   - **String interpolation** in `"..."` — the `$var` /
 #     `$(expr)` forms inside strings tokenize as the string
 #     wrapping them; the renderer doesn't see the inner

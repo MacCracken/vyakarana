@@ -16,7 +16,8 @@
 # the grammar is detected as vyk does): each at STRIDE (default 97) and
 # the default spacing. Each run has a limit of SECS (default 900).
 #
-# Exit: 0 when every edit and undo matched and none timed out.
+# Exit: 0 when every edit and undo matched and none timed out,
+# 1 otherwise, 2 when nothing was run (no FILE had a grammar).
 set -eu
 
 AUDIT_CWD=$(pwd)

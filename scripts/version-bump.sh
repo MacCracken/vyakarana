@@ -1,9 +1,9 @@
 #!/bin/sh
-# Version bump script — single source of truth for all vyakarana
-# version references.
+# Version bump script — bumps VERSION, src/version_str.cyr and the
+# CHANGELOG header (the rest is listed at the end).
 #
 # Usage:
-#   sh scripts/version-bump.sh 1.0.4          # bump VERSION + regenerate everything
+#   sh scripts/version-bump.sh 1.0.4          # bump VERSION, version_str.cyr, CHANGELOG
 #   sh scripts/version-bump.sh "$(cat VERSION)" # regenerate without bumping
 #
 # Why this exists: through 1.0.3 the `vyk --version` literal lived

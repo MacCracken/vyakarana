@@ -6,7 +6,7 @@
 #
 # With no FILE, the fixed set:
 #   - every corpus file under `every`: fed in two parts split at every
-#     offset, each run equal to one feed (the 2.8.0 bar: 49 of 49);
+#     offset, each run equal to one feed (the bar since 2.8.0);
 #   - the heredoc shapes in scripts/audit/shapes/ (from the 2.6.x
 #     audit) plus four CR / CRLF ones generated here, under `every`
 #     and `pairs` (every pair of split offsets);
@@ -22,7 +22,8 @@
 # does), each file under `chunks 2`, `rand 11 6 400` and
 # `cutfirst 4096 4096`.
 #
-# Exit: 0 when every run matched its single feed and none timed out.
+# Exit: 0 when every run matched its single feed and none timed out,
+# 1 otherwise, 2 when nothing was run (no FILE had a grammar).
 set -eu
 
 AUDIT_CWD=$(pwd)

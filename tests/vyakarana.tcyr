@@ -11,6 +11,10 @@
 # M1 (shell grammar): shell dispatch is wired; tokenize_shell
 # produces known tokens at known offsets for small inputs and
 # holds the coverage invariant.
+#
+# Since then a `test_group` per milestone or release, named for it
+# (`M3 rust grammar …`, `2.9.10 resumable regions (ADR 0032)`) and
+# appended in roughly release order.
 
 include "lib/assert.cyr"
 include "src/token.cyr"

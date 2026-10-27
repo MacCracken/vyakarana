@@ -13,13 +13,11 @@
 #   - `/* ... */` block comments.
 #   - Strings: `"..."` with `\` escapes and `${expr}`
 #     interpolation. Heredocs (`<<EOT … EOT` and `<<-EOT … EOT`)
-#     not modeled — variable terminator, same scanner-shape gap
-#     as Lua / Ruby / PHP.
+#     are not declared here; ruby.cyml's heredoc rule (ADR 0030)
+#     is the model.
 #   - Numbers: integers and decimals. No hex / binary / octal.
 #   - Identifiers: `[A-Za-z_][A-Za-z0-9_-]*`. `-` in
-#     `ident_cont` for kebab-case names that show up in
-#     resource types (`aws_s3_bucket`, `azurerm_role_assignment`)
-#     and names (`my-bucket`).
+#     `ident_cont` for kebab-case names (`my-bucket`).
 #   - Block syntax: `resource "type" "name" { ... }`. The
 #     identifiers and quoted strings tokenize naturally;
 #     no special "block-header" token kind needed.

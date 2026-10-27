@@ -9,7 +9,7 @@
 #   1. Empty / truncated / NUL-bombed CYML returns a non-null
 #      grammar handle (parser is forgiving — missing fields stay
 #      defaulted) or 0 (clean failure mode), never crashes.
-#   2. Embedded blobs round-trip: there are 46, and eight bundled
+#   2. Embedded blobs round-trip: there are 49, and eight bundled
 #      paths parse to a grammar with a name.
 #   3. Pathological CYML shapes (deeply nested arrays, runaway
 #      strings, headers without bodies) don't blow stack or

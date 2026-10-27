@@ -8,14 +8,14 @@
 > 2.6.2 it carried a "What X changed" block for every release back to
 > 1.13.0 — trimmed in 2.7.0; the CHANGELOG has all of it.)
 >
-> **Last refresh:** 2026-10-27, at 2.9.12. Read this first, then run the
+> **Last refresh:** 2026-10-27, at 2.10.0. Read this first, then run the
 > gates (CLAUDE.md §Gates) — do not take the "green" below on trust.
 
 ---
 
 ## Current status
 
-- **Version:** `2.9.12` — `VERSION`, `src/version_str.cyr`,
+- **Version:** `2.10.0` — `VERSION`, `src/version_str.cyr`,
   `dist/vyakarana.cyr`, the CHANGELOG header and `docs/man/vyk.1`
   agree.
 - **Toolchain pin:** `cyrius = "6.7.18"` in `cyrius.cyml`, the single
@@ -41,15 +41,16 @@
   of four stdlib leaves (alloc, string, vec, io). The embedded grammars
   are compacted — comments and blanks outside strings dropped — by a
   POSIX sh + awk generator (ADR 0029); `grammars/` is the readable copy.
-- **Size:** the shipped (`CYRIUS_DCE=1`) `vyk` is 317,928 bytes, the
-  default build 416,232. `scripts/check-size.sh` reports the shipped
+- **Size:** the shipped (`CYRIUS_DCE=1`) `vyk` is 317,952 bytes, the
+  default build 416,256. `scripts/check-size.sh` reports the shipped
   build's size in CI and at release; since 2.9.8 there is no hard limit
   (ADR 0029, amended).
-- **Next release:** none scheduled — 2.9.12's closeout audit ended the
-  2.9.x arc ([roadmap](./roadmap.md)). Its report:
-  [2.9.12](../audit/2026-10-27-2.9.12-closeout-audit.md).
+- **Next release:** none scheduled. 2.9.12's closeout audit ended the
+  2.9.x arc ([report](../audit/2026-10-27-2.9.12-closeout-audit.md));
+  2.10.0 is that arc's documentation brought up to date, with no change
+  to tokens or API ([roadmap](./roadmap.md)).
 
-## Gates (green at 2.9.12, 2026-10-27)
+## Gates (green at 2.10.0, 2026-10-27)
 
 - `cyrius build` OK, 0 warnings · `cyrius test` **1495/1495** · smoke
   OK (it runs `scripts/check-detect.sh`) · `scripts/lint-fmt.sh`
@@ -57,7 +58,7 @@
   `scripts/audit/`) · `scripts/check-size.sh` reports · `cyrius fuzz`
   **6/6** (92 every-offset shapes; `fuzz/retokenize.fcyr` edits every
   offset of every corpus and 16 short texts at every checkpoint spacing
-  1–12, 319,986 edits, about a minute), also clean under `--poison=ab` and
+  1–12, 320,011 edits, about a minute), also clean under `--poison=ab` and
   `--bounds` · `cyrius distlib --check` clean.
 - The audit sweeps are in `scripts/audit/` — real-file coverage,
   poison A/B, streaming invariance, mutation fuzz over vidya, whole-file
@@ -79,8 +80,9 @@
   `detect_language_from_content`, `detect_language_combined`, and
   `detect_language_registered` since 2.9.8 — ADR 0031), documents for
   incremental retokenization (`tokenize_doc_*` since 2.9.11 — ADR 0033),
-  and `grammar_load` for a consumer's own `.cyml`. The header of
-  `src/tokenize.cyr` is the authoritative list.
+  `grammar_load`, `registry_add` and `registry_find_by_name` for a
+  consumer's own `.cyml`, and the token buffer (`tokenbuf_*`, the `TK_*`
+  kinds). The header of `src/tokenize.cyr` is the authoritative list.
 - **Grammar format:** CYML. Rule types line (with `start_after`,
   ADR 0022), pair, words, compose, compose_fenced (with `end_indent`,
   and tags resolved by name, extension or interpreter — ADR 0016),
@@ -206,8 +208,9 @@ None is scheduled: the 2.9.x arc is closed ([roadmap](./roadmap.md)).
 vidya snapshots where vidya ships a
 sample (ADR 0001; last re-synced in 2.6.2 — at the 2.9.x audit all are
 current but `dependencies.cyml`, which vidya has grown from 10.6 to
-42.5 KB; the snapshot is kept, since the every-offset sweep over the new
-one alone takes ten minutes, and the sweeps cover it) and hand-written
+50.7 KB at the 2.9.12 audit; the snapshot is kept, since the every-offset
+sweep over the new one alone takes ten minutes, and that audit swept it
+whole, splits and edits, with 0 fails) and hand-written
 `concept.<ext>` stand-ins elsewhere (ADR 0006). Provenance and the
 re-sync commands are in `tests/corpus/README.md`. A grammar passes when
 its corpus tokenizes with zero `error` tokens.
@@ -215,11 +218,12 @@ its corpus tokenizes with zero `error` tokens.
 ## Consumers (not owned here)
 
 - `owl` pins tag `2.4.2` (cyrius 6.6.2), `cyim` `2.4.0` (6.7.9), `vidya`
-  `2.4.0` (6.6.2). All three build and pass their own tests against
-  the 2.9.1 bundle through a path dependency. Taking a newer tag is
+  `2.9.1` (6.7.15). All three build and pass their own tests against
+  the current bundle — at each release, cyim and vidya through a path
+  override, owl through a scratch git tag. Taking a newer tag is
   their call — it changes what they render (2.5.2's fixes, 2.6.x's
   shell, 2.7.0's numbers, 2.9.1's markdown fences), not their API.
-  cyim routes 46 languages itself (`src/lang.cyr`);
+  cyim routes 45 languages and a `plain` fallback itself (`src/lang.cyr`);
   `detect_language_registered` (2.9.8, ADR 0031) lets it stop, and it
   tokenizes whole buffers on each change, which `tokenize_doc_edit`
   (2.9.11, ADR 0033) replaces — when it takes either is cyim's call.

@@ -11,7 +11,8 @@
 #      (inner grammar captured per-fence from the info string)
 #   0c. [[rules]] match="compose_region" (ADR 0019)   → recursive
 #      (start marker + inner-grammar body; ends BEFORE an
-#       unconsumed lookahead terminator, or at EOF)
+#       unconsumed lookahead terminator, or before a blank line
+#       (`end_blank`, 2.9.12), or at EOF)
 #   1. shebang (#! on line 0, column 0)              → preprocessor
 #   1b. [[rules]] match="heredoc" body="inline"       → kind
 #      (a raw literal through its computed closer, ADR 0030)
@@ -514,11 +515,11 @@ fn _ds_scan_tag(src, src_len, start) {
         #
         # `vyk` hid it: the CLI NUL-terminates at `buf[n]`, so the
         # stray byte was its own terminator. `tokenize_with_grammar`
-        # is public surface though, and a consumer handing over an
-        # exactly-sized buffer whose last page ends at src_len takes
-        # a SIGSEGV. `_ds_scan_to_lf` below looks like the same
-        # pattern but is safe — it increments last, so the loop
-        # condition catches `p == src_len` before the next read.
+        # is reachable from the bundle though, and a consumer handing
+        # over an exactly-sized buffer whose last page ends at
+        # src_len takes a SIGSEGV. `_ds_scan_to_lf` below looks like
+        # the same pattern but is safe — it increments last, so the
+        # loop condition catches `p == src_len` before the next read.
         if (_ds_is_tag_byte(load8(src + p)) == 0) { done = 1; }
         if (done == 0) { p = p + 1; }
     }
@@ -1276,7 +1277,8 @@ fn _ds_lead_dot_ok(g, src, src_len, i, prev0) {
 # Offset just past the run of base-`base` digits starting at `j`. With a
 # digit separator `sep` (`[defaults] number_separator`, ADR 0026), a
 # `sep` byte joins the run only when a digit follows it: `1_000` is one
-# number, `1_u32` is `1` + `_u32`, `1__0` is `1` + `__0`.
+# number, `1_u32` is `1` + `_u32` (unless `number_suffixes` declares
+# `u32`: `_ds_num_suffix` then joins it), `1__0` is `1` + `__0`.
 fn _ds_digit_run(src, src_len, j, sep, base) {
     while (j < src_len) {
         var b = load8(src + j);
@@ -1395,11 +1397,14 @@ var _ds_hd_pool = 0;
 # it yet. Read (and reset) by the streaming drain, which then commits
 # nothing from there on until more input arrives (or finish). -1: none.
 var _ds_hd_hold_from = (0 - 1);
-# When the hold at `_ds_hd_hold_from` is a plain "terminator line not
-# arrived yet" (opener line complete, delimiter known), its details, so
-# the drain can watch only NEW lines for the terminator instead of
-# re-tokenizing the whole held buffer every feed. 0 = no fast path (the
-# hold is an undecided opener, or a terminator missing only its LF).
+# How the drain can watch the hold at `_ds_hd_hold_from` instead of
+# re-tokenizing the whole held buffer every feed. 1 = a terminator line
+# to watch NEW lines for (opener line complete, delimiter known; its
+# details below): one not in the buffer, or, for a queued body (step H),
+# one missing only its line break. 3 = a string keeping the opener line
+# open: watch for its close (`_ds_hd_hold_marker`). 0 = no fast path (an
+# undecided opener, an opener whose terminator misses only its LF,
+# bodies whose separating line break has not arrived, an open `((`).
 var _ds_hd_hold_fast = 0;
 var _ds_hd_hold_dpos = 0;
 var _ds_hd_hold_dlen = 0;
@@ -1453,16 +1458,18 @@ fn _ds_grp_add(from, to) {
 }
 
 # Compose hold (2.8.0): the lowest depth-1 compose opener this scan could
-# not resolve — a `compose` or `compose_fenced` start with no close in
-# the buffer (read as a body running to the buffer's end, ADR 0032 — more
-# input may close it; through 2.9.9 it read as outer text), a fence whose
-# info line has not ended, or a `compose_region` running into the
-# buffer's end. The drain commits nothing from there until it resolves, with a
-# watch on `_ds_cp_hold_marker`: mode 2 waits for a line break, 3 for
-# the marker (a cstr) anywhere in the new bytes, 4 for finish. Through
-# 2.7.1 the drain guessed at this from outside (`prefix_hold`), and the
-# compose grammars were not chunk-invariant: cyml failed at 90 % of
-# split offsets.
+# not resolve — a `compose` start with no close (a body to the buffer's
+# end, ADR 0032 — more input may close it; through 2.9.9 outer text); a
+# `compose_fenced` start with no closing fence (outer text, as through
+# 2.9.9 and again since 2.9.12); a fence whose info line has not ended;
+# a `compose_region` running into the buffer's end; an inline literal
+# (ADR 0030) unclosed, or its opener cut short. The drain commits nothing
+# from there until it resolves, with a watch on `_ds_cp_hold_marker`:
+# mode 2 waits for a line break, 3 for the marker (a cstr) anywhere in
+# the new bytes, 4 for finish (0: no watch, the next drain re-scans).
+# Through 2.7.1 the drain guessed at this from outside (`prefix_hold`),
+# and the compose grammars were not chunk-invariant: cyml failed at 90 %
+# of split offsets.
 var _ds_cp_hold_from = (0 - 1);
 var _ds_cp_hold_mode = 0;
 var _ds_cp_hold_marker = 0;
@@ -1483,9 +1490,10 @@ var _ds_cp_hold_scratch = 0;
 # drain can stream the body with that grammar instead of holding it all.
 # `_ds_rg_from` is the hold's opener (-1: the hold is not one), `_body`
 # where the body starts, `_kind` 1 compose, 3 compose_region with
-# `end_before`, 4 compose_region to the end of the input (2, a fence, until
-# 2.9.12 — a fence with no closer is no fence again); `_end` the end marker
-# (cstr, 0 for kind 4). Depth 1 only, like the hold it describes.
+# `end_before`, 4 compose_region to the end of the input, 5 one with
+# `end_blank` (2.9.12; 2, a fence, until 2.9.12 — a fence with no closer
+# is no fence again); `_end` the end marker (cstr, 0 for kinds 4 and 5).
+# Depth 1 only, like the hold it describes.
 var _ds_rg_from = (0 - 1);
 var _ds_rg_body = 0;
 var _ds_rg_kind = 0;
@@ -1520,14 +1528,15 @@ fn _ds_rg_report(i, body, kind, inner, endp) {
 # O(N^2)), with a one-entry cache of the last failed delimiter. The
 # budget scaled with the BUFFER, so a stream that had compacted earlier
 # bytes away gave up sooner than a single feed and a later heredoc came
-# back as code (2.6.x audit). Now the first search in a scan indexes
-# every line of the buffer once — content (exact, and after leading
-# tabs for `<<-`, one trailing CR dropped) hashed into buckets of line
-# numbers in input order — and a search is a walk of one bucket from a
-# forward-only cursor: searches within a scan never move backwards
-# (each opener searches from its line's end, each body from where the
-# previous one ended). Linear, no budget, the same verdict however the
-# input is chunked.
+# back as code (2.6.x audit). Now the first search of a key kind in a
+# scan indexes every line of the buffer once by that key (`_ds_hd_key`:
+# exact, after leading tabs, after leading blanks, or a leading
+# identifier; one trailing CR dropped) — per bucket its distinct keys,
+# each with its own chain of lines in input order — and a search finds
+# its key, then walks that key's lines from a forward-only cursor:
+# searches within a scan never move backwards (each opener searches from
+# its line's end, each body from where the previous one ended). Linear,
+# no budget, the same verdict however the input is chunked.
 var _ds_hdi_pool = 0;
 
 # Decoded-delimiter scratch for the current depth: one 256-byte slot
@@ -1575,15 +1584,15 @@ var _ds_hdd_pos = (0 - 1);  # src offset of the bytes when contiguous, else -1
 
 # The heredoc delimiter at src[p] as bash reads it: a word of bare
 # bytes, `'…'` and `"…"` segments and `\X` escapes, ended by a blank,
-# a newline or one of `;&|()<>`, the quotes removed — `EOF`, `'EOF'`,
-# `\EOF`, `"E"OF` and `E\OF` all mean `EOF`; `''` is the empty
-# delimiter (its terminator is an empty line); `!` and `END-OF-DATA`
-# are words. Through 2.7.0 a delimiter was one quoted run or a bare
-# `[A-Za-z_][A-Za-z0-9_.-]*`, so the mixed forms read as `E` and `<<!`
-# / `<<''` were no heredoc at all. A bare word may not start with a
-# digit (`1 << 2` outside `((`…`))` stays a shift). Returns 0 with the
-# word in `_ds_hdd_*`, 1 if the buffer ends inside it (undecided), 2
-# if there is no delimiter here.
+# a CR or LF, a backtick or one of `;&|()<>`, the quotes removed —
+# `EOF`, `'EOF'`, `\EOF`, `"E"OF` and `E\OF` all mean `EOF`; `''` is
+# the empty delimiter (its terminator is an empty line); `!` and
+# `END-OF-DATA` are words. Through 2.7.0 a delimiter was one quoted
+# run or a bare `[A-Za-z_][A-Za-z0-9_.-]*`, so the mixed forms read as
+# `E` and `<<!` / `<<''` were no heredoc at all. A bare word may not
+# start with a digit (`1 << 2` outside `((`…`))` stays a shift).
+# Returns 0 with the word in `_ds_hdd_*`, 1 if the buffer ends inside
+# it (undecided), 2 if there is no delimiter here.
 fn _ds_hd_parse_delim(src, src_len, p, slot) {
     # Unset until this parse sets it: a delimiter the buffer cuts short
     # returns 1 without a pointer (2.9.12 audit, reviewer A).
@@ -1715,8 +1724,8 @@ fn _ds_hd_parse_ident(src, src_len, p) {
 }
 
 # Queue buffer for the current nesting depth (entries of 40 bytes:
-# delim ptr, delim len, indent flag, kind, opener offset), allocated
-# once per depth.
+# delim ptr, delim len, key kind 0 – 3 (`_ds_hd_key`), token kind,
+# opener offset), allocated once per depth.
 fn _ds_hd_queue() {
     if (_ds_hd_pool == 0) {
         _ds_hd_pool = vec_new();
@@ -1909,9 +1918,9 @@ fn _ds_hdi_build(x, src, src_len) {
     return 1;
 }
 
-# Build key kind `ind`'s block unless this scan already has: bucket chains of
-# line numbers in input order over each line's key, and (ind > 0) where
-# each key starts. 0 on allocation failure.
+# Build key kind `ind`'s block unless this scan already has: per bucket
+# its distinct keys, each with its own chain of lines in input order,
+# and (ind > 0) where each line's key starts. 0 on allocation failure.
 fn _ds_hdi_half(x, src, ind) {
     var bit = 1 << ind;
     if ((load64(x + 72) & bit) != 0) { return 1; }

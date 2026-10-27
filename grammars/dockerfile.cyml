@@ -34,9 +34,8 @@
 # 2.9.1; ADR 0025). Other names need `--language=dockerfile`.
 #
 # Known gaps (not triggered by the stand-in):
-#   - Heredoc syntax (`COPY <<EOT`, etc.). Variable-length
-#     terminator — same scanner-shape gap as Lua's `[==[…]==]`,
-#     Ruby/PHP heredocs, Swift raw strings.
+#   - Heredoc syntax (`COPY <<EOT`, etc.). Not declared here;
+#     it has the shape of shell.cyml's heredoc rule (ADR 0023).
 #   - Parser directives `# syntax=…` and `# escape=…` are
 #     plain `#` line comments at this layer; theme can re-pair
 #     by token text.

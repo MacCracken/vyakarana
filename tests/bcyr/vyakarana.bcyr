@@ -2,9 +2,10 @@
 #
 # Establishes a per-call timing baseline for the public API's
 # hot paths. Run with `cyrius bench tests/bcyr/vyakarana.bcyr`.
-# CSV output is captured in `docs/development/performance.md` at
-# each release boundary; future agents diff against the baseline
-# to spot regressions.
+# The baseline in `docs/development/performance.md` is refreshed
+# with `sh scripts/bench-paired.sh <last tag>`, which runs this
+# file for both trees in alternating rounds and reports NEW/OLD
+# ratios; absolute numbers only from a quiet host.
 #
 # What's measured (1.13.0 establishes these eight):
 #

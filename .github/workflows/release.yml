@@ -1,7 +1,7 @@
 name: Release
 
-# Triggers on semver tags only (e.g. 1.0.0, 1.2.3, 2.0.0-rc1).
-# Non-numeric tags are ignored.
+# Triggers on tags starting with a digit (1.0.0, 2.0.0-rc1); other
+# tags, `v1.0.0` among them, are ignored.
 on:
   push:
     tags:

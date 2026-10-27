@@ -98,7 +98,9 @@ boundary, not a workaround.
   is cheap; the per-stream state is 88 bytes plus the live buffer.
   *(2.9.1: 216 bytes now — the 2.6.x and 2.8.0 holds and watches —
   plus the live buffer and a 256-byte delimiter copy once a heredoc
-  needs one.)*
+  needs one.)* *(Amended 2.10.0: 296 bytes since 2.9.12, and the copy
+  is 512 bytes since 2.9.5 — shared with an inline literal's closer,
+  ADR 0030.)*
 - If a consumer ever does hit this in practice, revisit option 1 —
   the measurement to bring is per-token memory against the workload,
   not a hypothetical.

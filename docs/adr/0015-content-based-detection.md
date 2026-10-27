@@ -94,7 +94,9 @@ The `vyk` CLI now reads the file once, then calls
 
 `src/detect.cyr` joins `[lib] modules` so `dist/vyakarana.cyr`
 exposes the byte API to downstream consumers (along with the
-existing `tokenize_source` / `lsp_kind_*` surfaces).
+existing `tokenize_source` / `lsp_kind_*` surfaces). *(Amended 2.10.0:
+`tokenize_source` was removed in 2.0.0 — ADR 0017; the bundle tokenizes
+through the streaming API.)*
 
 ## Consequences
 
