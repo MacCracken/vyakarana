@@ -93,7 +93,7 @@ also refreshes an existing `lib/`; older pins did not).
 ```sh
 vyk --version              # prints `vyk <version>`
 vyk --list-kinds           # print the ten token kinds
-vyk --list-languages       # list loaded grammars (46 bundled)
+vyk --list-languages       # list loaded grammars (49 bundled)
 vyk file.rs                # NDJSON tokens for any bundled grammar
 vyk --language=shell setup # explicit grammar override (extensionless)
 cat x.py | vyk --language=python -   # `-` reads standard input
@@ -138,6 +138,11 @@ was removed in 2.0.0 (ADR 0017).
 ---
 
 ## Status
+
+**2.9.9** (2026-10-27) — three new grammars: **NASM** (`.asm`, `.nasm` — an
+`.asm` that reads as GNU as still goes to the asm grammars), **MDX**
+(markdown with JavaScript `import` / `export` blocks and `{…}`
+expressions), and **Lean 4**. 49 bundled grammars, 1395/1395 tests.
 
 **2.9.8** (2026-10-27) — `detect_language_registered` routes by what the
 registered grammars declare, so a consumer's own grammars route without a

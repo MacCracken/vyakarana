@@ -110,6 +110,10 @@ fn _detect_4byte(path, n) {
         if (memeq(path + n - 4, ".nix", 4) == 1) { return "nix"; }
         if (memeq(path + n - 4, ".hcl", 4) == 1) { return "terraform"; }
         if (memeq(path + n - 4, ".htm", 4) == 1) { return "html"; }
+        # `.asm` is NASM's again (2.9.9) — MASM and armasm share it, and
+        # `detect_language_combined` votes GAS back to the asm grammars.
+        if (memeq(path + n - 4, ".asm", 4) == 1) { return "nasm"; }
+        if (memeq(path + n - 4, ".mdx", 4) == 1) { return "mdx"; }
         if (memeq(path + n - 4, ".css", 4) == 1) { return "css"; }
         if (memeq(path + n - 4, ".ini", 4) == 1) { return "ini"; }
         if (memeq(path + n - 4, ".cfg", 4) == 1) { return "ini"; }
@@ -146,6 +150,8 @@ fn _detect_4byte(path, n) {
 fn _detect_5plus(path, n) {
     if (n >= 5) {
         if (memeq(path + n - 5, ".html", 5) == 1) { return "html"; }
+        if (memeq(path + n - 5, ".nasm", 5) == 1) { return "nasm"; }
+        if (memeq(path + n - 5, ".lean", 5) == 1) { return "lean"; }
         if (memeq(path + n - 5, ".scss", 5) == 1) { return "scss"; }
         if (memeq(path + n - 5, ".sass", 5) == 1) { return "scss"; }
         if (memeq(path + n - 5, ".conf", 5) == 1) { return "ini"; }
@@ -533,6 +539,43 @@ fn _detect_asm_flavor(src, src_len) {
     return "asm_x86_64";
 }
 
+# NASM or GNU as, for a file that path dispatch called `nasm` (ADR 0015,
+# amended 2.9.9): GAS's `.directives` and AT&T `%`-registers against
+# NASM's bare directives, `%` preprocessor and `;` comments, in the first
+# 4 KB. GAS must win outright — `.asm` is NASM's by default — and then
+# the asm flavour vote picks x86-64 or AArch64. A `.nasm` file votes
+# too: NASM signals keep it NASM.
+fn _detect_gas_or_nasm(src, src_len) {
+    var gas = 0;
+    var nasm = 0;
+    var e = src_len;
+    if (e > 4096) { e = 4096; }
+    if (_detect_index_of(src, e, 0, ".intel_syntax") >= 0) { gas = gas + 5; }
+    if (_detect_index_of(src, e, 0, ".att_syntax") >= 0)   { gas = gas + 5; }
+    if (_detect_index_of(src, e, 0, ".globl") >= 0)        { gas = gas + 3; }
+    if (_detect_index_of(src, e, 0, ".section") >= 0)      { gas = gas + 3; }
+    if (_detect_index_of(src, e, 0, "\t.text") >= 0)       { gas = gas + 2; }
+    if (_detect_index_of(src, e, 0, ".type") >= 0)         { gas = gas + 2; }
+    if (_detect_index_of(src, e, 0, "%rax") >= 0)          { gas = gas + 2; }
+    if (_detect_index_of(src, e, 0, "%rsp") >= 0)          { gas = gas + 2; }
+    if (_detect_index_of(src, e, 0, "%eax") >= 0)          { gas = gas + 2; }
+    if (_detect_index_of(src, e, 0, ".arch armv8") >= 0)   { gas = gas + 5; }
+    if (_detect_index_of(src, e, 0, "section .") >= 0)     { nasm = nasm + 3; }
+    if (_detect_index_of(src, e, 0, "SECTION .") >= 0)     { nasm = nasm + 3; }
+    if (_detect_index_of(src, e, 0, "%define") >= 0)       { nasm = nasm + 3; }
+    if (_detect_index_of(src, e, 0, "%include") >= 0)      { nasm = nasm + 3; }
+    if (_detect_index_of(src, e, 0, "%macro") >= 0)        { nasm = nasm + 3; }
+    if (_detect_index_of(src, e, 0, "bits 64") >= 0)       { nasm = nasm + 3; }
+    if (_detect_index_of(src, e, 0, "BITS 64") >= 0)       { nasm = nasm + 3; }
+    if (_detect_index_of(src, e, 0, "default rel") >= 0)   { nasm = nasm + 3; }
+    if (_detect_index_of(src, e, 0, "\nglobal ") >= 0)     { nasm = nasm + 2; }
+    if (_detect_index_of(src, e, 0, " resb ") >= 0)        { nasm = nasm + 2; }
+    if (_detect_index_of(src, e, 0, " db ") >= 0)          { nasm = nasm + 1; }
+    if (_detect_index_of(src, e, 0, "\n;") >= 0)           { nasm = nasm + 1; }
+    if (gas > nasm) { return _detect_asm_flavor(src, src_len); }
+    return "nasm";
+}
+
 # Public byte-API content sniff. Tries shebang → signature peek; the
 # BOM is skipped for the SIGNATURE peek only. A BOM before `#!` is not
 # a shebang — the kernel would not honour it either — so `_detect_shebang`
@@ -562,10 +605,14 @@ fn detect_language_combined(path, src, src_len) {
     var path_lang = detect_language(path);
 
     # Asm flavour split — `.s` / `.S` extensions land on
-    # `asm_x86_64` from path dispatch; let content vote.
+    # `asm_x86_64` from path dispatch; let content vote. An `.asm` lands
+    # on `nasm`, and content votes GAS back (2.9.9).
     if (path_lang != 0) {
         if (streq(path_lang, "asm_x86_64") == 1) {
             return _detect_asm_flavor(src, src_len);
+        }
+        if (streq(path_lang, "nasm") == 1) {
+            return _detect_gas_or_nasm(src, src_len);
         }
         return path_lang;
     }

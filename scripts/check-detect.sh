@@ -20,7 +20,8 @@
 #     guard on the line (`_detect_shebang` returns early below 2), and
 #     NAME is in LANG's `shebangs`;
 #   - anything else that could be a route — a `return "…"` outside
-#     the content sniff (`_detect_signature`, `_detect_asm_flavor`),
+#     the content sniff (`_detect_signature`, `_detect_asm_flavor`,
+#     `_detect_gas_or_nasm`),
 #     or a `memeq(path + n - …` / `_detect_fname(…)` /
 #     `memeq(src + word_start, …` line not in the shapes above (a
 #     variable return, a missing literal) — is reported as
@@ -112,7 +113,7 @@ function num_after(s, lit,    i, r) {
     if ((index(line, "memeq(path + n - ") > 0) && (f != "_detect_fname")) odd = 1
     if ((index(line, "_detect_fname(path, n, ") > 0) && (line !~ /^fn /)) odd = 1
     if ((index(line, "memeq(src + word_start, \"") > 0) && (q[2] != "env")) odd = 1
-    if ((index(line, "return \"") > 0) && (f != "_detect_signature") && (f != "_detect_asm_flavor")) odd = 1
+    if ((index(line, "return \"") > 0) && (f != "_detect_signature") && (f != "_detect_asm_flavor") && (f != "_detect_gas_or_nasm")) odd = 1
     if (odd == 1) printf "ODD\t%s\t%d\t%s\n", f, NR, line
 }
 ' "$DETECT" > "$TMP.rec"

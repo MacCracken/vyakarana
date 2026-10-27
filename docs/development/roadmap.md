@@ -42,13 +42,6 @@ a closeout audit at the end. Each entry ships only when the gates are
 green and, where it adds a gate, that gate is shown to fail on the
 release before.
 
-### 2.9.9 — New grammars *(patch)*
-
-- NASM (it would retake `.asm`, which 2.6.2 stopped claiming, with ADR
-  0015's content vote against GAS), MDX, Lean 4 — each with a corpus
-  (vidya's sample, or an ADR 0006 stand-in) and the every-offset sweep.
-  Shell variants beyond bash / zsh / sh / dash only if one is asked for.
-
 ### 2.9.10 — Tokens inside a long, still-open compose region *(patch)*
 
 - Today a `<style>`, fence or cyml body that has not closed yields no

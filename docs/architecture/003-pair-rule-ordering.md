@@ -135,7 +135,7 @@ shared prefix, do this same dance. Don't try to "make line
 rules respect pair-rule priority" — that would change the
 scanner pipeline order, which is documented as normative in
 [architecture note 002](002-scanner-pipeline-priority.md) and
-holds across all 46 bundled grammars.
+holds across all 49 bundled grammars.
 
 ## When it can break (and how to spot it)
 

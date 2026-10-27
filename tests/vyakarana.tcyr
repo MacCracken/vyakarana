@@ -168,7 +168,7 @@ fn _t_sub_spec(code) {
     if (code == 87) { return "iv"; }      # W  WordsRule
     if (code == 67) { return "sss--"; }   # C  ComposeRule
     if (code == 70) { return "ss--s"; }   # F  ComposeFencedRule
-    if (code == 82) { return "sss"; }     # R  ComposeRegionRule
+    if (code == 82) { return "ssssi"; }   # R  ComposeRegionRule (2.9.9)
     if (code == 72) { return "issiiiisss"; }   # H  HeredocRule (ADR 0030)
     return 0;
 }
@@ -3896,7 +3896,7 @@ fn main() {
         ord5_gi = ord5_gi + 1;
     }
     assert_eq(ord5_bad, 0, "no grammar lists a prefix before a longer operator / punctuation entry");
-    assert_eq(vec_len(ord5_names), 46, "all 46 bundled grammars loaded (none rejected by 2.5.2 validation)");
+    assert_eq(vec_len(ord5_names), 49, "all 49 bundled grammars loaded (none rejected by 2.5.2 validation)");
 
     test_group("2.6.2 detection matches grammar declarations (ADR 0025)");
     # Every `extensions`, `filenames` and `shebangs` entry of every
@@ -3985,7 +3985,9 @@ fn main() {
     assert_streq(_t_path("Dockerfile.dev"), "dockerfile", "2.6.2: Dockerfile.dev -> dockerfile");
     assert_streq(_t_path("x/Makefile.am"),  "makefile",   "2.6.2: Makefile.am -> makefile");
     assert_streq(_t_path("x/Makefile.py"),  "python",     "an extension still beats a filename prefix");
-    assert_eq(detect_language("a.asm"), 0, "2.6.2: .asm is not routed (NASM `;` comments; ADR 0025)");
+    # (2.6.2 stopped routing `.asm` — GAS on NASM files turned `;` comments
+    # into code; 2.9.9 routes it to the nasm grammar.)
+    assert_streq(_t_path("a.asm"), "nasm", "2.9.9: .asm -> nasm (2.6.2 -> 2.9.8: not routed)");
     assert_eq(detect_language("x/NotDockerfile.dev"), 0, "filename prefix is basename-anchored");
     assert_eq(detect_language("Dockerfile."), 0, "`<name>.` needs something after the dot");
     assert_streq(_t_path("a.cyml"),         "cyml",       ".cyml is cyml's alone (dropped from cyrius)");
@@ -4803,7 +4805,7 @@ fn main() {
     assert_eq(rg8_bad, 0, "every bundled declaration routes as the compiled functions route it");
     assert(rg8_n >= 134, "  ... checked every extension, filename form and interpreter form (78 + 4 x 5 + 3 x 12 at 2.9.8)");
     assert_streq(detect_language_registered("x/Makefile.py", 0, 0), "python", "an extension still beats a filename prefix");
-    assert_eq(detect_language_registered("a.asm", 0, 0), 0, ".asm is declared by no grammar");
+    assert_eq(detect_language_registered("a.unknownext", 0, 0), 0, "an extension no grammar declares: 0");
     assert_eq(detect_language_registered(0, 0, 0), 0, "no path, no content: 0");
     assert_eq(detect_language_registered("", 0, 0), 0, "an empty path: 0");
     assert_eq(detect_language_registered("bin/tool", 0, 0), 0, "an extensionless path without content: 0");
@@ -4836,6 +4838,82 @@ fn main() {
     assert_streq(detect_language_registered(0, rg8_zs, strlen(rg8_zs)), "zz_one", "a consumer shebang routes (versioned)");
     assert_streq(detect_language_registered("main.rs", 0, 0), "rust", "a later grammar's .rs does not displace rust (first registered)");
     assert_eq(detect_language("src/a.zz"), 0, "the compiled detect_language is unchanged: it knows no consumer grammar");
+
+
+    test_group("2.9.9 new grammars — nasm, mdx, lean");
+    var ng9_na = _t_tokenize("%define X 1\nmov rax, %1 ; note\ndb 10h, 777q, 0FFh, `a\\tb`\nSECTION .text\n", "nasm");
+    assert_neq(ng9_na, 0, "nasm grammar loads");
+    assert_eq(tb_error_count(ng9_na), 0, "  ... no error tokens");
+    assert_eq(_t_kind_at(ng9_na, 0), TK_PREPROCESSOR, "nasm %define is a preprocessor line");
+    assert_eq(_t_len_at(ng9_na, 0), 11, "  ... its length");
+    assert_eq(_t_kind_at(ng9_na, 21), TK_OPERATOR, "nasm %1 (a macro parameter) stays an operator");
+    assert_eq(_t_len_at(ng9_na, 21), 1, "  ... its length");
+    assert_eq(_t_kind_at(ng9_na, 24), TK_COMMENT, "nasm ; comment");
+    assert_eq(_t_len_at(ng9_na, 24), 6, "  ... its length");
+    assert_eq(_t_kind_at(ng9_na, 34), TK_NUMBER, "nasm 10h: a radix suffix joins");
+    assert_eq(_t_len_at(ng9_na, 34), 3, "  ... its length");
+    assert_eq(_t_kind_at(ng9_na, 39), TK_NUMBER, "nasm 777q");
+    assert_eq(_t_len_at(ng9_na, 39), 4, "  ... its length");
+    assert_eq(_t_kind_at(ng9_na, 45), TK_NUMBER, "nasm 0FFh: a letter-led hex digit splits (documented)");
+    assert_eq(_t_len_at(ng9_na, 45), 1, "  ... its length");
+    assert_eq(_t_kind_at(ng9_na, 51), TK_STRING, "nasm `…` string with escapes");
+    assert_eq(_t_len_at(ng9_na, 51), 6, "  ... its length");
+    assert_eq(_t_kind_at(ng9_na, 58), TK_KEYWORD, "nasm SECTION: directives are case-insensitive");
+    assert_eq(_t_len_at(ng9_na, 58), 7, "  ... its length");
+    var ng9_md = _t_tokenize("import {A} from \'./a\'\nexport const n = 1\n\nText {x} and we import data.\n", "mdx");
+    assert_neq(ng9_md, 0, "mdx grammar loads");
+    assert_eq(tb_error_count(ng9_md), 0, "  ... no error tokens");
+    assert_eq(_t_kind_at(ng9_md, 0), TK_KEYWORD, "mdx import at a line start is javascript");
+    assert_eq(_t_len_at(ng9_md, 0), 6, "  ... its length");
+    assert_eq(_t_kind_at(ng9_md, 16), TK_STRING, "  ... its module string too");
+    assert_eq(_t_len_at(ng9_md, 16), 5, "  ... its length");
+    assert_eq(_t_kind_at(ng9_md, 22), TK_KEYWORD, "mdx export, still in the ESM block");
+    assert_eq(_t_len_at(ng9_md, 22), 6, "  ... its length");
+    assert_eq(_t_kind_at(ng9_md, 47), TK_PUNCTUATION, "mdx {x}: an expression opens");
+    assert_eq(_t_len_at(ng9_md, 47), 1, "  ... its length");
+    assert_eq(_t_kind_at(ng9_md, 48), TK_IDENT, "  ... and x is javascript");
+    assert_eq(_t_len_at(ng9_md, 48), 1, "  ... its length");
+    assert_eq(_t_kind_at(ng9_md, 58), TK_IDENT, "mdx: `import` mid-line is prose");
+    assert_eq(_t_len_at(ng9_md, 58), 6, "  ... its length");
+    var ng9_le = _t_tokenize("/- a /- b -/ c -/\ndef h\' := s!\"v{x}\" ++ r#\"q\"z\"# ++ «a b»\n#eval \'\\n\'\n-- done\n", "lean");
+    assert_neq(ng9_le, 0, "lean grammar loads");
+    assert_eq(tb_error_count(ng9_le), 0, "  ... no error tokens");
+    assert_eq(_t_kind_at(ng9_le, 0), TK_COMMENT, "lean nested /- … -/ closes at the first -/ (documented)");
+    assert_eq(_t_len_at(ng9_le, 0), 12, "  ... its length");
+    assert_eq(_t_kind_at(ng9_le, 22), TK_IDENT, "lean h\' is one identifier");
+    assert_eq(_t_len_at(ng9_le, 22), 2, "  ... its length");
+    assert_eq(_t_kind_at(ng9_le, 28), TK_STRING, "lean s!\"…\" interpolated string");
+    assert_eq(_t_len_at(ng9_le, 28), 8, "  ... its length");
+    assert_eq(_t_kind_at(ng9_le, 40), TK_STRING, "lean r#\"…\"# raw string");
+    assert_eq(_t_len_at(ng9_le, 40), 8, "  ... its length");
+    assert_eq(_t_kind_at(ng9_le, 52), TK_IDENT, "lean «a b» quoted identifier");
+    assert_eq(_t_len_at(ng9_le, 52), 7, "  ... its length");
+    assert_eq(_t_kind_at(ng9_le, 60), TK_PREPROCESSOR, "lean #eval command line");
+    assert_eq(_t_len_at(ng9_le, 60), 10, "  ... its length");
+    assert_eq(_t_kind_at(ng9_le, 71), TK_COMMENT, "lean -- comment");
+    assert_eq(_t_len_at(ng9_le, 71), 7, "  ... its length (to the line break)");
+    # `.asm` is NASM's, and content votes GAS back to the asm grammars;
+    # `.nasm`, `.mdx`, `.lean` route by path.
+    var ng9_n = "section .text\nglobal _start\n_start: mov rax, 60\n";
+    var ng9_gx = "\t.intel_syntax noprefix\n\t.globl _start\n_start: mov rax, 60\n";
+    var ng9_ga = "\t.arch armv8-a\n\t.globl f\nf: ldp x0, x1, [sp]\n\tb.eq 1f\n";
+    assert_streq(detect_language_combined("x.asm", ng9_n, strlen(ng9_n)), "nasm", ".asm with NASM content -> nasm");
+    assert_streq(detect_language_combined("x.asm", ng9_gx, strlen(ng9_gx)), "asm_x86_64", ".asm with GAS x86 content -> asm_x86_64");
+    assert_streq(detect_language_combined("x.asm", ng9_ga, strlen(ng9_ga)), "asm_aarch64", ".asm with GAS AArch64 content -> asm_aarch64");
+    assert_streq(detect_language_combined("x.asm", "", 0), "nasm", ".asm with no content -> nasm (the default)");
+    assert_streq(_t_path("boot.nasm"), "nasm", ".nasm -> nasm");
+    assert_streq(_t_path("docs/intro.mdx"), "mdx", ".mdx -> mdx");
+    assert_streq(_t_path("Main.lean"), "lean", ".lean -> lean");
+    assert_streq(_t_path("x.s"), "asm_x86_64", ".s is unchanged");
+    assert_eq(_grammar_blob_count(), 49, "49 grammars are bundled");
+    assert_eq(has_grammar("nasm") + has_grammar("mdx") + has_grammar("lean"), 3, "  ... the three new ones registered");
+    # compose_region options (2.9.9): only on compose_region rules.
+    var ng9_g1 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"string\"\nmatch = \"pair\"\nstart = \"<\"\nend = \">\"\nstart_inner = true\n";
+    assert_eq(_gp_parse(ng9_g1, strlen(ng9_g1)), 0, "start_inner on a pair rule rejects the grammar");
+    var ng9_g2 = "[grammar]\nname = \"x\"\n[[rules]]\nmatch = \"compose\"\nstart = \"<\"\nend = \">\"\ninner = \"json\"\nstart_after = \"\\n\"\n";
+    assert_eq(_gp_parse(ng9_g2, strlen(ng9_g2)), 0, "start_after on a compose rule rejects the grammar");
+    var ng9_g3 = "[grammar]\nname = \"x\"\n[[rules]]\nmatch = \"compose_region\"\nstart = \"import \"\nend_before = \"\\n\\n\"\ninner = \"javascript\"\nstart_after = \"\\n\"\nstart_inner = true\n";
+    assert(_gp_parse(ng9_g3, strlen(ng9_g3)) != 0, "a compose_region with start_after and start_inner loads");
 
     return assert_summary();
 }

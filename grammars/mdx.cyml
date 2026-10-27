@@ -1,0 +1,151 @@
+# mdx — MDX tokenizer grammar (2.9.9)
+#
+# MDX is markdown with JavaScript in it. This grammar is markdown's
+# (grammars/markdown.cyml — its notes on fences, emphasis and inline
+# code apply here unchanged) plus two rules:
+#
+#   - ESM blocks — a line starting `import ` or `export ` runs, as
+#     JavaScript, to the next blank line (or the end of the input), as
+#     MDX's own parser reads them: a `compose_region` anchored at a line
+#     start whose `import` / `export` the javascript grammar tokenizes
+#     (`start_after`, `start_inner`; ADR 0019, amended 2.9.9).
+#   - Expressions — `{…}` is JavaScript (`compose`), in prose and in JSX
+#     attributes (`<Chart data={rows} />`) alike; `{/* … */}` is MDX's
+#     comment. The expression ends at the first `}`: one nested brace
+#     (`{ {a: 1} }`) ends it early. An unclosed `{` is text.
+#
+# JSX tags themselves (`<Chart …>`, `</Chart>`) tokenize as markdown's
+# operators, identifiers and punctuation, as raw HTML does in markdown.
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# vidya ships no MDX sample. `tests/corpus/concept.mdx` exercises ESM,
+# expressions, JSX components, fences and the markdown it embeds them in.
+
+[grammar]
+name = "mdx"
+extensions = [".mdx"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+# Prose words only — `_` is an emphasis marker in Markdown, not an
+# identifier character. Snake_case fragments; this is the cost of
+# keeping `_italic_` distinguishable from a plain word.
+ident_start = "A-Za-z"
+ident_cont  = "A-Za-z0-9"
+
+number_decimal = true
+number_0x      = false
+number_0b      = false
+number_0o      = false
+
+special_vars = false
+
+# UTF-8 in prose (em-dashes, smart quotes, accented characters)
+# coalesces into one ident instead of per-byte errors. See ADR 0009.
+unicode_ident = true
+
+# Operators in longest-match order. ATX-heading prefixes (1–6 `#`s),
+# setext-heading underlines (`===`/`---`), emphasis (`**`/`__`/
+# `*`/`_`), strikethrough (`~~`), horizontal rules, blockquote `>`,
+# list bullets (`-` / `+`), plus the long tail of punctuation that
+# turns up in prose without a dedicated role.
+operators = [
+    "######", "#####", "####", "###", "##", "#",
+    "===", "---", "***", "___",
+    "**", "__", "~~",
+    "=", "*", "_", "~", "-", "+", "/", "\\",
+    "<", ">", "|", ":", "@", "%", "^", "&", "?", "!", "$",
+]
+
+# Structural punctuation for links, images, and inline groups,
+# plus the prose characters that carry no markdown meaning.
+#
+# `"` and `'` are here because markdown has no string type — a
+# quote is literal text, exactly like the `,` `;` `.` above.
+# Through 2.3.0 they were in neither list and fell through to
+# TK_ERROR, so any prose containing a quotation mark or an
+# apostrophe (`It's`, `"hi"`) emitted error tokens and made `vyk`
+# exit 1. This repo's own README.md tripped it 8 times.
+# `tests/corpus/concept.md` happens to contain not one `"` or
+# `'`, which is why every gate stayed green. Fixed in 2.3.1.
+punctuation = [
+    "[", "]", "(", ")", "{", "}",
+    ",", ";", ".",
+    "\"", "'",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+# Fenced code (`` ```<lang>\n...\n``` ``). 1.13.2+: routes the
+# body through the inner grammar named by `<lang>` per ADR 0016.
+# Falls back to one TK_STRING for the body when no tag is given
+# or the tag doesn't match a registered grammar (graceful
+# degradation; same shape as the prior 1.7.0 behaviour). The
+# scanner pipeline runs `compose_fenced` at step 0b, ahead of
+# step 3 pair rules — the 3-byte ` ``` ` start would otherwise be
+# eaten by the 1-byte ` ` ` inline-code pair rule.
+# `end_indent` (2.9.1): the closer may follow spaces, tabs and `>` on its
+# line, so a fence in a list item or a blockquote closes at its own
+# closer. CommonMark limits that to three spaces past the container's
+# indent; with no containers tracked here, any run counts — a column-0
+# fence whose body holds an indented "```" line closes there. Tags
+# resolve by name, extension or interpreter (`sh`, `bash`, `js`).
+# ESM: `import` / `export` at a line start, to the next blank line.
+[[rules]]
+match = "compose_region"
+start = "import "
+end_before = "\n\n"
+inner = "javascript"
+start_after = "\n"
+start_inner = true
+
+[[rules]]
+match = "compose_region"
+start = "export "
+end_before = "\n\n"
+inner = "javascript"
+start_after = "\n"
+start_inner = true
+
+# Expressions: `{…}` is JavaScript.
+[[rules]]
+match = "compose"
+start = "{"
+end = "}"
+inner = "javascript"
+
+
+[[rules]]
+match = "compose_fenced"
+start = "```"
+end = "```"
+end_indent = " \t>"
+
+
+# Inline code `` `...` ``.
+[[rules]]
+kind = "string"
+match = "pair"
+start = "`"
+end = "`"
+
+
+# HTML comments `<!-- ... -->` — rare but valid in Markdown.
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "<!--"
+end = "-->"
+
+
+# Markdown has no bare-word keywords (true/false/null mean nothing
+# here), but `[[rules]]` expects at least one words rule for a grammar
+# that wants keyword promotion. We leave the set empty — every ident
+# stays an ident.
+[[rules]]
+kind = "keyword"
+match = "words"
+words = []

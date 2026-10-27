@@ -6,7 +6,7 @@
 #   vyk --version
 #   vyk --help / -h
 #   vyk --list-kinds        prints the ten token kinds
-#   vyk --list-languages    prints the bundled grammars (46)
+#   vyk --list-languages    prints the bundled grammars (49)
 #   vyk <file>              tokenize a file, NDJSON on stdout
 #   vyk --language=<lang>   override detection (any listed grammar)
 #   vyk --theme=<name>      ANSI-coloured source; control bytes in the

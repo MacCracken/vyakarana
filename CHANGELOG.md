@@ -4,6 +4,75 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.9.9] — 2026-10-27
+
+**New grammars** (roadmap 2.9.9), the seventh of the 2.9.x arc: **nasm**,
+**mdx** and **lean** — 49 bundled grammars. Token output for the existing
+46 is unchanged (byte-identical to 2.9.8 over 2.9.4's 7,527-file sample;
+the old corpora too). Real files for the new three, 0 error tokens in
+each: 81 `.asm` files on the dev host (NASM: ring's pregenerated sources,
+aom), 60 lean4 sources and 18 MDX files from GitHub (leanprover/lean4
+`src/`, mdx-js/mdx `docs/`). 1395/1395 tests (61 new), fuzz 5/5 over 52
+corpora (also under `--poison=ab` and `--bounds`), lint+fmt exit 0,
+`cyrius distlib --check` clean. `vyk` 383,024 → 391,520 bytes; the shipped
+DCE build 288,816 → 297,312 — mostly the three grammars' blobs
+(`src/grammar_blobs.cyr` 82,888 → 88,559 bytes), the rest the
+`.asm` vote and the region options.
+
+### Added
+
+- **nasm** — NASM x86 assembly: `;` comments; `%define` / `%include` /
+  `%macro` / `%if` lines as `preprocessor` (a `%` at a line start or after
+  a blank, before a letter: `%1`, `%%local` stay operators); `"…"`, `'…'`
+  and `` `…` `` (with escapes) strings; `0x` / `0b` / `0o`, floats,
+  `1_000` and the radix suffixes `10h`, `777q`, `1010b`; directives and
+  size words as keywords, case-insensitively; `\` line continuations and
+  `$@feat`-style escaped symbols. Routes **`.asm`** — no grammar claimed it
+  from 2.6.2 to 2.9.8 — and `.nasm`. `detect_language_combined` lets
+  content vote an `.asm` that reads as GNU as back to the asm grammars
+  (`_detect_gas_or_nasm`: GAS must win outright, then the asm flavour vote
+  picks x86-64 or AArch64; ADR 0015 amended). All 81 local `.asm` files
+  stay nasm.
+- **mdx** — MDX: markdown's grammar, plus `import` / `export` at a line
+  start running as javascript to the next blank line, and `{…}` as
+  javascript (`{/* … */}` comments, `<Chart data={rows} />` attributes).
+  Routes `.mdx`.
+- **lean** — Lean 4: `--` and `/- … -/` (and doc `/-- -/`, `/-! -/`)
+  comments; `s!"…"` / `m!"…"` / `f!"…"` interpolated, `r"…"` and
+  `r#"…"#` raw strings, char literals; identifiers with `'`, `!`, `?` and
+  `«…»`; `#eval` / `#check` command lines as `preprocessor`; `` `Name ``
+  quotations and `#[…]` arrays as operators; numbers in every base. Routes
+  `.lean`.
+- **`compose_region` options** (ADR 0019 amended), for MDX's ESM blocks:
+  `start_after` — the start counts only at the input's start or after one
+  of its bytes, as on a line rule — and `start_inner = true` — the start
+  marker is tokenized by the inner grammar (`import` is javascript's
+  keyword), not emitted as punctuation. Rejected on other rule types.
+  The region record grows 24 → 40 bytes.
+- Stand-in corpora (ADR 0006; vidya ships none of the three):
+  `tests/corpus/concept.asm`, `concept.mdx`, `concept.lean`.
+
+### Changed
+
+- **`.asm` routes to nasm.** The 2.6.2 test and smoke probe that held it
+  unrouted now hold the new route; a line's `;` comment is one token.
+- Lean and NASM gained operators the real files needed and the stand-ins
+  had not shown: Lean's backtick and double backtick, `#` and `'` (513 error tokens in
+  the 60 lean4 files without them), NASM's `\` and `@` as an identifier
+  start (`$@feat.00`, MASM's `@@`). The stand-ins now carry those shapes.
+
+### Tests
+
+- A `2.9.9 new grammars` group, 61 assertions: each grammar's shapes, the
+  `.asm` vote both ways (NASM content, GAS x86-64, GAS AArch64, none), the
+  new routes, 49 bundled grammars, and the `compose_region` options'
+  validation. The 2.5.2 load check counts 49; `fuzz/grammar_load.fcyr`'s
+  blob count, `fuzz/chunk_invariance.fcyr` (52 corpora) and smoke's
+  language and corpus lists include the three.
+- Sweeps: `coverage-sweep.sh` over the 159 new files, 0 fails, none with
+  an error token; `stream-sweep.sh` over them, 477 runs, and its fixed set
+  (now 52 corpora at every offset), 167 runs — 0 fails.
+
 ## [2.9.8] — 2026-10-27
 
 **Detection for consumers** (roadmap 2.9.8), the sixth of the 2.9.x arc —

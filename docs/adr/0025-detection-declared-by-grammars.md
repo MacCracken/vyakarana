@@ -155,3 +155,11 @@ before.
   separate, additive `detect_language_registered(path)` that walks
   the registry, rather than changing `detect_language`.
 - A NASM grammar lands: it takes `.asm`.
+
+## Amendment 2.9.9 — `.asm` is routed again
+
+`.asm`, pruned in 2.6.2 because GAS turned NASM's `;` comments into code,
+is declared by the new nasm grammar and routed to it, with a content
+vote back to the asm grammars for GAS sources (ADR 0015, amended 2.9.9).
+`.nasm` (nasm), `.mdx` (mdx) and `.lean` (lean) are new routes too; both
+checks cover them as they do every other.

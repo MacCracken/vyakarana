@@ -1,7 +1,7 @@
 # vyakarana — fuzz harness for the CYML grammar parser
 #
 # `grammar_load(path)` either resolves to an embedded blob (the
-# bundled paths via _grammar_blob_data, 46 as of 2.5.2) or falls through to
+# bundled paths via _grammar_blob_data, 49 as of 2.9.9) or falls through to
 # file_read_all. The blob path is hot — every consumer depends
 # on it in bootstrap_grammars. This harness exercises the parser
 # directly with corrupted inputs to confirm:
@@ -44,14 +44,14 @@ fn _gl_fill_printable(buf, n) {
 }
 
 fn fuzz_main(data, n) {
-    # 1. Bundled blobs round-trip (46; the count check below). Triggers
+    # 1. Bundled blobs round-trip (49; the count check below). Triggers
     # bootstrap_grammars via has_grammar.
     if (has_grammar("shell") == 0) {
         eprint("FAIL: shell didn't bootstrap\n", 29);
         return 1;
     }
-    if (_grammar_blob_count() != 46) {
-        eprint("FAIL: blob count drifted from 46\n", 33);
+    if (_grammar_blob_count() != 49) {
+        eprint("FAIL: blob count drifted from 49\n", 33);
         return 1;
     }
 

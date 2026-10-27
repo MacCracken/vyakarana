@@ -288,6 +288,10 @@ fn _ci_main() {
     if (_ci_one("tests/corpus/concept.svelte", "svelte") != 0) { rc = 1; }
     if (_ci_one("tests/corpus/dependencies.cyml", "cyml") != 0) { rc = 1; }
     if (_ci_one("tests/corpus/phase_d.cyml", "cyml") != 0) { rc = 1; }
+    # 2.9.9: NASM, MDX, Lean 4 stand-ins.
+    if (_ci_one("tests/corpus/concept.asm", "nasm") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.mdx", "mdx") != 0) { rc = 1; }
+    if (_ci_one("tests/corpus/concept.lean", "lean") != 0) { rc = 1; }
     if (_ci_every("json", "{\"a\":\"x\\\"y\"}") != 0) { rc = 1; }
     if (_ci_every("toml", "k = \"a \\\\\\\" b\"\n") != 0) { rc = 1; }
     if (_ci_every("c", "c = '\\n'; d = '\\033'; e = '\\\\';") != 0) { rc = 1; }

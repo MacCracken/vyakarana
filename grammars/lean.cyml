@@ -1,0 +1,143 @@
+# lean — Lean 4 tokenizer grammar (2.9.9)
+#
+# Rule scheme per ADR 0005. Lean 4's surface at the token level:
+#
+#   - `--` line comments; `/- … -/` block comments, and the doc forms
+#     `/-- … -/` and `/-! … -/`. Lean's block comments nest; the pair
+#     rule closes at the first `-/` (the limit haskell, ocaml, rust and
+#     swift document too).
+#   - Strings `"…"` with `\` escapes; interpolated `s!"…"`, `m!"…"`,
+#     `f!"…"` (string prefixes, ADR 0027 — the `{x}` holes stay inside
+#     the string, ADR 0003); raw `r"…"` (a raw prefix) and `r#"…"#`
+#     (an inline heredoc rule: the closer repeats the `#` run, ADR 0030).
+#   - Char literals `'a'`, `'\n'` (ADR 0010). `'` also continues an
+#     identifier (`h'`, `x'`), which the identifier step takes first.
+#   - Identifiers with `'`, `!` and `?` (`get!`, `isEmpty?`) and any
+#     non-ASCII letter (`α`, `ℕ`); `«any text»` is one identifier.
+#     Dotted names (`Nat.succ`) are ident `.` ident.
+#   - `#eval`, `#check`, `#print` … at a line start: preprocessor lines.
+#   - Numbers: decimal, `0x` / `0b` / `0o`, floats, `1e10` (ADR 0026).
+#
+# Unicode operators (`→`, `←`, `↔`, `∀`, `∃`, `λ`, `×`, `≤`, `⟨⟩`)
+# tokenize as identifiers: `unicode_ident` claims every non-ASCII byte
+# before the operator step, as in julia. Their ASCII spellings (`->`,
+# `<-`, `fun`, `<=`) are operators and keywords. Coverage holds and no
+# byte is an error; a theme can re-pair by token text.
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# vidya ships no Lean sample. `tests/corpus/concept.lean` exercises
+# definitions, structures, inductive types, pattern matching, tactics,
+# `do` notation and every literal form above.
+
+[grammar]
+name = "lean"
+extensions = [".lean"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+ident_start = "A-Za-z_"
+ident_cont  = "A-Za-z0-9_'!?"
+unicode_ident = true
+
+number_decimal = true
+number_0x      = true
+number_0b      = true
+number_0o      = true
+number_float   = true      # `1.5`, `1e10` (ADR 0026)
+
+special_vars = false
+char_literal = true
+
+# `s!"…"`, `m!"…"`, `f!"…"` interpolate; `r"…"` is raw (no escapes).
+string_prefixes = ["s!", "m!", "f!"]
+raw_string_prefixes = ["r"]
+
+operators = [
+    "<|>", "<$>", "<*>", ">>=", "|>.",
+    ":=", "=>", "->", "<-", "<|", "|>", "::", "++",
+    "==", "!=", "<=", ">=", "&&", "||", "..",
+    "=", "+", "-", "*", "/", "%", "^",
+    "<", ">", "!", "?", "@", "$", "|", "&", "~",
+    # `` `Name `` and `` `(term) `` quotations; `#[1, 2]` arrays (a `#`
+    # mid-line, or before no letter); `'` after a bracket (`xs[i]'h`).
+    # Found by 60 real lean4 sources: 513 error tokens without them.
+    "``", "`", "#", "'",
+]
+
+punctuation = [
+    "(", ")", "[", "]", "{", "}",
+    ",", ";", ":", ".",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+# Raw strings with hashes, `r#"…"#` (ADR 0030); `r"…"` is the raw prefix.
+[[rules]]
+kind = "string"
+match = "heredoc"
+body = "inline"
+start = "r"
+repeat = "#"
+open = "\""
+close = "\""
+
+[[rules]]
+kind = "comment"
+match = "line"
+start = "--"
+
+# `#eval`, `#check`, `#print`, `#reduce`, `#exit` … — commands.
+[[rules]]
+kind = "preprocessor"
+match = "line"
+start = "#"
+start_after = " \t\n\r"
+followed_by = "a-z"
+
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "/-"
+end = "-/"
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+escape = "\\"
+
+# `«any text»` — a quoted identifier.
+[[rules]]
+kind = "ident"
+match = "pair"
+start = "«"
+end = "»"
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # Declarations
+    "def", "theorem", "lemma", "example", "abbrev", "instance",
+    "structure", "class", "inductive", "where", "extends", "deriving",
+    "axiom", "opaque",
+    # Terms
+    "fun", "let", "in", "have", "show", "from", "by", "do", "then",
+    "else", "if", "match", "with", "for", "unless", "return", "mut",
+    "try", "catch", "finally", "calc", "at", "sorry",
+    "true", "false", "Type", "Prop", "Sort",
+    # Modules and scoping
+    "namespace", "section", "end", "open", "import", "export",
+    "variable", "universe", "set_option", "attribute",
+    # Modifiers
+    "private", "protected", "noncomputable", "partial", "unsafe",
+    # Syntax extension
+    "macro", "syntax", "macro_rules", "notation", "infix", "infixl",
+    "infixr", "prefix", "postfix", "elab",
+    # Termination
+    "termination_by", "decreasing_by",
+]

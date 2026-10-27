@@ -168,3 +168,17 @@ existing `tokenize_source` / `lsp_kind_*` surfaces).
   buffer, and a streaming caller passes what it has — the asm vote
   reads at most the first 4 KB, the shebang sniff the first line,
   the signature peek the first bytes after a BOM.)*
+
+## Amendment 2.9.9 — `.asm`
+
+`.asm` routes to the new nasm grammar (path dispatch), and
+`detect_language_combined` lets content vote it back: GAS signals in the
+first 4 KB (`.intel_syntax`, `.globl`, `.section`, `.type`, AT&T
+`%rax` / `%rsp`, `.arch armv8`) against NASM's (`section .`, `%define`,
+`%include`, `%macro`, `bits 64`, `default rel`, a line-start `global`,
+`resb`, `db`, `;` lines). GAS has to win outright — `.asm` is NASM's
+by default — and then the asm flavour vote above picks x86-64 or
+AArch64. All 81 `.asm` files on the dev host (ring's pregenerated
+NASM, aom's) stay nasm. `_detect_gas_or_nasm` is a content sniff, like
+`_detect_asm_flavor`, so `scripts/check-detect.sh` lets it return a
+name.

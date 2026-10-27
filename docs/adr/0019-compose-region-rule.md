@@ -166,3 +166,19 @@ is precisely what the downstream consumer exists to do.
   terminator that is a *class* of bytes rather than a literal, the
   rule type should grow a char-class terminator rather than
   another bespoke rule type.
+
+## Amendment 2.9.9 — `start_after`, `start_inner`
+
+Two optional keys, for MDX's `import` / `export` blocks:
+
+- `start_after` — as on a line rule (ADR 0022): the start counts only at
+  the input's start or right after one of these bytes (`"\n"`: a line
+  start), so `we import data` in prose opens nothing.
+- `start_inner = true` — the start marker is the body's first bytes,
+  tokenized by the inner grammar, not a punctuation token: `import` comes
+  back as javascript's keyword.
+
+The rule record grows 24 → 40 bytes; the loader rejects both keys on any
+other rule type (`start_after` stays legal on line rules). The streaming
+hold, watch and group are unchanged; `start_after` reads one byte back,
+which the drain already carries.

@@ -1,0 +1,133 @@
+# nasm — NASM (Netwide Assembler) tokenizer grammar (2.9.9)
+#
+# Rule scheme per ADR 0005. NASM is Intel-syntax x86 assembly with its
+# own directive set and a `%` preprocessor, as against the GNU
+# assembler's `.directives` (asm_x86_64 / asm_aarch64):
+#
+#   - `;` line comments.
+#   - `%define`, `%include`, `%macro` … `%endmacro`, `%if` … `%endif`:
+#     a `%` that starts a word at a line start or after a blank, before a
+#     letter, opens a preprocessor line. `%1`, `%%local`, `%+` and
+#     `%$ctx` (macro parameters, local labels, pasting) stay operators.
+#   - Strings in `"…"` and `'…'` (no escapes) and `` `…` `` (with `\`
+#     escapes).
+#   - Numbers: decimal, `0x` / `0b` / `0o`, floats, and the radix
+#     suffixes `10h`, `777q`, `1010b`, `99d`. A suffixed hex number that
+#     starts with a letter digit (`0FFh`) is number + identifier.
+#   - Directives and size words (`section`, `global`, `bits`, `db`,
+#     `resq`, `dword`, `rel` …) are keywords, case-insensitively, as NASM
+#     reads them. Mnemonics and registers are identifiers, as in the GAS
+#     grammars: neither set is closed.
+#
+# Detection: `.nasm`, and `.asm` — which no grammar claimed from 2.6.2
+# to 2.9.8 (GAS forced on 81 real files turned their 1,611 `;` comment
+# lines into code). `detect_language_combined` lets content vote an
+# `.asm` file that reads as GAS back to the asm grammars (ADR 0015,
+# amended 2.9.9).
+#
+# Stand-in corpus per [ADR 0006](../docs/adr/0006-standin-corpus-policy.md):
+# vidya ships no NASM sample. `tests/corpus/concept.asm` is a small
+# x86-64 Linux program exercising sections, data, macros, conditionals,
+# local labels and every number and string form above.
+
+[grammar]
+name = "nasm"
+extensions = [".asm", ".nasm"]
+
+[defaults]
+shebang = false
+whitespace = true
+
+# Identifiers: letters, `_`, `.` (local labels `.loop`), `?`; then also
+# digits and `$`, `#`, `@`, `~` (NASM's identifier set).
+# `@` too: `$@feat.00` (an escaped symbol) and MASM's `@@` labels.
+ident_start = "A-Za-z_.?@"
+ident_cont  = "A-Za-z0-9_.$#@~?"
+unicode_ident = true
+
+number_decimal = true
+number_0x      = true
+number_0b      = true
+number_0o      = true
+number_float   = true      # `1.5`, `1e10` (ADR 0026)
+number_separator = "_"    # `1_000` (ADR 0026)
+# Radix suffixes on decimal digits (2.9.7's `number_suffixes`).
+number_suffixes = ["h", "H", "q", "Q", "o", "O", "b", "B", "d", "D", "y", "Y", "t", "T"]
+
+special_vars = false
+char_literal = false
+case_insensitive_keywords = true
+
+operators = [
+    "<<<", ">>>",
+    "<=>",
+    "<<", ">>", "//", "%%",
+    "&&", "||", "^^",
+    "==", "!=", "<>", "<=", ">=",
+    "=", "+", "-", "*", "/", "%",
+    "&", "|", "^", "~", "!",
+    "<", ">", "?",
+    # `$` is the current address, `$$` the section start. `\` continues
+    # a macro line (found by 81 real `.asm` files).
+    "$$", "$", "\\",
+]
+
+punctuation = [
+    "(", ")", "[", "]", "{", "}",
+    ",", ":",
+]
+
+
+# ── Rules ──────────────────────────────────────────────────────────
+
+[[rules]]
+kind = "comment"
+match = "line"
+start = ";"
+
+# `%` directives: at a line start or after a blank, before a letter.
+[[rules]]
+kind = "preprocessor"
+match = "line"
+start = "%"
+start_after = " \t\n\r"
+followed_by = "A-Za-z"
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "`"
+end = "`"
+escape = "\\"
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "\""
+end = "\""
+
+[[rules]]
+kind = "string"
+match = "pair"
+start = "'"
+end = "'"
+
+[[rules]]
+kind = "keyword"
+match = "words"
+words = [
+    # Sections, linkage, mode
+    "section", "segment", "global", "extern", "common", "static",
+    "bits", "use16", "use32", "use64", "default", "org", "cpu", "float",
+    "absolute", "align", "alignb", "sectalign",
+    # Data and reservation
+    "db", "dw", "dd", "dq", "dt", "do", "dy", "dz",
+    "resb", "resw", "resd", "resq", "rest", "reso", "resy", "resz",
+    "incbin", "equ", "times",
+    # Structures
+    "struc", "endstruc", "istruc", "iend", "at",
+    # Operand sizes and modifiers
+    "byte", "word", "dword", "qword", "tword", "oword", "yword", "zword",
+    "ptr", "rel", "abs", "nosplit", "strict", "seg", "wrt",
+    "short", "near", "far",
+]

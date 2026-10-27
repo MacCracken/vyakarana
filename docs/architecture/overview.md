@@ -171,7 +171,7 @@ user's explicit ACK.
 
 ## Bundled grammars
 
-The grammars that ship in the 2.x bundle — the 46 that
+The grammars that ship in the 2.x bundle — the 49 that
 `vyk --list-languages` prints. Token counts are not tabled: they
 move whenever a grammar or a stand-in changes.
 `vyk --language=<grammar> <corpus> | wc -l` gives the current
@@ -225,6 +225,9 @@ tokens and exact coverage.
 | svelte      | stand-in `concept.svelte` | Added in 2.1.1. ADR 0006 stand-in. Vue-shape minus `<template>` (template lives at file top level). `$` in operators for reactive declarations. Same compose-rule routing for `<script>` / `<style>` bodies. |
 | nix         | stand-in `concept.nix` | Added in 2.1.2. ADR 0006 stand-in. Functional config language for NixOS / home-manager. `//` is set-merge (NOT line comment); `++` list concat, `->` implication, `@` "as" pattern, `?` has-attribute. `'` (Haskell-prime) and `-` in `ident_cont` (kebab-case). `''…''` indented multi-line strings as 2-byte pair rule. Block + `# …` line comments. |
 | terraform   | stand-in `concept.tf` | Added in 2.1.3. ADR 0006 stand-in. HashiCorp Configuration Language (.tf / .tfvars / .hcl). Both `#` and `//` line comments + `/* */` block. `=>` for-expressions, `...` spread, kebab-case idents. Block syntax (`resource "type" "name" { … }`) tokenizes naturally without special-casing. **Closes the 2.1.x grammar wave** — 7 grammars added (38 → 45). |
+| nasm        | stand-in `concept.asm` | Added in 2.9.9. ADR 0006 stand-in. `;` comments; `%define` / `%macro` / `%if` lines are `preprocessor` (a `%` at a line start or after a blank, before a letter — `%1`, `%%local` stay operators); `` `…` `` strings take escapes; radix suffixes `10h` / `777q` / `1010b` join the number (`0FFh` splits); directives and size words are case-insensitive keywords. Routes `.asm` (with a content vote that sends GAS back to the asm grammars, ADR 0015) and `.nasm`. 81 real `.asm` files: 0 error tokens. |
+| mdx         | stand-in `concept.mdx` | Added in 2.9.9. ADR 0006 stand-in. markdown plus JavaScript: `import` / `export` at a line start run as javascript to the next blank line (`compose_region` with `start_after` / `start_inner`, ADR 0019), `{…}` is javascript (`compose`; a nested `}` ends it early). JSX tags tokenize as markdown's operators and identifiers. 18 real `.mdx` files (mdx-js/mdx docs): 0 error tokens. |
+| lean        | stand-in `concept.lean` | Added in 2.9.9. ADR 0006 stand-in. `--` and `/- … -/` comments (nested ones close at the first `-/`); `s!"…"` / `m!"…"` interpolated and `r"…"` / `r#"…"#` raw strings; `'`, `!`, `?` continue identifiers, `«…»` is one; `#eval` / `#check` lines are `preprocessor`; Unicode operators (`→`, `∀`) are identifiers, as in julia. 60 real lean4 sources: 0 error tokens. |
 | openqasm    | vidya `openqasm.qasm` | Added in 2.3.5. **Not** an ADR 0006 stand-in — vidya ships this sample and renders it through vyakarana, and it was the one vidya sample `vyk` could not tokenize (exit 4) until now; the 2.3.4 audit surfaced the gap. Keyword set spans OpenQASM 2.0 and 3.x. Standard-library gate names (`h`, `cx`, `rz`) stay `ident` per ADR 0004 — they come from `qelib1.inc` and are redefinable via `gate`. `->` for `measure`. Floats (`2.0`) are one number since 2.7.0 (ADR 0026). |
 
 ---

@@ -47,13 +47,13 @@ Corpus).
 
 ## Status
 
-48 corpus files across 46 bundled grammars — `cyml` carries two
+51 corpus files across 49 bundled grammars — `cyml` carries two
 (`dependencies.cyml` and `phase_d.cyml`) and so does `shell`
 (`shell.sh`, plus `shell_modules.sh` since 2.6.0 — vidya's
 `module_systems/shell.sh`, synced for its five heredocs, which the
 `lexing_and_parsing` sample has none of), every other grammar
 exactly one. (`fuzz/chunk_invariance.fcyr` also streams this
-README as markdown, which is how `state.md` counts 49.) Mix of
+README as markdown, which is how `state.md` counts 52.) Mix of
 vidya snapshots (where vidya ships a real sample — the newest is
 `shell_modules.sh`, added in 2.6.0; `state.md`'s Corpus section
 says how current they are) and ADR-0006 stand-ins (hand-written

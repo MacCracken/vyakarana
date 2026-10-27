@@ -8,14 +8,14 @@
 > 2.6.2 it carried a "What X changed" block for every release back to
 > 1.13.0 — trimmed in 2.7.0; the CHANGELOG has all of it.)
 >
-> **Last refresh:** 2026-10-27, at 2.9.8. Read this first, then run the
+> **Last refresh:** 2026-10-27, at 2.9.9. Read this first, then run the
 > gates (CLAUDE.md §Gates) — do not take the "green" below on trust.
 
 ---
 
 ## Current status
 
-- **Version:** `2.9.8` — `VERSION`, `src/version_str.cyr`,
+- **Version:** `2.9.9` — `VERSION`, `src/version_str.cyr`,
   `dist/vyakarana.cyr`, the CHANGELOG header and `docs/man/vyk.1`
   agree.
 - **Toolchain pin:** `cyrius = "6.7.18"` in `cyrius.cyml`, the single
@@ -41,18 +41,19 @@
   of four stdlib leaves (alloc, string, vec, io). The embedded grammars
   are compacted — comments and blanks outside strings dropped — by a
   POSIX sh + awk generator (ADR 0029); `grammars/` is the readable copy.
-- **Size:** the shipped (`CYRIUS_DCE=1`) `vyk` is 288,816 bytes, the
-  default build 383,024. `scripts/check-size.sh` reports the shipped
+- **Size:** the shipped (`CYRIUS_DCE=1`) `vyk` is 297,312 bytes, the
+  default build 391,520. `scripts/check-size.sh` reports the shipped
   build's size in CI and at release; since 2.9.8 there is no hard limit
   (ADR 0029, amended).
-- **Next release:** 2.9.9, new grammars — the seventh of the 2.9.x arc,
-  which runs to incremental retokenization at 2.9.11 and a closeout
-  audit at 2.9.12 ([roadmap](./roadmap.md)). The last audit's report:
+- **Next release:** 2.9.10, tokens inside a long, still-open compose
+  region — the eighth of the 2.9.x arc, which runs to incremental
+  retokenization at 2.9.11 and a closeout audit at 2.9.12
+  ([roadmap](./roadmap.md)). The last audit's report:
   [2.9.x](../audit/2026-10-21-2.9.x-closeout-audit.md).
 
-## Gates (green at 2.9.8, 2026-10-27)
+## Gates (green at 2.9.9, 2026-10-27)
 
-- `cyrius build` OK, 0 warnings · `cyrius test` **1334/1334** · smoke
+- `cyrius build` OK, 0 warnings · `cyrius test` **1395/1395** · smoke
   OK (it runs `scripts/check-detect.sh`) · `scripts/lint-fmt.sh`
   exit 0 (a lint warning fails it; covers `src/` and
   `scripts/audit/`) · `scripts/check-size.sh` reports · `cyrius fuzz`
@@ -66,7 +67,7 @@
 
 ## Surface
 
-- **46 grammars** (`vyk --list-languages`), **10 token kinds**
+- **49 grammars** (`vyk --list-languages`), **10 token kinds**
   (stable — an ADR and a CHANGELOG entry to change), 12-byte `Token`
   (ADR 0002).
 - **Public API:** the streaming push primitive
@@ -137,12 +138,16 @@ Each names the 2.9.x arc release that takes it on ([roadmap](./roadmap.md)).
   / `r` / `b` / `v` are not declared (prefix + string); a C# verbatim
   string's doubled quote splits it into adjacent strings, as SQL's `''`
   does; C# 11 raw strings (`"""…"""`) are not declared.
+- **The 2.9.9 grammars** (overview.md's table): an MDX expression ends at
+  its first `}` (`{ {a: 1} }`), and JSX tags are markdown tokens; NASM's
+  letter-led hex `0FFh` is number + identifier; Lean's Unicode operators
+  are identifiers. Not scheduled.
 - **Raw literals and heredocs, what is not read** (ADR 0030): Swift's
   `\#"` escape inside `#"…"#` (`#"\#"#"#` closes at the first `"#`);
   Ruby `<<~` indentation removal and heredoc interpolation (the body is
   one string, ADR 0003); Perl and Crystal heredocs. Not scheduled.
 - **Nested block comments** close at the first `*/` (rust, swift),
-  `-}` (haskell), `*)` (ocaml) or `=#` (julia): a pair rule does not
+  `-}` (haskell), `-/` (lean), `*)` (ocaml) or `=#` (julia): a pair rule does not
   count depth, so the rest of the outer comment tokenizes as code. Not
   scheduled.
 - **Markdown fences:** `~~~` and four-or-more-backtick fences and
@@ -159,7 +164,7 @@ Each names the 2.9.x arc release that takes it on ([roadmap](./roadmap.md)).
 
 ## Corpus
 
-`tests/corpus/` — 48 corpus files and its README (49 inputs to
+`tests/corpus/` — 51 corpus files and its README (52 inputs to
 `fuzz/chunk_invariance.fcyr`, which streams the README as markdown):
 vidya snapshots where vidya ships a
 sample (ADR 0001; last re-synced in 2.6.2 — at the 2.9.x audit all are
@@ -177,7 +182,7 @@ its corpus tokenizes with zero `error` tokens.
   the 2.9.1 bundle through a path dependency. Taking a newer tag is
   their call — it changes what they render (2.5.2's fixes, 2.6.x's
   shell, 2.7.0's numbers, 2.9.1's markdown fences), not their API.
-  cyim routes the 46 languages itself (`src/lang.cyr`);
+  cyim routes 46 languages itself (`src/lang.cyr`);
   `detect_language_registered` (2.9.8, ADR 0031) lets it stop — when it
   does is cyim's call.
 - `vidya` is also the corpus supplier

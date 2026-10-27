@@ -320,6 +320,13 @@ fn bootstrap_grammars() {
     if (gtf != 0) { registry_add(gtf); }
     var gqasm = grammar_load("grammars/openqasm.cyml");
     if (gqasm != 0) { registry_add(gqasm); }
+    # 2.9.9: NASM, MDX, Lean 4.
+    var gnasm = grammar_load("grammars/nasm.cyml");
+    if (gnasm != 0) { registry_add(gnasm); }
+    var gmdx = grammar_load("grammars/mdx.cyml");
+    if (gmdx != 0) { registry_add(gmdx); }
+    var glean = grammar_load("grammars/lean.cyml");
+    if (glean != 0) { registry_add(glean); }
     return 0;
 }
 

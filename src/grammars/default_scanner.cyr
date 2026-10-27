@@ -356,7 +356,7 @@ fn _ds_try_compose_rules(g, src, src_len, i, tb) {
 #
 # Emits the start marker plus the routed body. There is no end
 # token: the terminator was never ours to consume.
-fn _ds_try_compose_region_rules(g, src, src_len, i, tb) {
+fn _ds_try_compose_region_rules(g, src, src_len, i, tb, prev0) {
     var rules = grammar_compose_region_rules(g);
     if (rules == 0) { return 0; }
     var n = vec_len(rules);
@@ -365,11 +365,23 @@ fn _ds_try_compose_region_rules(g, src, src_len, i, tb) {
         var r = vec_get(rules, r_i);
         var start = compose_region_rule_start(r);
         var slen = strlen(start);
-        if ((i + slen <= src_len) && (memeq(src + i, start, slen) == 1)) {
+        # `start_after` (2.9.9): only at the input's start or after one of
+        # its bytes — MDX's `import` at a line start, not in prose.
+        var cr_ok = 1;
+        var cr_after = compose_region_rule_after(r);
+        if (cr_after != 0) {
+            var cr_pb = prev0;
+            if (i > 0) { cr_pb = load8(src + i - 1); }
+            if ((cr_pb >= 0) && (_ds_byte_in(cr_after, cr_pb) == 0)) { cr_ok = 0; }
+        }
+        if ((cr_ok == 1) && (i + slen <= src_len) && (memeq(src + i, start, slen) == 1)) {
             var endb = compose_region_rule_end_before(r);
             var elen = 0;
             if (endb != 0) { elen = strlen(endb); }
+            # `start_inner` (2.9.9): the marker opens the body itself.
+            var cr_in = compose_region_rule_start_inner(r);
             var body_start = i + slen;
+            if (cr_in == 1) { body_start = i; }
             # Scan for the terminator. Falling off the end is the
             # EOF case, and body_end is already correct for it.
             var body_end = src_len;
@@ -391,7 +403,7 @@ fn _ds_try_compose_region_rules(g, src, src_len, i, tb) {
                 if (elen == 0) { _ds_cp_hold(i, 4, 0, 0); }
             }
             if (found == 1) { _ds_grp_add(i, body_end); }
-            tokenbuf_push(tb, TK_PUNCTUATION, i, slen);
+            if (cr_in == 0) { tokenbuf_push(tb, TK_PUNCTUATION, i, slen); }
             var body_len = body_end - body_start;
             if (body_len > 0) {
                 var inner_name = compose_region_rule_inner(r);
@@ -416,7 +428,7 @@ fn _ds_try_compose_region_rules(g, src, src_len, i, tb) {
                     tokenbuf_push(tb, TK_STRING, body_start, body_len);
                 }
             }
-            return slen + body_len;
+            return (body_start - i) + body_len;
         }
         r_i = r_i + 1;
     }
@@ -2373,7 +2385,7 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
         # the body runs to a lookahead terminator (left unconsumed)
         # or to EOF. CYML's `---` opens a markdown body that ends
         # before the next TOML header, or at end of input.
-        var crlen = _ds_try_compose_region_rules(g, src, src_len, i, tb);
+        var crlen = _ds_try_compose_region_rules(g, src, src_len, i, tb, prev0);
         if (crlen > 0) {
             i = i + crlen;
             continue;

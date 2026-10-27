@@ -77,7 +77,7 @@ done
 # src/tokenize.cyr). Assert presence rather than exact order so that
 # adding a new grammar is a one-line change here.
 llist=$("$BIN" --list-languages)
-for lang in shell toml json cyrius rust yaml markdown c typescript javascript python go zig asm_x86_64 asm_aarch64 java kotlin cpp csharp php ruby lua swift elixir ocaml haskell sql graphql protobuf html xml css scss dockerfile makefile ini cyml llvm_ir powershell crystal julia vue svelte nix terraform openqasm; do
+for lang in shell toml json cyrius rust yaml markdown c typescript javascript python go zig asm_x86_64 asm_aarch64 java kotlin cpp csharp php ruby lua swift elixir ocaml haskell sql graphql protobuf html xml css scss dockerfile makefile ini cyml llvm_ir powershell crystal julia vue svelte nix terraform openqasm nasm mdx lean; do
     printf '%s\n' "$llist" | grep -q "^$lang\$" \
         || fail "--list-languages missing '$lang': '$llist'"
 done
@@ -420,6 +420,9 @@ svelte:tests/corpus/concept.svelte
 nix:tests/corpus/concept.nix
 terraform:tests/corpus/concept.tf
 openqasm:tests/corpus/openqasm.qasm
+nasm:tests/corpus/concept.asm
+mdx:tests/corpus/concept.mdx
+lean:tests/corpus/concept.lean
 shell:tests/corpus/shell_modules.sh
 "
 
@@ -718,9 +721,12 @@ printf 'int x;\n' > "$TMPDIR/routes/a.hh"
 for f in Dockerfile.dev Makefile.am rules.mk app.properties a.hh; do
     exp_rc 0 "route $f" "$BIN" "$TMPDIR/routes/$f"
 done
-# `.asm` is pruned, not routed: NASM `;` comments (ADR 0025).
+# `.asm` routes to nasm since 2.9.9 (2.6.2 – 2.9.8 left it unrouted:
+# GAS read NASM's `;` comments as code). Its `;` line is one comment.
 printf 'mov eax, 1 ; c\n' > "$TMPDIR/routes/a.asm"
-exp_rc 4 ".asm (unrouted)" "$BIN" "$TMPDIR/routes/a.asm"
+exp_rc 0 ".asm (nasm)" "$BIN" "$TMPDIR/routes/a.asm"
+"$BIN" "$TMPDIR/routes/a.asm" | grep -q '"kind":"comment","start":11,"len":3' \
+    || fail ".asm: the ; comment is not one comment token (nasm not chosen?)"
 # A node script detected by its shebang tokenizes the shebang as one
 # token (javascript gained shebang = true).
 printf '#!/usr/bin/env node\nx;\n' > "$TMPDIR/routes/tool"

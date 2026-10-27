@@ -1,0 +1,36 @@
+import {Chart} from './chart.js'
+import {Callout} from './callout.mdx'
+export const meta = {title: 'Concept', tags: ['mdx', 'stand-in']}
+
+# {meta.title}
+
+MDX is markdown with JavaScript in it: this stand-in corpus (ADR 0006)
+covers ESM blocks, `{expressions}`, JSX components, fences and the
+markdown around them. The year is {new Date().getFullYear()}.
+
+{/* A comment: MDX's own form. */}
+
+<Callout kind="note" open={true}>
+  Components take **markdown** children and `code` too.
+</Callout>
+
+## A chart
+
+<Chart data={[1, 2, 3]} height={240} />
+
+- one item with *emphasis*
+- another with a [link](https://example.com)
+
+```js
+export function add(a, b) {
+  return a + b
+}
+```
+
+| col | value |
+|-----|-------|
+| a   | {1 + 1} |
+
+export default function Layout({children}) {
+  return <main>{children}</main>
+}

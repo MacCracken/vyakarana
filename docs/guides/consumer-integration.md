@@ -17,7 +17,7 @@ source code).
 ## What you depend on
 
 vyakarana ships a single concatenated distfile,
-`dist/vyakarana.cyr`, that bundles the public API **and the 46
+`dist/vyakarana.cyr`, that bundles the public API **and the 49
 grammars themselves** (inlined as Cyrius string literals — see
 [ADR 0014](../adr/0014-embedded-grammar-blobs.md)). Add to your
 project's `cyrius.cyml`:
@@ -25,7 +25,7 @@ project's `cyrius.cyml`:
 ```toml
 [deps.vyakarana]
 git     = "https://github.com/MacCracken/vyakarana.git"
-tag     = "2.9.8"
+tag     = "2.9.9"
 modules = ["dist/vyakarana.cyr"]
 ```
 
@@ -270,7 +270,7 @@ wants to pre-load the registry at startup (e.g., to validate
 that `--language=foo` will work later), call:
 
 ```cyrius
-bootstrap_grammars();        # loads all 46 bundled grammars
+bootstrap_grammars();        # loads all 49 bundled grammars
 ```
 
 Then `has_grammar("foo")` and `list_languages_into(vec)` give
