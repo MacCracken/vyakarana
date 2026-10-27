@@ -139,6 +139,11 @@ was removed in 2.0.0 (ADR 0017).
 
 ## Status
 
+**2.9.4** (2026-10-27) — heredoc line-index memory: the index that finds
+heredoc terminators takes 16 bytes a line for `<<` and 20 for `<<-`
+(36 before), so a 1 MiB newline flood after one `cat <<EOF` peaks at
+23 MB instead of 43. Token output is unchanged. 1164/1164 tests.
+
 **2.9.3** (2026-10-27) — literal data gaps, the first of the 2.9.x arc.
 Block comments in Rust, JavaScript and TypeScript; Python 3.14 template
 strings (`t"…"`, `tr"…"`), SQL `N'…'` and Julia's `raw"…"` / `r"…"` /

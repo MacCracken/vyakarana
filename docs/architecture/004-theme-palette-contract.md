@@ -88,7 +88,7 @@ following reasons:**
    may not be the colour the new kind logically deserves.
 4. **The 10-slot palette is what owl, cyim, kybernet, and
    themes-of-themes were sized against.** Pre-1.0 design was
-   intentional ([design spec §3, §12](../../vyakarana-design-spec.md):
+   intentional ([design spec §3, §12](../development/vyakarana-design-spec.md):
    the `Token` type locked in M0);
    we don't churn it.
 

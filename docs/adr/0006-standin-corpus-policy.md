@@ -4,7 +4,7 @@
 - **Date:** 2026-04-23
 - **Deciders:** M3 agent (proposed) / user (accepted)
 - **Relates to:** [ADR 0001](0001-corpus-sync-policy.md),
-  [vyakarana-design-spec.md](../../vyakarana-design-spec.md) §7,
+  [vyakarana-design-spec.md](../development/vyakarana-design-spec.md) §7,
   [roadmap](../development/roadmap.md) M3
 
 ## Context

@@ -4,6 +4,37 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.9.4] — 2026-10-27
+
+**Heredoc line-index memory** (roadmap 2.9.4), the second of the 2.9.x
+arc. Token output is unchanged: byte-identical to 2.9.3 over 7,527 real
+files — up to 250 per grammar for the 32 grammars this host has files
+for, plus 2,000 more shell scripts, 706 of them with heredocs — and on
+the corpora. 1164/1164 tests, smoke OK, lint+fmt exit 0, fuzz 5/5,
+`cyrius distlib --check` clean. `vyk` stays 355,136 bytes and the shipped
+DCE build 265,024: the change fits inside the pages 2.9.3 already used.
+
+### Changed
+
+- **The heredoc line index takes 16 bytes a line for `<<`, 20 for
+  `<<-`** (36 for either through 2.9.3; ADR 0028 amended). A line's end
+  is the next line's start less one, so it is no longer stored, and each
+  half of the index — exact content for `<<`, tab-stripped for `<<-` — is
+  built on the first lookup that needs it; a scan with both kinds of
+  opener takes 32. Peak RSS of `vyk` on a 1 MiB newline flood after one
+  `cat <<EOF`: **43.4 → 22.8 MB** (8.0 with no opener); after `cat
+  <<-EOF`: 43.4 → 26.9 MB; after `cat <<EOF` and 524,282 lines of `a`:
+  74.1 → 63.8 MB. `stream-sweep.sh`'s heredoc stress inputs keep their
+  times (harness `cutfirst`, min of 5 interleaved, 2.9.3 → 2.9.4): the
+  1 MiB body 29.0 → 25.6 ms, 20,000 openers 136.3 → 135.1, the rewritten
+  delimiter 28.0 → 24.4, the quote-held line 23.8 → 21.5, the blank run
+  24.9 → 24.3; and 20,000 `<<-` heredocs, timed for this release,
+  262.2 → 257.0 ms. `stream-sweep.sh`: the fixed set, 164 runs, and the
+  706 real shell files with heredocs, 2,118 runs — 0 fails.
+- **`vyakarana-design-spec.md` moved to `docs/development/`**; every link
+  to it (CLAUDE.md, CONTRIBUTING, the man page, state.md, ADRs 0002 –
+  0006, architecture note 004) points there.
+
 ## [2.9.3] — 2026-10-27
 
 The first of the 2.9.x arc, **literal data gaps** (roadmap 2.9.3). Token

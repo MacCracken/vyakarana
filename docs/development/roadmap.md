@@ -42,16 +42,6 @@ a closeout audit at the end. Each entry ships only when the gates are
 green and, where it adds a gate, that gate is shown to fail on the
 release before.
 
-### 2.9.4 — Heredoc line-index memory *(patch)*
-
-- 36 bytes per line of the scan buffer since 2.9.1 (52 in 2.8.0): line
-  ends recomputed from the next line's start, and the tab-stripped half
-  built only when a `<<-` is pending — about 20 bytes a line. Matters
-  for floods of short lines after an opener (a 1 MiB one: 43 MB).
-- Done when output is byte-identical over the audit samples, the flood
-  is re-measured, and `stream-sweep.sh`'s heredoc stress inputs keep
-  their times.
-
 ### 2.9.5 — Variable-length delimiters *(patch)*
 
 - One ADR extending the heredoc rule, as ADR 0023 says to, rather than

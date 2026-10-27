@@ -146,7 +146,7 @@ that; the tokenizer should not."
 ## Grammar format decisions
 
 vyakarana grammars are CYML, not TextMate / Sublime / tree-sitter.
-Design reasoning lives in `vyakarana-design-spec.md`. When adding a new
+Design reasoning lives in `docs/development/vyakarana-design-spec.md`. When adding a new
 bundled grammar, start from the bundled grammar closest to the new
 language and copy its shape — `grammars/json.cyml` is the plainest,
 `grammars/shell.cyml` the most specialised (heredocs, `start_after`).

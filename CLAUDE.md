@@ -4,7 +4,7 @@
 > [docs/development/state.md](./docs/development/state.md) first
 > for where we are and what's next. Architecture decisions are ADRs
 > under [docs/adr/](./docs/adr/); design context is in
-> [vyakarana-design-spec.md](./vyakarana-design-spec.md); milestone
+> [docs/development/vyakarana-design-spec.md](./docs/development/vyakarana-design-spec.md); milestone
 > plan is [docs/development/roadmap.md](./docs/development/roadmap.md).
 
 This file is **process, procedure, and prefs only**. Repo state

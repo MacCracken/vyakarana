@@ -8,14 +8,14 @@
 > 2.6.2 it carried a "What X changed" block for every release back to
 > 1.13.0 — trimmed in 2.7.0; the CHANGELOG has all of it.)
 >
-> **Last refresh:** 2026-10-27, at 2.9.3. Read this first, then run the
+> **Last refresh:** 2026-10-27, at 2.9.4. Read this first, then run the
 > gates (CLAUDE.md §Gates) — do not take the "green" below on trust.
 
 ---
 
 ## Current status
 
-- **Version:** `2.9.3` — `VERSION`, `src/version_str.cyr`,
+- **Version:** `2.9.4` — `VERSION`, `src/version_str.cyr`,
   `dist/vyakarana.cyr`, the CHANGELOG header and `docs/man/vyk.1`
   agree.
 - **Toolchain pin:** `cyrius = "6.7.18"` in `cyrius.cyml`, the single
@@ -40,12 +40,12 @@
 - **Size:** the shipped (`CYRIUS_DCE=1`) `vyk` is 265,024 bytes against a
   307,200-byte budget that `scripts/check-size.sh` enforces in CI and at
   release (ADR 0029); the default build is 355,136.
-- **Next release:** 2.9.4, heredoc line-index memory — the second of
+- **Next release:** 2.9.5, variable-length delimiters — the third of
   the 2.9.x arc, which runs to incremental retokenization at 2.9.11 and
   a closeout audit at 2.9.12 ([roadmap](./roadmap.md)). The last audit's report:
   [2.9.x](../audit/2026-10-21-2.9.x-closeout-audit.md).
 
-## Gates (green at 2.9.3, 2026-10-27)
+## Gates (green at 2.9.4, 2026-10-27)
 
 - `cyrius build` OK, 0 warnings · `cyrius test` **1164/1164** · smoke
   OK (it runs `scripts/check-detect.sh`) · `scripts/lint-fmt.sh`
@@ -193,6 +193,6 @@ its corpus tokenizes with zero `error` tokens.
 - Decisions: [`../adr/`](../adr/README.md) · Audits: [`../audit/`](../audit/)
 - Performance and size: [`performance.md`](./performance.md) ·
   Distribution: [`distribution.md`](./distribution.md)
-- Design context: [`../../vyakarana-design-spec.md`](../../vyakarana-design-spec.md)
+- Design context: [`vyakarana-design-spec.md`](./vyakarana-design-spec.md)
 - Process and rules: [`../../CLAUDE.md`](../../CLAUDE.md) ·
   Security findings: [`../../SECURITY.md`](../../SECURITY.md)

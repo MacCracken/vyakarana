@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-04-23
 - **Deciders:** M1 agent (proposed) / user (accepted)
-- **Relates to:** [vyakarana-design-spec.md](../../vyakarana-design-spec.md)
+- **Relates to:** [vyakarana-design-spec.md](../development/vyakarana-design-spec.md)
   §3 (Token Kinds), [roadmap](../development/roadmap.md) M4
 
 ## Context

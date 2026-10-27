@@ -93,7 +93,11 @@ Keep rescan-and-commit, and change who knows what:
 5. **Heredoc terminators are looked up in a per-scan line index**
    (content hashed into buckets of line numbers, walked from a
    forward-only cursor) instead of searched under a budget: linear, and
-   the same verdict however the input is chunked.
+   the same verdict however the input is chunked. *(Amended 2.9.4: a
+   line's end is derived from the next line's start, and each half —
+   exact content for `<<`, tab-stripped for `<<-` — is built on its
+   first lookup: 16 bytes a line for `<<`, 20 for `<<-`, 32 for both; 52
+   in 2.8.0, 36 from 2.9.1.)*
 
 ## Consequences
 
