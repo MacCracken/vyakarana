@@ -42,25 +42,6 @@ a closeout audit at the end. Each entry ships only when the gates are
 green and, where it adds a gate, that gate is shown to fail on the
 release before.
 
-### 2.9.3 — Literal data gaps *(patch)*
-
-- **Block comments in rust, javascript and typescript** — none of the
-  three declares `/* … */` (found in the 2.9.x doc sweep; their corpora
-  have none, so no gate saw it). A pair rule each; Rust's comments nest,
-  which a pair rule cannot express — say so in its header, or extend
-  the rule.
-- **Python 3.14 template strings** — `t"…"` and the raw `tr` / `rt`, any
-  case, in python's `string_prefixes` / `raw_string_prefixes`. Data
-  only (ADR 0027).
-- **SQL `N'…'` and Julia string macros** (`raw"…"`, `r"…"`, `b"…"`) —
-  identifier-shaped prefixes, so data only as well; `raw` is a raw
-  prefix.
-- **Swift and HCL tuple indexes** — `t.0.1` lexes as `t . 0.1` (2.9.x
-  audit, reviewer A). Rust reads it the same way, deliberately (rustc;
-  a test holds it). Check what Swift's and HCL's own lexers do first;
-  if they read `0 . 1`, give the number step a per-grammar way to skip
-  the fraction after a single `.` (an ADR 0026 amendment).
-
 ### 2.9.4 — Heredoc line-index memory *(patch)*
 
 - 36 bytes per line of the scan buffer since 2.9.1 (52 in 2.8.0): line

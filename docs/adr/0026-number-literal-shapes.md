@@ -47,6 +47,20 @@ and a datetime are all `number`):
   (`:SS`, `.fraction`, `Z` / `±HH:MM` optional), or a local time
   `HH:MM:SS…` on its own. A standalone time needs its seconds, so
   prose like `10:30` in YAML is not a time.
+- *(Amended 2.9.3: a fourth key.)* **`number_tuple_index = true`** —
+  a number right after a lone `.` takes no fraction, so Swift's
+  `t.0.1` is `t . 0 . 1`, as Swift's own lexer reads it
+  (`Lexer::lexNumber`: "x.0.1 is sub-tuple access, not
+  x.float_literal" — an integer ends at a `.` when the previous token
+  is a period). A byte check stands in for the token check: the byte
+  before is `.` and the one before that is not, so `0.0...1.5` keeps
+  both floats. The exponent is unchanged (`t.0.1e5` is `0` `.` `1e5`,
+  as in Swift). The drain now carries the last two committed bytes,
+  not one (stream record 224 bytes). Without `number_float` the key
+  would do nothing, so the grammar is rejected. Opted in: swift. Not
+  rust — rustc lexes `0.1` whole, and a test holds it — nor terraform:
+  HCL's scanner does too, and its parser rejects the chained legacy
+  index ("Invalid legacy index syntax").
 
 Opted in: **float** — json, python, javascript, typescript, rust,
 go, c, cpp, java, kotlin, csharp, swift, zig, lua, julia, css, scss,

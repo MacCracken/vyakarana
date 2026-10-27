@@ -52,8 +52,10 @@ var GRAMMAR_FILE_CAP = 32768;
 #                           before an ident byte: css `-` (ADR 0027, 2.7.1)
 #  232  string_prefixes     Vec<cstr> — idents that join a following string / char (ADR 0027)
 #  240  raw_string_prefixes Vec<cstr> — the same, with the string's escape off (ADR 0027)
+#  248  number_tuple_index  i64  (0/1) — a number right after a lone `.` takes no
+#                           fraction: Swift `t.0.1` is `t . 0 . 1` (ADR 0026, 2.9.3)
 #  -----
-#  248 bytes total
+#  256 bytes total
 #
 # `extensions`, `filenames` and `shebangs` declare what
 # `src/detect.cyr` routes to this grammar. Detection does not read
@@ -62,7 +64,7 @@ var GRAMMAR_FILE_CAP = 32768;
 # (Fence-tag lookup does read `extensions` and `shebangs`:
 # `registry_find_fence_tag`, 2.9.1.)
 
-var GRAMMAR_SIZE = 248;
+var GRAMMAR_SIZE = 256;
 
 fn grammar_new() {
     var g = alloc(GRAMMAR_SIZE);
@@ -119,6 +121,7 @@ fn grammar_number_datetime(g)      { return load64(g + 216); }
 fn grammar_ident_lead(g)           { return load64(g + 224); }
 fn grammar_string_prefixes(g)      { return load64(g + 232); }
 fn grammar_raw_string_prefixes(g)  { return load64(g + 240); }
+fn grammar_number_tuple_index(g)   { return load64(g + 248); }
 
 # Here-document rule (ADR 0023): `start` opens it (`<<`); an optional
 # one-byte `indent` marker right after the start (`-` for `<<-`) lets
@@ -573,6 +576,11 @@ fn _gp_apply_kv(g, current_rule, section, buf, len, key_pos, key_len, value_pos)
             store64(g + 200, load64(out_bool_slot));
             return 0;
         }
+        if (_gp_slice_eq(buf, key_pos, key_len, "number_tuple_index") == 1) {
+            _gp_parse_bool(buf, len, value_pos, out_bool_slot);
+            store64(g + 248, load64(out_bool_slot));
+            return 0;
+        }
         # One byte that is not a digit; anything else rejects the grammar
         # (`_gp_validate`), rather than splitting numbers on a guess.
         if (_gp_slice_eq(buf, key_pos, key_len, "number_separator") == 1) {
@@ -918,8 +926,10 @@ fn _gp_validate(g) {
     if (grammar_number_sep(g) < 0) { return 1; }
     # Keys that would be accepted and then do nothing (2.9.1 audit,
     # reviewer C): a float or datetime shape without decimal numbers, a
-    # lead byte that `ident_start` does not hold.
+    # tuple index without floats (2.9.3), a lead byte that `ident_start`
+    # does not hold.
     if ((grammar_number_decimal(g) == 0) && (grammar_number_float(g) == 1)) { return 1; }
+    if ((grammar_number_float(g) == 0) && (grammar_number_tuple_index(g) == 1)) { return 1; }
     if ((grammar_number_decimal(g) == 0) && (grammar_number_datetime(g) == 1)) { return 1; }
     var st = grammar_ident_start(g);
     var ct = grammar_ident_cont(g);

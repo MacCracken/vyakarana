@@ -81,6 +81,16 @@ match = "line"
 start = "//"
 
 
+# Block comments `/* … */`, JSDoc's `/** … */` among them (2.9.3).
+# ECMAScript's do not nest, so the pair rule's close at the first `*/`
+# is the spec's.
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "/*"
+end = "*/"
+
+
 # Template literals `` `...` ``. Backslash-aware.
 [[rules]]
 kind = "string"

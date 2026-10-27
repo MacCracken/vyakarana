@@ -57,6 +57,11 @@ special_vars = false
 unicode_ident = true
 char_literal  = false
 
+# National character strings, `N'…'`, are one string token (2.9.3,
+# ADR 0027). T-SQL requires the upper case; Oracle and MySQL take `n'…'`
+# as well.
+string_prefixes = ["N", "n"]
+
 # ADR 0011: SQL keywords are case-insensitive per spec.
 case_insensitive_keywords = true
 

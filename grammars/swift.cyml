@@ -53,6 +53,10 @@ number_0b      = true
 number_0o      = true
 number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
 number_separator = "_"    # `1_000` (ADR 0026)
+# Tuple indexes: `t.0.1` is `t . 0 . 1`, as Swift's own lexer reads it —
+# a number right after a lone `.` takes no fraction (2.9.3). `0.0...1.5`
+# keeps its floats: a `.` that ends `...` is not lone.
+number_tuple_index = true
 
 special_vars = false
 unicode_ident = true

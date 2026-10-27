@@ -47,7 +47,12 @@ new rule type, no new token kind:
   cr`), c and cpp (`L u U u8`). Out of scope: Rust's `r#"…"#` and C++'s
   `R"d(…)d"` (variable-length delimiters — ADR 0023's heredoc rule is
   where those would go), C#'s `@"…"` / `$"…"` (not identifier-shaped),
-  SQL `N'…'`, Julia string macros.
+  SQL `N'…'`, Julia string macros. *(Amended 2.9.3: the last two are
+  in, with Python 3.14's template strings — sql `N n`, julia `raw r b
+  v` (Base's macros only), python `t` and the raw `tr` / `rt` in every
+  case. All are plain prefixes: in Python and Julia a raw string's
+  `\"` still escapes its quote, so the escape-on scan is what ends
+  it.)*
 - **`[defaults] ident_lead = "<class>"`** — bytes of `ident_start` that
   start an identifier only when the next byte can both start and
   continue one (or is non-ASCII under `unicode_ident`). Otherwise the
@@ -108,7 +113,8 @@ Two related changes ride along without new keys:
 
 ### When to revisit
 
-- C# verbatim / interpolated strings or SQL `N'…'` if a consumer asks —
+- C# verbatim / interpolated strings if a consumer asks (SQL `N'…'`
+  landed in 2.9.3) —
   a non-identifier prefix would need the scanner to try it before the
   operator step.
 - Rust `r#"…"#` and C++ raw strings with the heredoc-rule extension.

@@ -4,6 +4,67 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.9.3] — 2026-10-27
+
+The first of the 2.9.x arc, **literal data gaps** (roadmap 2.9.3). Token
+output changes only for the shapes below. Of 1,171 sampled real files
+(rust 250, javascript 261, typescript 250, python 250, swift 153, sql 7;
+this host has no julia or terraform sources), 186 change — every one a
+block comment, in typescript 147, javascript 38, rust 1 — with no exit
+code or error-token count changed; the 48 corpus files are unchanged.
+1164/1164 tests (41 new), fuzz 5/5 with seven new every-offset shapes.
+`vyk` 354,800 → 355,136 bytes; the shipped DCE build 260,592 → 265,024,
+of which 1,584 bytes are code and data — the code segment crossed a 4 KiB
+boundary, so the data segment starts a page later (42,176 bytes under the
+budget).
+
+### Changed
+
+- **Block comments in rust, javascript and typescript.** None of the three
+  declared `/* … */`, so a block comment came back as operators and
+  identifiers (found in the 2.9.2 doc sweep; their corpora have none). A
+  pair rule each. Rust's nest; the rule closes at the first `*/`, the
+  limit swift, haskell, ocaml and julia already document — rust's header
+  now says so too.
+- **More string prefixes (ADR 0027).** python: 3.14's template strings,
+  `t` and the raw `tr` / `rt`, in every case (PEP 750; `t` combines with
+  nothing else, so `tb"…"` stays ident + string). sql: `N'…'`, and `n'…'`
+  — T-SQL requires the upper case, Oracle and MySQL take either. julia:
+  Base's string macros `raw"…"`, `r"…"`, `b"…"`, `v"…"`. All are plain
+  prefixes, not raw ones (the roadmap had `raw` as raw): in Python and
+  Julia a raw string's `\"` still escapes its quote (the Julia manual:
+  "quotation marks still must be escaped"), so a scan with escapes off
+  would end `raw"a\"b"` at the second quote.
+- **Swift tuple indexes: `t.0.1` is `t . 0 . 1`**, through a new
+  `[defaults] number_tuple_index` key (ADR 0026 amendment): a number
+  right after a lone `.` takes no fraction, as Swift's own lexer reads it
+  ("x.0.1 is sub-tuple access, not x.float_literal"). `0.0...1.5` and
+  `0..<1.5` keep their floats, `t.0.1e5` its exponent. The drain now
+  carries the last two committed bytes across a buffer boundary, not one —
+  a split after `0.0...1` must still see `..` behind the `1.5` — so the
+  stream record grows 216 → 224 bytes and the `Grammar` record 248 → 256
+  (both internal). The grammar loader rejects the key without
+  `number_float`. HCL keeps `foo.0.1` as `foo . 0.1`: its scanner reads
+  `0.1` whole, as rustc does, and its parser rejects the chained legacy
+  index. A test holds each.
+
+### Tests
+
+- A `2.9.3 literal data gaps` group, 41 assertions. Against 2.9.2's
+  sources 28 of them fail, plus the four record-layout checks the larger
+  `Grammar` record trips; the rest hold what must not change (`/=`,
+  `d / e`, `tb"…"`, `M'y'`, `html"…"`, Swift's floats, HCL's `0.1`).
+- `fuzz/chunk_invariance.fcyr` gains seven every-offset shapes (swift,
+  rust, javascript, typescript, python, sql, julia). With the second
+  look-behind byte dropped, the swift shape fails at three two-feed
+  splits and all three small-chunk sizes, and the test group's
+  every-split check at three splits.
+- Sweeps (`scripts/audit/`): `coverage-sweep.sh` over the 1,171 files,
+  0 fails and no file with an error token; `stream-sweep.sh` over the 186
+  changed files, 558 runs, 0 fails, and its fixed set (every corpus at
+  every offset, the heredoc shapes, the stress inputs), 164 runs, 0 fails.
+  Fuzz is also clean under `--poison=ab` and `--bounds`.
+
 ## [2.9.2] — 2026-10-23
 
 Toolchain `6.7.15` → `6.7.18`, `cyrius.cyml` cut back to configuration,

@@ -360,6 +360,16 @@ fn _ci_main() {
     if (_ci_every("markdown", "> ```c\n> int a;\n> ```\n\n```bash\necho \"$x\" # c\n```\n") != 0) { rc = 1; }
     # Prefixed triple-quoted strings whose body starts with quotes (B, F1).
     if (_ci_every("python", "s = f\'\'\'\'\'hello\'\'\'\nt = b\"\"\"\"\"\"\nu = rb\'\'\'x\\\'\'\'\n") != 0) { rc = 1; }
+    # 2.9.3: Swift tuple indexes — a split after `0.0...1` leaves `1.5` at
+    # the buffer start with only `..` behind it, so the drain must carry
+    # two bytes of look-behind — then block comments and string prefixes.
+    if (_ci_every("swift", "let a = t.0.1; let b = 0.0...1.5; let c = t.0.1e5 + t.1.2.3; d = 0..<1.5\n") != 0) { rc = 1; }
+    if (_ci_every("rust", "let x = 1; /* a /* b */ c */ /** d */ /*! e */ x\n") != 0) { rc = 1; }
+    if (_ci_every("javascript", "a /* b */ /= 2; /** @c */ d / e;\n") != 0) { rc = 1; }
+    if (_ci_every("typescript", "let a: T /* b */ = c; /** @d */\n") != 0) { rc = 1; }
+    if (_ci_every("python", "x = t\"{a}\" + tr'\\d' + RT\"q\" + tb\"n\" + r\"\\\"\"\n") != 0) { rc = 1; }
+    if (_ci_every("sql", "SELECT N'a''b', n'x', M'y' FROM t;\n") != 0) { rc = 1; }
+    if (_ci_every("julia", "x = raw\"a\\\"b\" * r\"\\d+\" * b\"hi\" * v\"1.2\" * html\"n\"\n") != 0) { rc = 1; }
 
     return rc;
 }

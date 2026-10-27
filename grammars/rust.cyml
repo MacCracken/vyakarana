@@ -13,7 +13,8 @@
 # [ADR 0007](../docs/adr/0007-rust-dollar-in-ident-start.md).
 #
 # Known gaps for future ADRs (not triggered by the vidya sample):
-#   - Block comments `/* ... */` (Rust's are nestable).
+#   - Nested block comments: `/* a /* b */ c */` closes at the first
+#     `*/` (the rule below says why).
 #   - Raw strings with hashes `r#"..."#`, `r##"..."##` (a variable-length
 #     delimiter). `r"..."`, `b"..."`, `br"..."`, `c"..."` and byte chars
 #     `b'x'` are one string token since 2.7.1 (ADR 0027).
@@ -93,6 +94,17 @@ punctuation = [
 kind = "comment"
 match = "line"
 start = "//"
+
+
+# Block comments `/* … */`, doc comments `/** … */` and `/*! … */`
+# among them (2.9.3). Rust's nest; the pair rule closes at the first
+# `*/`, so after a nested comment the rest of the outer one tokenizes as
+# code — the limit swift, haskell, ocaml and julia document too.
+[[rules]]
+kind = "comment"
+match = "pair"
+start = "/*"
+end = "*/"
 
 
 [[rules]]

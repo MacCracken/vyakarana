@@ -8,14 +8,14 @@
 > 2.6.2 it carried a "What X changed" block for every release back to
 > 1.13.0 — trimmed in 2.7.0; the CHANGELOG has all of it.)
 >
-> **Last refresh:** 2026-10-23, at 2.9.2. Read this first, then run the
+> **Last refresh:** 2026-10-27, at 2.9.3. Read this first, then run the
 > gates (CLAUDE.md §Gates) — do not take the "green" below on trust.
 
 ---
 
 ## Current status
 
-- **Version:** `2.9.2` — `VERSION`, `src/version_str.cyr`,
+- **Version:** `2.9.3` — `VERSION`, `src/version_str.cyr`,
   `dist/vyakarana.cyr`, the CHANGELOG header and `docs/man/vyk.1`
   agree.
 - **Toolchain pin:** `cyrius = "6.7.18"` in `cyrius.cyml`, the single
@@ -37,23 +37,22 @@
   of four stdlib leaves (alloc, string, vec, io). The embedded grammars
   are compacted — comments and blanks outside strings dropped — by a
   POSIX sh + awk generator (ADR 0029); `grammars/` is the readable copy.
-- **Size:** the shipped (`CYRIUS_DCE=1`) `vyk` is 260,592 bytes against a
+- **Size:** the shipped (`CYRIUS_DCE=1`) `vyk` is 265,024 bytes against a
   307,200-byte budget that `scripts/check-size.sh` enforces in CI and at
-  release (ADR 0029); the default build is 354,800.
-- **Next release:** 2.9.3, the first of the 2.9.x arc — the former
-  backlog scheduled as 2.9.3 – 2.9.11, from literal data gaps to
-  incremental retokenization, then a closeout audit at 2.9.12
-  ([roadmap](./roadmap.md)). The last audit's report:
+  release (ADR 0029); the default build is 355,136.
+- **Next release:** 2.9.4, heredoc line-index memory — the second of
+  the 2.9.x arc, which runs to incremental retokenization at 2.9.11 and
+  a closeout audit at 2.9.12 ([roadmap](./roadmap.md)). The last audit's report:
   [2.9.x](../audit/2026-10-21-2.9.x-closeout-audit.md).
 
-## Gates (green at 2.9.2, 2026-10-23)
+## Gates (green at 2.9.3, 2026-10-27)
 
-- `cyrius build` OK, 0 warnings · `cyrius test` **1123/1123** · smoke
+- `cyrius build` OK, 0 warnings · `cyrius test` **1164/1164** · smoke
   OK (it runs `scripts/check-detect.sh`) · `scripts/lint-fmt.sh`
   exit 0 (a lint warning fails it; covers `src/` and
   `scripts/audit/`) · `scripts/check-size.sh` OK · `cyrius fuzz`
-  **5/5**, also clean under `--poison=ab` and `--bounds` · `cyrius
-  distlib --check` clean.
+  **5/5** (56 every-offset shapes), also clean under `--poison=ab` and
+  `--bounds` · `cyrius distlib --check` clean.
 - The audit sweeps are in `scripts/audit/` — real-file coverage,
   poison A/B, streaming invariance, mutation fuzz over vidya — with
   2.9.1's clean numbers in its README. Not gates (minutes, real files);
@@ -78,8 +77,8 @@
   compose_region (`end_before` optional: run to EOF, ADR 0019),
   heredoc (ADR 0023); line rules may also require or forbid a next
   byte (`followed_by` / `not_followed_by`, ADR 0027). `[defaults]`
-  includes `number_float`, `number_separator`, `number_datetime`
-  (ADR 0026), `string_prefixes` / `raw_string_prefixes` and
+  includes `number_float`, `number_separator`, `number_datetime`,
+  `number_tuple_index` (ADR 0026), `string_prefixes` / `raw_string_prefixes` and
   `ident_lead` (ADR 0027). `extensions` / `filenames` / `shebangs`
   declare detection (ADR 0025).
 - **`vyk`:** NDJSON or `--theme` ANSI output, `--export-theme`, `-` for
@@ -120,11 +119,11 @@ Each names the 2.9.x arc release that takes it on ([roadmap](./roadmap.md)).
 
 - **Numbers:** a leading- or trailing-dot float (`.5`, `1.`), hex
   floats and every suffix (`1.5f`, `2j`, `1u32`) split (ADR 0026) —
-  2.9.7. Swift / HCL `t.0.1` reads `t . 0.1` — 2.9.3.
+  2.9.7.
 - **String prefixes** are declared per grammar and identifier-shaped
-  (ADR 0027). Python 3.14's `t"…"`, SQL `N'…'` and Julia string macros
-  are not declared yet (data — 2.9.3); C#'s `@"…"` / `$"…"` need a
-  non-identifier prefix (2.9.6). Until then they are prefix + string.
+  (ADR 0027): C#'s `@"…"` / `$"…"` need a non-identifier prefix
+  (2.9.6), and Julia string macros other than Base's `raw` / `r` / `b`
+  / `v` are not declared. Until then they are prefix + string.
 - **Variable-length delimiters beyond shell heredocs** — Rust
   `r#"…"#`, C++ `R"d(…)d"`, Lua `[==[ … ]==]`, Swift `#"…"#`, and Ruby
   and PHP heredocs (neither grammar has a heredoc rule) — 2.9.5, by
@@ -132,10 +131,10 @@ Each names the 2.9.x arc release that takes it on ([roadmap](./roadmap.md)).
   whose body holds quotes and backslashes surfaces `error` tokens after
   the first inner quote (2 of 5,166 sampled real files at the 2.9.x
   audit).
-- **No block comments in rust, javascript or typescript:** none of the
-  three declares `/* … */`, so a block comment comes back as operators
-  and identifiers (their corpora have none) — data, 2.9.3; Rust's
-  nest, which a pair rule cannot express.
+- **Nested block comments** close at the first `*/` (rust, swift),
+  `-}` (haskell), `*)` (ocaml) or `=#` (julia): a pair rule does not
+  count depth, so the rest of the outer comment tokenizes as code. Not
+  scheduled.
 - **Markdown fences:** `~~~` and four-or-more-backtick fences and
   indented code blocks are not recognised (ADR 0016); a closer may be
   indented by any run of spaces, tabs and `>`, so a column-0 fence whose

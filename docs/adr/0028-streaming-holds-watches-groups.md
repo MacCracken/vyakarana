@@ -119,7 +119,7 @@ Keep rescan-and-commit, and change who knows what:
   up to the buffer's end; either may differ from a single feed from
   there on — the documented bound). The
   tokens are the single feed's; only their arrival is later.
-- The stream record grows to 192 bytes (internal; 216 in 2.9.1); the scanner keeps a
+- The stream record grows to 192 bytes (internal; 216 in 2.9.1, 224 in 2.9.3); the scanner keeps a
   per-depth line index for heredoc grammars.
 
 ### When to revisit

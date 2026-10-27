@@ -160,7 +160,7 @@ fn _t_route_ok(what, got, nm) {
 # without a spec entry fails there.
 var _t_diff_off = 0;    # top-level offset of the last mismatch found
 
-fn _t_grammar_spec() { return "svviittiiiiivvLPWiiiCFRHviiitvv"; }
+fn _t_grammar_spec() { return "svviittiiiiivvLPWiiiCFRHviiitvvi"; }
 
 fn _t_sub_spec(code) {
     if (code == 76) { return "isstt"; }   # L  LineRule
@@ -4426,6 +4426,86 @@ fn main() {
     assert(cb91_max <= VYK_COMPOSE_HOLD_MAX + 65536, "  ... and the held buffer stays within the 8 MiB bound");
     assert_eq(tb_coverage_sum(cb91_tb), cb91_fed, "  ... and the tokens cover every byte");
     tokenize_stream_free(cb91_s);
+
+    test_group("2.9.3 literal data gaps");
+    # Block comments in rust, javascript and typescript. Rust's nest; the
+    # pair rule closes at the first `*/` (the grammar header says so).
+    var ld3_rs = _t_tokenize("let x = 1; /* a */ /** d */ x /* a /* b */ c */\n", "rust");
+    assert_eq(_t_kind_at(ld3_rs, 11), TK_COMMENT, "rust /* a */ is a comment");
+    assert_eq(_t_len_at(ld3_rs, 11), 7, "  ... to its */");
+    assert_eq(_t_len_at(ld3_rs, 19), 8, "rust /** d */ doc comment");
+    assert_eq(_t_len_at(ld3_rs, 30), 12, "rust nested /* a /* b */ closes at the first */");
+    assert_eq(_t_kind_at(ld3_rs, 43), TK_IDENT, "  ... so the outer comment's `c` is code");
+    var ld3_js = _t_tokenize("a /* b */ /= 2; /** @c */ d / e;\n", "javascript");
+    assert_eq(_t_kind_at(ld3_js, 2), TK_COMMENT, "javascript /* b */ is a comment");
+    assert_eq(_t_len_at(ld3_js, 2), 7, "  ... to its */");
+    assert_eq(_t_len_at(ld3_js, 10), 2, "javascript /= stays one operator");
+    assert_eq(_t_len_at(ld3_js, 16), 9, "javascript /** @c */ JSDoc comment");
+    assert_eq(_t_kind_at(ld3_js, 28), TK_OPERATOR, "javascript `d / e`: the / is division");
+    var ld3_ts = _t_tokenize("let a: T /* b */ = c;\n", "typescript");
+    assert_eq(_t_kind_at(ld3_ts, 9), TK_COMMENT, "typescript /* b */ is a comment");
+    assert_eq(_t_len_at(ld3_ts, 9), 7, "  ... to its */");
+    # Python 3.14 template strings (PEP 750): `t`, raw `tr` / `rt`, any
+    # case; `t` combines with nothing else. A raw string still treats `\"`
+    # as an escaped quote.
+    var ld3_py = _t_tokenize("x = t\"{a}\" + tr'\\d' + RT\"q\" + tb\"n\" + r\"\\\"\"\n", "python");
+    assert_eq(_t_kind_at(ld3_py, 4), TK_STRING, "python t\"{a}\" is one string token");
+    assert_eq(_t_len_at(ld3_py, 4), 6, "  ... prefix included");
+    assert_eq(_t_len_at(ld3_py, 13), 6, "python tr'\\d' is one string token");
+    assert_eq(_t_len_at(ld3_py, 22), 5, "python RT\"q\" (upper case raw template)");
+    assert_eq(_t_kind_at(ld3_py, 30), TK_IDENT, "python tb\"n\": `tb` is no prefix");
+    assert_eq(_t_len_at(ld3_py, 38), 5, "python r\"\\\"\" ends at its last quote");
+    # SQL national character strings.
+    var ld3_sql = _t_tokenize("SELECT N'a''b', n'x', M'y' FROM t;\n", "sql");
+    assert_eq(_t_kind_at(ld3_sql, 7), TK_STRING, "sql N'a' is one string token");
+    assert_eq(_t_len_at(ld3_sql, 7), 4, "  ... prefix included");
+    assert_eq(_t_len_at(ld3_sql, 16), 4, "sql n'x' (Oracle / MySQL lower case)");
+    assert_eq(_t_kind_at(ld3_sql, 22), TK_IDENT, "sql M'y': `M` is no prefix");
+    # Julia's Base string macros; `\"` is an escaped quote in every one.
+    var ld3_jl = _t_tokenize("x = raw\"a\\\"b\" * r\"\\d+\" * b\"hi\" * v\"1.2\" * html\"n\"\n", "julia");
+    assert_eq(_t_kind_at(ld3_jl, 4), TK_STRING, "julia raw\"a\\\"b\" is one string token");
+    assert_eq(_t_len_at(ld3_jl, 4), 9, "  ... and \\\" did not end it");
+    assert_eq(_t_len_at(ld3_jl, 16), 6, "julia r\"\\d+\" regex literal");
+    assert_eq(_t_len_at(ld3_jl, 25), 5, "julia b\"hi\" byte literal");
+    assert_eq(_t_len_at(ld3_jl, 33), 6, "julia v\"1.2\" version literal");
+    assert_eq(_t_kind_at(ld3_jl, 42), TK_IDENT, "julia html\"n\": only Base's macros are declared");
+    # Swift tuple indexes (`number_tuple_index`): no fraction after a lone
+    # `.`; `...` and `..<` are not lone. HCL and rust read `0.1` whole.
+    var ld3_sw_src = "let a = t.0.1; let b = 0.0...1.5; let c = t.0.1e5 + t.1.2.3; d = 0..<1.5\n";
+    var ld3_sw = _t_tokenize(ld3_sw_src, "swift");
+    assert_eq(_t_len_at(ld3_sw, 10), 1, "swift t.0.1: `0` is a tuple index");
+    assert_eq(_t_kind_at(ld3_sw, 11), TK_PUNCTUATION, "  ... the `.` is punctuation");
+    assert_eq(_t_len_at(ld3_sw, 12), 1, "  ... and `1` another index");
+    assert_eq(_t_len_at(ld3_sw, 23), 3, "swift 0.0...1.5: `0.0` is a float");
+    assert_eq(_t_len_at(ld3_sw, 29), 3, "  ... and so is `1.5` after `...`");
+    assert_eq(_t_len_at(ld3_sw, 44), 1, "swift t.0.1e5: `0` is an index");
+    assert_eq(_t_len_at(ld3_sw, 46), 3, "  ... and `1e5` keeps its exponent");
+    assert_eq(_t_len_at(ld3_sw, 56), 1, "swift t.1.2.3: `2` is an index");
+    assert_eq(_t_len_at(ld3_sw, 69), 3, "swift 0..<1.5: `1.5` after `..<` is a float");
+    var ld3_tf = _t_tokenize("x = foo.0.1\n", "terraform");
+    assert_eq(_t_len_at(ld3_tf, 8), 3, "terraform foo.0.1: `0.1` is one number, as HCL's scanner reads it");
+    # Fed in two parts at every split: some leave `1.5` starting the
+    # buffer with `..` behind it, so the stream carries two bytes back.
+    var ld3_n = strlen(ld3_sw_src);
+    var ld3_bad = 0;
+    var ld3_p = 1;
+    while (ld3_p < ld3_n) {
+        var ld3_s = tokenize_stream_new("swift");
+        var ld3_tb = tokenbuf_new();
+        tokenize_stream_feed(ld3_s, ld3_sw_src, ld3_p);
+        tokenize_stream_drain(ld3_s, ld3_tb);
+        tokenize_stream_feed(ld3_s, ld3_sw_src + ld3_p, ld3_n - ld3_p);
+        tokenize_stream_finish(ld3_s, ld3_tb);
+        tokenize_stream_free(ld3_s);
+        if (_t_same_tokens(ld3_sw, ld3_tb) == 0) { ld3_bad = ld3_bad + 1; }
+        ld3_p = ld3_p + 1;
+    }
+    assert_eq(ld3_bad, 0, "swift tuple indexes stream as they tokenize whole, at every split");
+    # `number_tuple_index` without floats would do nothing: rejected.
+    var ld3_g1 = "[grammar]\nname = \"x\"\n[defaults]\nnumber_decimal = true\nnumber_tuple_index = true\n";
+    assert_eq(_gp_parse(ld3_g1, strlen(ld3_g1)), 0, "number_tuple_index without number_float rejects the grammar");
+    var ld3_g2 = "[grammar]\nname = \"x\"\n[defaults]\nnumber_decimal = true\nnumber_float = true\nnumber_tuple_index = true\n";
+    assert(_gp_parse(ld3_g2, strlen(ld3_g2)) != 0, "  ... and with number_float it loads");
 
     return assert_summary();
 }

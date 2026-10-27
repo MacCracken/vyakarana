@@ -25,7 +25,7 @@ project's `cyrius.cyml`:
 ```toml
 [deps.vyakarana]
 git     = "https://github.com/MacCracken/vyakarana.git"
-tag     = "2.9.2"
+tag     = "2.9.3"
 modules = ["dist/vyakarana.cyr"]
 ```
 

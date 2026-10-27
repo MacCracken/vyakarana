@@ -40,9 +40,9 @@
 #     by token text.
 #   - **String interpolation** `$var` / `$(expr)` — body
 #     tokenizes as part of the surrounding string.
-#   - **Raw strings** `raw"..."` — the `raw` prefix tokenizes
-#     as a separate ident; the string itself tokenizes
-#     normally without the no-escape semantics.
+#   - **String macros** beyond Base's `raw` / `r` / `b` / `v` (which
+#     join their string since 2.9.3) — `html"…"`, `L"…"` and the like
+#     tokenize as ident + string.
 
 [grammar]
 name = "julia"
@@ -69,6 +69,14 @@ special_vars = false
 
 unicode_ident = true
 char_literal  = true
+
+# Non-standard string literals — `raw"…"`, `r"…"` (regex), `b"…"` (bytes),
+# `v"…"` (version) — are one string token with their prefix (2.9.3, ADR
+# 0027). Plain prefixes, not raw ones: in all of them `\"` is an escaped
+# quote (the manual's "quotation marks still must be escaped"), which is
+# how the pair rule's escape already ends them. Any identifier touching
+# a `"` calls a string macro in Julia; only Base's are declared.
+string_prefixes = ["b", "r", "raw", "v"]
 
 operators = [
     "===", "!==",

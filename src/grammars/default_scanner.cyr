@@ -21,7 +21,8 @@
 #      via [[rules]] match="words" lookup, or — with a declared
 #      string prefix (ADR 0027) — one string: prefix + literal
 #   7. defaults.number_decimal/_0x/_0b/_0o            → number
-#      (shaped by number_float / _separator / _datetime, ADR 0026)
+#      (shaped by number_float / _separator / _datetime /
+#       _tuple_index, ADR 0026)
 #   7b. defaults.char_literal `'C'`/`'\C'`/`'\xHH'`   → string
 #   7c. [[rules]] match="heredoc" opener (ADR 0023)   → consumes nothing;
 #      queues the body for step H on the next line
@@ -765,7 +766,7 @@ var DS_CHAR_LITERAL_MAX = 12;
 #   '\…'      → 4..12 bytes: `\` plus the escaped byte, then up to
 #               the closing quote within DS_CHAR_LITERAL_MAX — so
 #               `'\n'`, `'\''`, `'\\'`, `'\xHH'`, `'\033'` (octal),
-#               `'\uXXXX'`, `'\UXXXXXXXX'` and `'\u{H…H}'`. Escape
+#               `'\uHHHH'`, `'\UHHHHHHHH'` and `'\u{H…H}'`. Escape
 #               digits are not validated; the closing quote is trusted.
 #               A newline or a second `\` before the quote means no
 #               literal. (Through 2.5.1 only `'\C'` and `'\xHH'` were
@@ -942,9 +943,26 @@ fn _ds_lookup_keyword(g, src, start, len) {
     return 0 - 1;
 }
 
+# 1 if the byte before `src[i]` is a lone `.` — not the end of `..`,
+# `...` or `..<`. `prev0` / `prev1` are the two bytes before `src[0]`
+# (the drain's last committed bytes), -1 where there are none.
+fn _ds_after_lone_dot(src, i, prev0, prev1) {
+    var b1 = prev0;
+    var b2 = prev1;
+    if (i >= 1) {
+        b1 = load8(src + i - 1);
+        b2 = prev0;
+    }
+    if (i >= 2) { b2 = load8(src + i - 2); }
+    if (b1 != 46) { return 0; }
+    if (b2 == 46) { return 0; }
+    return 1;
+}
+
 # Number with optional 0x/0b/0o prefix. Returns length; 0 if not a
-# number. Caller has already checked is_digit on src[i].
-fn _ds_scan_number(g, src, src_len, i) {
+# number. Caller has already checked is_digit on src[i]. `prev0` /
+# `prev1` as for `_ds_after_lone_dot`.
+fn _ds_scan_number(g, src, src_len, i, prev0, prev1) {
     var sep = grammar_number_sep(g);
     if (load8(src + i) == 48) {                # leading 0
         if (i + 1 < src_len) {
@@ -969,8 +987,15 @@ fn _ds_scan_number(g, src, src_len, i) {
     if (grammar_number_float(g) == 1) {
         # Fraction: `.` then a digit. A digit is required — `1..2` (a
         # range), `1.max()` and `t.0.x` stay split — so a trailing-dot
-        # `1.` and a leading-dot `.5` are not floats (ADR 0026).
-        if (j + 1 < src_len) {
+        # `1.` and a leading-dot `.5` are not floats (ADR 0026). Under
+        # `number_tuple_index` a number right after a lone `.` takes
+        # none, as Swift's lexer reads `t.0.1` (2.9.3); its exponent is
+        # unchanged.
+        var frac_ok = 1;
+        if (grammar_number_tuple_index(g) == 1) {
+            if (_ds_after_lone_dot(src, i, prev0, prev1) == 1) { frac_ok = 0; }
+        }
+        if ((frac_ok == 1) && (j + 1 < src_len)) {
             if ((load8(src + j) == 46) && (_ds_is_digit(load8(src + j + 1)) == 1)) {
                 j = _ds_digit_run(src, src_len, j + 2, sep, 10);
             }
@@ -1761,15 +1786,19 @@ var _ds_not_file_start = 0;
 
 # Also set by the drain for a mid-stream buffer: the byte just before
 # `src[0]` (its last committed byte), for `start_after` boundaries
-# (ADR 0022). -1 means `src` starts the input. One-shot, like the flag
-# above, so compose bodies tokenized inside see their own start.
+# (ADR 0022), and the one before that, for `number_tuple_index` (2.9.3).
+# -1 means there is none. One-shot, like the flag above, so compose
+# bodies tokenized inside see their own start.
 var _ds_buf_prev = (0 - 1);
+var _ds_buf_prev2 = (0 - 1);
 
 fn tokenize_with_grammar(g, src, src_len, tb) {
     var not_file_start = _ds_not_file_start;
     _ds_not_file_start = 0;
     var prev0 = _ds_buf_prev;
     _ds_buf_prev = (0 - 1);
+    var prev1 = _ds_buf_prev2;
+    _ds_buf_prev2 = (0 - 1);
     var grp_on = _ds_grp_collect;
     _ds_grp_collect = 0;
     _ds_gen_counter = _ds_gen_counter + 1;
@@ -2023,7 +2052,7 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
         # 7. Number
         if (len == 0) {
             if (_ds_is_digit(b) == 1) {
-                var nlen = _ds_scan_number(g, src, src_len, i);
+                var nlen = _ds_scan_number(g, src, src_len, i, prev0, prev1);
                 if (nlen > 0) {
                     kind = TK_NUMBER;
                     len = nlen;

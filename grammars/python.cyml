@@ -17,7 +17,8 @@
 #
 # Known cosmetic gaps (not errors):
 #   - String prefixes (`f`, `r`, `b`, `u`, `rb`, `fr`, any case) are
-#     part of the string token since 2.7.1 (ADR 0027).
+#     part of the string token since 2.7.1 (ADR 0027), template
+#     strings' `t` / `tr` / `rt` since 2.9.3.
 #   - F-string interpolation `{expr}` stays inside the string span
 #     (not re-tokenized), consistent with ADR 0003.
 
@@ -43,8 +44,11 @@ number_0b      = true
 number_0o      = true
 number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
 number_separator = "_"    # `1_000` (ADR 0026)
-# f / r / b / u prefixes, any case, join the string (2.7.1, ADR 0027).
-string_prefixes = ["B", "BR", "Br", "F", "FR", "Fr", "R", "RB", "RF", "Rb", "Rf", "U", "b", "bR", "br", "f", "fR", "fr", "r", "rB", "rF", "rb", "rf", "u"]
+# f / r / b / u prefixes, any case, join the string (2.7.1, ADR 0027);
+# so do 3.14's template strings, `t` and the raw `tr` / `rt` (PEP 750,
+# 2.9.3). Raw ones are plain prefixes here: Python's `r"\""` is one
+# string — a quote after a backslash never ends it.
+string_prefixes = ["B", "BR", "Br", "F", "FR", "Fr", "R", "RB", "RF", "RT", "Rb", "Rf", "Rt", "T", "TR", "Tr", "U", "b", "bR", "br", "f", "fR", "fr", "r", "rB", "rF", "rT", "rb", "rf", "rt", "t", "tR", "tr", "u"]
 
 special_vars = false
 

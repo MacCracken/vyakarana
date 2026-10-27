@@ -139,6 +139,12 @@ was removed in 2.0.0 (ADR 0017).
 
 ## Status
 
+**2.9.3** (2026-10-27) — literal data gaps, the first of the 2.9.x arc.
+Block comments in Rust, JavaScript and TypeScript; Python 3.14 template
+strings (`t"…"`, `tr"…"`), SQL `N'…'` and Julia's `raw"…"` / `r"…"` /
+`b"…"` / `v"…"` as one string token; Swift tuple indexes (`t.0.1`) read
+as Swift reads them. 1164/1164 tests.
+
 **2.9.2** (2026-10-23) — toolchain pinned at `cyrius 6.7.18`, with
 token output byte-identical to 2.9.1. `cyrius.cyml` is configuration
 only, its notes moved to
