@@ -98,7 +98,7 @@ punctuation = [
 [[rules]]
 match = "compose_region"
 start = "import "
-end_before = "\n\n"
+end_blank = true
 inner = "javascript"
 start_after = "\n"
 start_inner = true
@@ -106,7 +106,7 @@ start_inner = true
 [[rules]]
 match = "compose_region"
 start = "export "
-end_before = "\n\n"
+end_blank = true
 inner = "javascript"
 start_after = "\n"
 start_inner = true

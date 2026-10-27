@@ -69,7 +69,10 @@ same through both functions — the tests run each through
 compiled sniff bounds `sh` to three bytes (`shellcheck` is not a
 shell), while a declaration is a plain prefix; and the compiled
 function is ~34 ns and pure, this one walks every declaration (a few
-microseconds) and needs the registry.
+microseconds) and needs the registry. *(Amended 2.9.12: a third, since
+2.9.9 — an `.asm` whose content reads as GNU as goes to the asm grammars
+through `detect_language_combined`'s vote, to `nasm`, the declaration,
+through this function.)*
 
 ## Consequences
 

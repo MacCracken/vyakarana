@@ -4,6 +4,125 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.9.12] — 2026-10-27
+
+**The closeout audit of the 2.9.x arc** (roadmap 2.9.12): four independent
+reviewers (scanner, streaming, documents, tooling) on the 2.9.11 tag, then
+every `scripts/audit/` sweep over the whole library. They found 43 issues:
+- 4 P1, 14 P2 and 12 P3;
+- 13 gate holes.
+
+Of those, 39 are fixed and 4 are documented as known limits. Full report:
+[docs/audit/2026-10-27-2.9.12-closeout-audit.md](docs/audit/2026-10-27-2.9.12-closeout-audit.md).
+
+Gates: 1495/1495 tests (39 new; every one written for a defect fails or
+crashes on 2.9.11's sources). Fuzz 6/6, also under `--poison=ab` and
+`--bounds`; lint+fmt exit 0; `cyrius distlib --check` clean. Single-feed
+output changes in 68 of 13,619 files, each traced below. `vyk` 403,896 →
+416,232 bytes; the shipped DCE build 305,592 → 317,928;
+`dist/vyakarana.cyr` 447,235 → 471,121.
+
+### Changed
+
+- **A markdown fence with no closer is no fence again** (ADR 0032 amended).
+  2.9.10 ran its body to the end of the input. CommonMark does, but only
+  for fences it opens itself, and vyakarana also opens fences CommonMark
+  doesn't: on a mid-line "```", in a list item or blockquote it can't see
+  the end of, or where a stray backtick has shifted the pairing. 52 of
+  5,768 real markdown files had a fence 2.9.11 ran to the end where
+  CommonMark closes it, with no error token to show it; one CHANGELOG's
+  largest token went from 29 KB to 300 KB. A fence's reading depends on
+  its closer again, as through 2.9.9, so a stream holds it until the
+  closer arrives. `<style>`, `<script>` and cyml / MDX bodies still stream
+  (they run to the end as HTML and MDX read them).
+- **An ```` ```asm ```` fence is one string again, as through 2.9.8**
+  (2.9.9 made it NASM, and GNU as bodies came back as error tokens). A
+  ```` ```nasm ```` fence is still NASM.
+- **`.asm` detection reads GNU as directives at line starts.** NASM's
+  `section .` used to match inside GNU as's `.section .text`, and
+  `.global` scored nothing, so 503 of 1,417 real GNU as files voted NASM.
+  Now 66 do, all with nothing decisive in them, and every NASM file stays
+  NASM (ADR 0015 amended).
+- **JS / TS:** `\/` is an operator, so a regex's `\/*` or `\//` no longer
+  opens a comment (43 of the 68 changed files).
+- **C# verbatim strings run on past a doubled quote** (`@"a ""b"""`), raw,
+  as C# reads them. The part after `""` used to be an ordinary string, and
+  a `\"` in it ran to the end (ADR 0027 amended).
+- **MDX `import` / `export` blocks end at any blank line**, including CRLF
+  and lines of only spaces, through a new `compose_region` option,
+  `end_blank = true` (ADR 0019 amended). They ended only at `\n\n`, and a
+  CRLF document was JavaScript from its first import on.
+- **Lean `h.2.2`** reads as two projections (`number_tuple_index`).
+- **The loader rejects values of the wrong shape:**
+  - an unquoted string value (an unquoted `match` crashed it);
+  - a bool that is not `true` / `false`;
+  - an empty route, or an extension without its dot;
+  - `end` and `end_before` on the wrong rule type;
+  - a pair whose `end` begins with its escape byte;
+  - an inline heredoc whose `repeat` byte opens it;
+  - `term_rest` without blanks and `delim = "ident"`.
+
+  No bundled grammar is affected.
+
+### Fixed
+
+- **Streaming:**
+  - a fence's closer could be missed in a stream after a Lua comment (gone
+    with fence regions);
+  - a region's first body commit inherited the opener's look-behind;
+  - two consumer-grammar shapes read differently from one feed: a
+    multi-byte line start with `followed_by`, and a line start that begins
+    a pair's.
+- **Quadratic on chunked input, now linear:**
+  - a string ending in a run of `\` (1 MB in 64-byte chunks: 28 s → 0.01 s);
+  - a long shebang line (1 MB: 10 s → 0.02 s);
+  - a number of `_1` separators (512 KB: 20 s → 0.03 s);
+  - `tokenize_stream_discard_consumed` called after every token (256 KB of
+    python in 64 KB feeds: 98.5 s → 0.13 s).
+- **The heredoc line index** is chained by key. A delimiter sharing a
+  bucket with a crowded key made every failed lookup walk the crowd
+  (40,000 `<<<BAK` openers: 14.5 s → 0.38 s).
+- **A heredoc delimiter cut off by the buffer's end** reused the previous
+  parse's pointer, possibly into freed memory (SIGSEGV in the reviewer's
+  probe).
+- **Documents:**
+  - checkpoints no longer pile up under inserts (40 → 23,034 over 25,000
+    inserts, now 40 → 40);
+  - past a hold's bound (a 1 MiB heredoc) a document now takes one feed,
+    which it differed from;
+  - null and freed documents return instead of crashing.
+- **`tokenize/rust-small` was 16 % slower since 2.9.5:** every token
+  position walked the inline raw-string rules. A first-byte filter brings
+  it to −12.7 % against 2.9.11.
+- `detect_language(0)` and `detect_language_combined(0, …)` crashed.
+- The fence-tag lookup allocated per fence per scan; it reuses a buffer.
+
+### Tests and tooling
+
+- 39 new assertions.
+- `fuzz/retokenize.fcyr` edits 16 short look-behind-sensitive texts at
+  every checkpoint spacing 1–12 and holds every changed range to its exact
+  minimum (319,986 edits).
+- `fuzz/chunk_invariance.fcyr` has 5 new shapes (92), and `stream-sweep.sh`
+  4 new stress inputs, each 10–29 s on 2.9.11.
+- New `scripts/audit/ab-sweep.sh`: two binaries' single-feed output with
+  each changed file's largest token, which an error-count A/B missed.
+- Every sweep exits 2 when it checked nothing, and `poison-ab.sh` fails on
+  a crash in either leg.
+- `check-detect.sh` lets a sniff return only its own grammars.
+- CI runs `cyrius distlib --check`, and release.yml smoke-tests the
+  shipped build.
+- `version-bump.sh` runs from the repo root and fails when the CHANGELOG
+  header was not inserted.
+
+### Known limits documented (not fixed)
+
+- NASM's `0Dh` hex (a digit-led run settles only at its `h`).
+- MDX `{…}` ending inside a template literal.
+- Number shapes that differ from rustc, CPython and acorn on invalid or
+  odd code.
+- Fence-tag aliases (`c++`, `tsx`, `jsx`, `jsonc`, …).
+
 ## [2.9.11] — 2026-10-27
 
 **Incremental retokenization** (roadmap 2.9.11), the ninth of the 2.9.x

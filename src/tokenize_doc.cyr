@@ -89,9 +89,21 @@ fn tokenize_doc_tokens(d) {
     return load64(d + 8);
 }
 
-fn tokenize_doc_changed_first(d) { return load64(d + 88); }
-fn tokenize_doc_changed_old(d) { return load64(d + 96); }
-fn tokenize_doc_changed_new(d) { return load64(d + 104); }
+# 0 for a null document (2.9.12 audit, reviewer C: they read through it).
+fn tokenize_doc_changed_first(d) {
+    if (d == 0) { return 0; }
+    return load64(d + 88);
+}
+
+fn tokenize_doc_changed_old(d) {
+    if (d == 0) { return 0; }
+    return load64(d + 96);
+}
+
+fn tokenize_doc_changed_new(d) {
+    if (d == 0) { return 0; }
+    return load64(d + 104);
+}
 
 # Checkpoint spacing (internal: the tests and fuzz use small ones).
 fn _tokenize_doc_interval(d, k) {
@@ -150,14 +162,73 @@ fn _td_ck_add(d, base, f, ntok) {
 }
 
 fn _td_fail(d) {
+    store64(d + 88, 0);
+    store64(d + 96, tokenbuf_count(load64(d + 8)));
+    store64(d + 104, 0);
     _tokenbuf_reset(load64(d + 8));
     store64(d + 32, 0);
     store64(d + 112, 0);
     return VYK_ERR_OVERFLOW;
 }
 
+# A hold gave up at its bound while the text streamed (+280; a heredoc
+# group over 1 MiB, a compose body over 8 MiB that is one token): those
+# bytes committed as a drain read them, which one feed would not. So the
+# text is tokenized in one feed instead, and the document keeps no
+# checkpoint but the first — the next edit streams from the start and
+# comes here again (2.9.12 audit, reviewer C: a document always streams,
+# so through 2.9.11 its users could not avoid the bound). One feed holds
+# VYK_STREAM_CAP bytes at most; past that the streamed tokens stand.
+# `at`, `eo`, `delta` place the edit for the changed range (`at` -1 for a
+# set). Returns the token count, or VYK_ERR_OVERFLOW.
+fn _td_whole(d, src, n, at, eo, delta) {
+    var s = load64(d);
+    var tk = load64(d + 8);
+    var em = load64(d + 16);
+    _stream_reset(s);
+    _tokenbuf_reset(em);
+    if (n > 0) {
+        if (tokenize_stream_feed(s, src, n) != VYK_OK) { return tokenbuf_count(tk); }
+    }
+    tokenize_stream_finish(s, em);
+    var ne = tokenbuf_count(em);
+    var no = tokenbuf_count(tk);
+    var p = 0;
+    var q = 0;
+    if (at >= 0) {
+        var pgo = 1;
+        while ((pgo == 1) && (p < ne) && (p < no)) {
+            pgo = 0;
+            if (tokenbuf_start(em, p) + tokenbuf_len(em, p) <= at) {
+                if (_td_same_tok(em, p, tk, p, 0) == 1) {
+                    pgo = 1;
+                    p = p + 1;
+                }
+            }
+        }
+        var qgo = 1;
+        while ((qgo == 1) && (q < ne - p) && (q < no - p)) {
+            qgo = 0;
+            if (tokenbuf_start(tk, no - 1 - q) >= eo) {
+                if (_td_same_tok(em, ne - 1 - q, tk, no - 1 - q, delta) == 1) {
+                    qgo = 1;
+                    q = q + 1;
+                }
+            }
+        }
+    }
+    if (_tokenbuf_splice(tk, 0, no, em, 0) == 0) { return _td_fail(d); }
+    store64(d + 32, 1);
+    store64(d + 88, p);
+    store64(d + 96, no - p - q);
+    store64(d + 104, ne - p - q);
+    store64(d + 120, load64(d + 120) + n);
+    return ne;
+}
+
 fn tokenize_doc_set(d, src, n) {
     if (d == 0) { return VYK_ERR_OVERFLOW; }
+    if (load64(d) == 0) { return VYK_ERR_OVERFLOW; }     # freed (2.9.12)
     var s = load64(d);
     var tk = load64(d + 8);
     var before = tokenbuf_count(tk);
@@ -188,6 +259,11 @@ fn tokenize_doc_set(d, src, n) {
     store64(d + 104, tokenbuf_count(tk));
     store64(d + 112, 1);
     store64(d + 120, n);
+    if (load64(s + 280) != 0) {
+        _td_whole(d, src, n, (0 - 1), 0, 0);
+        store64(d + 96, before);
+        store64(d + 104, tokenbuf_count(tk));
+    }
     return tokenbuf_count(tk);
 }
 
@@ -212,6 +288,7 @@ fn _td_same_tok(a, i, b, j, delta) {
 
 fn tokenize_doc_edit(d, src, n, at, removed, inserted) {
     if (d == 0) { return VYK_ERR_OVERFLOW; }
+    if (load64(d) == 0) { return VYK_ERR_OVERFLOW; }     # freed (2.9.12)
     var old_n = load64(d + 72);
     var fits = load64(d + 112);
     if ((src == 0) || (at < 0) || (removed < 0) || (inserted < 0)) { fits = 0; }
@@ -264,7 +341,11 @@ fn tokenize_doc_edit(d, src, n, at, removed, inserted) {
             # moved by it (all of those lie past the edit's end).
             var target = f + step;
             while ((k < nck) && (load64(_td_ck(d, 24, k)) + delta <= f)) { k = k + 1; }
-            if ((k < nck) && (load64(_td_ck(d, 24, k)) + delta < target)) {
+            # Up to half an interval further, to the next moved old one,
+            # rather than drain twice within a few bytes: each such pair was
+            # a checkpoint more, and typing kept adding them (2.9.12 audit,
+            # reviewer C: 40 checkpoints became 23,063 over 25,000 inserts).
+            if ((k < nck) && (load64(_td_ck(d, 24, k)) + delta <= target + step / 2)) {
                 target = load64(_td_ck(d, 24, k)) + delta;
             }
             if (target > n) { target = n; }
@@ -295,13 +376,25 @@ fn tokenize_doc_edit(d, src, n, at, removed, inserted) {
                         }
                         if (synced < 0) { k = k + 1; }
                     }
-                    if (synced < 0) { _td_ck_add(d, 48, f, ntok_r + tokenbuf_count(em)); }
+                    # No closer than half an interval to the last one saved.
+                    if (synced < 0) {
+                        var last = load64(_td_ck(d, 48, load64(d + 56) - 1));
+                        if (f - last >= step / 2) { _td_ck_add(d, 48, f, ntok_r + tokenbuf_count(em)); }
+                    }
                 }
             }
         }
     }
     if (bad == 1) { return _td_fail(d); }
     if (synced < 0) { tokenize_stream_finish(s, em); }
+    # Past a hold's bound the re-scanned tokens are a drain's reading, not
+    # one feed's: tokenize the edited text in one feed, against the old
+    # tokens still in the document.
+    if (load64(s + 280) != 0) {
+        store64(d + 72, n);
+        store64(d + 120, fed);
+        return _td_whole(d, src, n, at, eo, delta);
+    }
     var old_end = tokenbuf_count(tk);
     if (synced >= 0) {
         old_end = load64(_td_ck(d, 24, synced) + 16);

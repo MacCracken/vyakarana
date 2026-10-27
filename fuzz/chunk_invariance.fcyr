@@ -425,6 +425,15 @@ fn _ci_main() {
     if (_ci_every("html", "<style>a { color: red; }</sty</style>x<style>open") != 0) { rc = 1; }
     if (_ci_every("cyml", "[a]\nb = 1\n---\n# H\n\n```py\nx = 1\n```\ntext `c`\n[[e]]\nq = 2\n---\nbody\n\n[[e]]\n---\nlast *x*\n") != 0) { rc = 1; }
     if (_ci_every("mdx", "import A from 'a'\nimport B from 'b'\n\n# T\n\n{1 + 2} and {open\n\nexport const x = 1\nexport default y\n") != 0) { rc = 1; }
+    # 2.9.12 audit: a fence body whose last token commits through its line
+    # break (reviewer B, G1); MDX ESM blocks ended by CRLF and blank-with-
+    # spaces lines (A2); a regex's `\/*` (A5); C#'s doubled quote in a
+    # verbatim string (A6); Lean projections (A8).
+    if (_ci_every("markdown", "# Title\n\n```lua\nlocal x = 1 -- the answer\n```\n\nSome *text* after.\n```python\nx = \"abc\\\n\" ```\ny\n```\nz\n") != 0) { rc = 1; }
+    if (_ci_every("mdx", "import {Chart} from \"./chart.js\"\r\n\r\n# Hello\r\n\r\nIt's a *test* `code`.\r\nexport const m = {a: 1}\n  \nIt's the \"intro\nover lines.\n") != 0) { rc = 1; }
+    if (_ci_every("javascript", "url = url.replace(/^\\/*|\\/*$/g, \"\");\nlet x = 1; // c\nvar r = /a\\//.test(s);\n") != 0) { rc = 1; }
+    if (_ci_every("csharp", "var p = @\"Path: \"\"C:\\dir\\\"\"\";\nvar q = 1;\nvar r = @\"a \"\"b\"\" c\" + $@\"x {y} \"\"z\"\"\";\nvar s = @\"\"\"\";\nvar t = @\"0123456789abcdefghij\"\"0123456789abcdefghij\"\"\";\n") != 0) { rc = 1; }
+    if (_ci_every("lean", "example : p := h.2.2\ndef f := (p.1.2, x.10.3, 1.5)\n") != 0) { rc = 1; }
 
     return rc;
 }

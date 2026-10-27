@@ -85,24 +85,41 @@ fn _rt_diff(a, b) {
     return (0 - 1);
 }
 
-# The document's changed range against the tokens it replaced (`old`):
-# before it the old tokens, after it the old tokens moved by the edit.
-fn _rt_range_ok(d, old, delta) {
-    var nt = tokenize_doc_tokens(d);
-    var first = tokenize_doc_changed_first(d);
-    var co = tokenize_doc_changed_old(d);
-    var cn = tokenize_doc_changed_new(d);
-    if (first + cn + (tokenbuf_count(old) - first - co) != tokenbuf_count(nt)) { return 0; }
-    var i = 0;
-    while (i < first) {
-        if (_rt_rec(nt, i, old, i, 0) == 0) { return 0; }
-        i = i + 1;
+# The document's changed range, exactly (2.9.12 audit, reviewer C: through
+# 2.9.11 only its soundness was checked, so a document reporting the
+# whole re-scan passed). From `old` to `new` by an edit at `at`, ending at
+# `eo` in the old text, moving what follows by `delta`: the leading tokens
+# that are the same and end by `at`, then the trailing ones that are the
+# same moved by `delta` and start at or after `eo` — what is left between
+# them is the change.
+fn _rt_range_ok(d, old, nw, at, eo, delta) {
+    var no = tokenbuf_count(old);
+    var ne = tokenbuf_count(nw);
+    var p = 0;
+    var pgo = 1;
+    while ((pgo == 1) && (p < no) && (p < ne)) {
+        pgo = 0;
+        if (tokenbuf_start(nw, p) + tokenbuf_len(nw, p) <= at) {
+            if (_rt_rec(nw, p, old, p, 0) == 1) {
+                pgo = 1;
+                p = p + 1;
+            }
+        }
     }
-    var j = first + co;
-    while (j < tokenbuf_count(old)) {
-        if (_rt_rec(nt, j - co + cn, old, j, delta) == 0) { return 0; }
-        j = j + 1;
+    var q = 0;
+    var qgo = 1;
+    while ((qgo == 1) && (q < no - p) && (q < ne - p)) {
+        qgo = 0;
+        if (tokenbuf_start(old, no - 1 - q) >= eo) {
+            if (_rt_rec(nw, ne - 1 - q, old, no - 1 - q, delta) == 1) {
+                qgo = 1;
+                q = q + 1;
+            }
+        }
     }
+    if (tokenize_doc_changed_first(d) != p) { return 0; }
+    if (tokenize_doc_changed_old(d) != no - p - q) { return 0; }
+    if (tokenize_doc_changed_new(d) != ne - p - q) { return 0; }
     return 1;
 }
 
@@ -165,14 +182,19 @@ fn _rt_pass(path, d, src, n, to, stride, base) {
         var df = _rt_diff(tokenize_doc_tokens(d), _rt_ref);
         if (df >= 0) { fails = fails + _rt_fail(path, "edit", base + at, e, df); }
         if (df < 0) {
-            if (_rt_range_ok(d, _rt_orig, ins - rem) == 0) {
+            if (_rt_range_ok(d, _rt_orig, _rt_ref, at, at + rem, ins - rem) == 0) {
                 fails = fails + _rt_fail(path, "changed range", base + at, e, 0);
             }
         }
-        # And back: the original tokens again.
+        # And back: the original tokens again, and the range back.
         tokenize_doc_edit(d, src, n, at, ins, rem);
         var db = _rt_diff(tokenize_doc_tokens(d), _rt_orig);
         if (db >= 0) { fails = fails + _rt_fail(path, "undo", base + at, e, db); }
+        if ((db < 0) && (df < 0)) {
+            if (_rt_range_ok(d, _rt_ref, _rt_orig, at, at + ins, rem - ins) == 0) {
+                fails = fails + _rt_fail(path, "undo range", base + at, e, 0);
+            }
+        }
         at = at + stride;
     }
     return fails;
@@ -217,12 +239,103 @@ fn _rt_file(path, lang) {
     return fails;
 }
 
+# A short text at every checkpoint spacing from 1 to RT_SHAPE_MAXI, every
+# offset, five edits — a blank, a line break or a backtick inserted, a byte
+# replaced, a byte deleted — through a document set afresh for each and
+# through one carried on from edit to edit (2.9.12 audit, reviewer C: the
+# corpus passes left a restored stream's look-behind unchecked). The
+# texts lean on the bytes before a token: shell `#`, Swift `..0.5`, Lean
+# `#eval`, NASM `%define`, MDX `import`, raw strings, heredocs.
+var RT_SHAPE_MAXI = 12;
+var _rt_shapes = 0;
+var _rt_ins = 0;
+
+fn _rt_shape(lang, a) {
+    _rt_shapes = _rt_shapes + 1;
+    var n = strlen(a);
+    var fresh = tokenize_doc_new(lang);
+    var chain = tokenize_doc_new(lang);
+    if ((fresh == 0) || (chain == 0)) { return _rt_fail(lang, "no grammar", 0, 0, 0); }
+    _rt_g = load64(load64(fresh) + 24);
+    _rt_scratch(a, n, _rt_orig);
+    if (_rt_ins == 0) { _rt_ins = alloc(8); }
+    var fails = 0;
+    var iv = 1;
+    while (iv <= RT_SHAPE_MAXI) {
+        _tokenize_doc_interval(fresh, iv);
+        _tokenize_doc_interval(chain, iv);
+        tokenize_doc_set(chain, a, n);
+        var at = 0;
+        while (at <= n) {
+            var e = 0;
+            while (e < 5) {
+                var ins = 1;
+                var rem = 0;
+                store8(_rt_ins, 32);
+                if (e == 1) { store8(_rt_ins, 10); }
+                if (e == 2) { store8(_rt_ins, 96); }
+                if (e == 3) {
+                    store8(_rt_ins, 120);
+                    rem = 1;
+                }
+                if (e == 4) {
+                    ins = 0;
+                    rem = 1;
+                }
+                if (rem > n - at) { rem = n - at; }
+                memcpy(_rt_ed, a, at);
+                memcpy(_rt_ed + at, _rt_ins, ins);
+                memcpy(_rt_ed + at + ins, a + at + rem, n - at - rem);
+                var n2 = n - rem + ins;
+                store8(_rt_ed + n2, 0);
+                _rt_edits = _rt_edits + 1;
+                _rt_scratch(_rt_ed, n2, _rt_ref);
+                tokenize_doc_set(fresh, a, n);
+                tokenize_doc_edit(fresh, _rt_ed, n2, at, rem, ins);
+                var d1 = _rt_diff(tokenize_doc_tokens(fresh), _rt_ref);
+                if (d1 >= 0) { fails = fails + _rt_fail(lang, "shape edit", at, iv * 10 + e, d1); }
+                if ((d1 < 0) && (_rt_range_ok(fresh, _rt_orig, _rt_ref, at, at + rem, ins - rem) == 0)) {
+                    fails = fails + _rt_fail(lang, "shape range", at, iv * 10 + e, 0);
+                }
+                tokenize_doc_edit(chain, _rt_ed, n2, at, rem, ins);
+                var d2 = _rt_diff(tokenize_doc_tokens(chain), _rt_ref);
+                if (d2 >= 0) { fails = fails + _rt_fail(lang, "shape chain", at, iv * 10 + e, d2); }
+                tokenize_doc_edit(chain, a, n, at, ins, rem);
+                var d3 = _rt_diff(tokenize_doc_tokens(chain), _rt_orig);
+                if (d3 >= 0) { fails = fails + _rt_fail(lang, "shape undo", at, iv * 10 + e, d3); }
+                e = e + 1;
+            }
+            at = at + 1;
+        }
+        iv = iv + 1;
+    }
+    tokenize_doc_free(fresh);
+    tokenize_doc_free(chain);
+    return fails;
+}
+
 fn _rt_main() {
     bootstrap_grammars();
     _rt_ed = alloc(_RT_CAP + 64);
     _rt_orig = tokenbuf_new();
     _rt_ref = tokenbuf_new();
     var f = 0;
+    f = f + _rt_shape("shell", "cat <<EOF\nit is # x\nEOF\necho a#b ${#x}\ncat <<\"E\"OF\nbody\nEOF\ncat <<-X\n\tq\n\tX\necho $((1+2))\n");
+    f = f + _rt_shape("shell", "echo a#b ${#x} c d e f g h i j k\n");
+    f = f + _rt_shape("swift", "let t = a..0.5 + b.0.1 + c...0.5 + d..<1\n");
+    f = f + _rt_shape("swift", "x = a..0.5 + 1 + 2 + 3 + 4 + 5 + 6\n");
+    f = f + _rt_shape("rust", "let s = r#\"a \"b\" c\"#;\nlet t = r\"x\";\nlet u = t.0.1;\n/* c */ // d\n");
+    f = f + _rt_shape("markdown", "# T\n\n```python\nx = 1  # c\n```\n\n> ```c\n> int a;\n> ```\ntext `z`\n");
+    f = f + _rt_shape("cyml", "[[e]]\nt = 1\n---\nSome *text* and `code`.\n\n[[f]]\nu = 2\n---\nmore\n");
+    f = f + _rt_shape("html", "<p>a</p><style>a { color: red; }</style><p>b</p><script>let x = \"</s\";</script>");
+    f = f + _rt_shape("python", "f = \"\"\"\n<<EOF\n\"\"\"\ng = r\"\"\"x\\\"\"\"\n# c\n");
+    f = f + _rt_shape("lean", "#eval 1\ndef h' := s!\"v{x}\" -- c\n#check h\n");
+    f = f + _rt_shape("nasm", "%define X 1\nmov rax, %1 ; c\n  %if X\ndb 10h\n");
+    f = f + _rt_shape("mdx", "import A from 'a'\n\n# T {x}\nexport const y = 1\n");
+    f = f + _rt_shape("csharp", "var a = @\"C:\\d\\\"; var b = $\"{x}\";\n");
+    f = f + _rt_shape("ruby", "a = <<~EOS\n  b # c\n  EOS\nd = 1\n");
+    f = f + _rt_shape("php", "<?php\n$a = <<<EOT\n x\n EOT;\n# c\n");
+    f = f + _rt_shape("c", "x = .5 + 1.e5 + 10UL; /* c */ // d\n");
     f = f + _rt_file("tests/corpus/asm_aarch64.s", "asm_aarch64");
     f = f + _rt_file("tests/corpus/asm_x86_64.s", "asm_x86_64");
     f = f + _rt_file("tests/corpus/c.c", "c");
@@ -286,7 +399,9 @@ fn _harness_main() {
     }
     print("retokenize fuzz: OK (", 21);
     fmt_int(_rt_files);
-    print(" corpora, ", 10);
+    print(" corpora and ", 13);
+    fmt_int(_rt_shapes);
+    print(" short texts, ", 14);
     fmt_int(_rt_edits);
     print(" edits and their undos)\n", 24);
     return 0;

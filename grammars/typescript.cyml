@@ -61,6 +61,10 @@ operators = [
     "+=", "-=", "*=", "/=", "%=",
     "&=", "|=", "^=",
     "=>",
+    # `\/` — a regex's escaped slash (the regex literal itself is not a
+    # token, ADR 0003): through 2.9.11 `/^\/*|\/*$/` opened a `/*` comment
+    # at its `/*` and `\//` a line comment (2.9.12 audit, reviewer A).
+    "\\/",
     "=", "+", "-", "*", "/", "%",
     "!", "~", "&", "|", "^",
     "<", ">",

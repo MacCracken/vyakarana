@@ -22,8 +22,8 @@
 #
 #   detect_language_combined(path, src, src_len)
 #       Path first; if path resolves to a known-ambiguous name
-#       (today: `asm_x86_64` from a `.s`/`.S` extension) the
-#       content sniff picks the actual flavor. If path returns 0,
+#       (`asm_x86_64` from a `.s`/`.S` extension, `nasm` from `.asm`
+#       since 2.9.9) the content sniff picks the actual flavor. If path returns 0,
 #       falls through to the content sniff. Returns a language
 #       name or 0. This is what `vyk` uses on the CLI.
 #
@@ -271,6 +271,9 @@ fn _detect_basename(path, n) {
 }
 
 fn detect_language(path) {
+    # No path: no route — through 2.9.11 a 0 here crashed, though
+    # `detect_language_registered` takes one (2.9.12 audit, reviewer D).
+    if (path == 0) { return 0; }
     var n = strlen(path);
     var r = _detect_short(path, n);
     if (r != 0) { return r; }
@@ -552,28 +555,110 @@ fn _detect_gas_or_nasm(src, src_len) {
     if (e > 4096) { e = 4096; }
     if (_detect_index_of(src, e, 0, ".intel_syntax") >= 0) { gas = gas + 5; }
     if (_detect_index_of(src, e, 0, ".att_syntax") >= 0)   { gas = gas + 5; }
-    if (_detect_index_of(src, e, 0, ".globl") >= 0)        { gas = gas + 3; }
-    if (_detect_index_of(src, e, 0, ".section") >= 0)      { gas = gas + 3; }
-    if (_detect_index_of(src, e, 0, "\t.text") >= 0)       { gas = gas + 2; }
-    if (_detect_index_of(src, e, 0, ".type") >= 0)         { gas = gas + 2; }
+    if (_detect_index_of(src, e, 0, ".arch armv8") >= 0)   { gas = gas + 5; }
     if (_detect_index_of(src, e, 0, "%rax") >= 0)          { gas = gas + 2; }
     if (_detect_index_of(src, e, 0, "%rsp") >= 0)          { gas = gas + 2; }
     if (_detect_index_of(src, e, 0, "%eax") >= 0)          { gas = gas + 2; }
-    if (_detect_index_of(src, e, 0, ".arch armv8") >= 0)   { gas = gas + 5; }
-    if (_detect_index_of(src, e, 0, "section .") >= 0)     { nasm = nasm + 3; }
-    if (_detect_index_of(src, e, 0, "SECTION .") >= 0)     { nasm = nasm + 3; }
     if (_detect_index_of(src, e, 0, "%define") >= 0)       { nasm = nasm + 3; }
     if (_detect_index_of(src, e, 0, "%include") >= 0)      { nasm = nasm + 3; }
     if (_detect_index_of(src, e, 0, "%macro") >= 0)        { nasm = nasm + 3; }
     if (_detect_index_of(src, e, 0, "bits 64") >= 0)       { nasm = nasm + 3; }
     if (_detect_index_of(src, e, 0, "BITS 64") >= 0)       { nasm = nasm + 3; }
     if (_detect_index_of(src, e, 0, "default rel") >= 0)   { nasm = nasm + 3; }
-    if (_detect_index_of(src, e, 0, "\nglobal ") >= 0)     { nasm = nasm + 2; }
     if (_detect_index_of(src, e, 0, " resb ") >= 0)        { nasm = nasm + 2; }
     if (_detect_index_of(src, e, 0, " db ") >= 0)          { nasm = nasm + 1; }
     if (_detect_index_of(src, e, 0, "\n;") >= 0)           { nasm = nasm + 1; }
+    # Line starts (2.9.12 audit, reviewer D): a GAS directive line —
+    # `.text`, `.globl`, `.align`, `.quad` — against NASM's `section`,
+    # `global`, `extern`, `bits`, `default`, `align` and `%` lines.
+    # Through 2.9.11 NASM's `section .` was searched anywhere, so GAS's own
+    # `.section .text` scored it, and `.global` counted for nothing: 503 of
+    # one machine's 1,417 GAS files voted NASM as `.asm`.
+    _detect_asm_lines(src, e);
+    gas = gas + _da_gas_lines;
+    nasm = nasm + _da_nasm_lines;
     if (gas > nasm) { return _detect_asm_flavor(src, src_len); }
     return "nasm";
+}
+
+# Lines of src[0, e) that start, after blanks, with a GAS directive (a
+# `.` word not followed by `:` — `.loop:` is a NASM local label) or a NASM
+# one; each count capped at 20.
+var _da_gas_lines = 0;
+var _da_nasm_lines = 0;
+
+fn _detect_asm_lines(src, e) {
+    _da_gas_lines = 0;
+    _da_nasm_lines = 0;
+    var p = 0;
+    while (p < e) {
+        while ((p < e) && ((load8(src + p) == 32) || (load8(src + p) == 9))) { p = p + 1; }
+        if (p < e) {
+            var b = load8(src + p);
+            if ((b == 46) && (p + 1 < e)) {
+                var w = p + 1;
+                while ((w < e) && (_detect_is_lower(load8(src + w)) == 1)) { w = w + 1; }
+                if ((w > p + 1) && ((w >= e) || (load8(src + w) != 58))) {
+                    if (_da_gas_lines < 20) { _da_gas_lines = _da_gas_lines + 1; }
+                }
+            }
+            if (b == 37) {
+                if ((p + 1 < e) && (_detect_is_lower(load8(src + p + 1)) == 1)) {
+                    if (_da_nasm_lines < 20) { _da_nasm_lines = _da_nasm_lines + 1; }
+                }
+            }
+            if (_detect_nasm_word(src, e, p) == 1) {
+                if (_da_nasm_lines < 20) { _da_nasm_lines = _da_nasm_lines + 1; }
+            }
+        }
+        while ((p < e) && (load8(src + p) != 10)) { p = p + 1; }
+        p = p + 1;
+    }
+    return 0;
+}
+
+fn _detect_is_lower(b) {
+    if ((b >= 97) && (b <= 122)) { return 1; }
+    return 0;
+}
+
+# 1 if src[p] starts a NASM directive word, any case, then a blank.
+fn _detect_nasm_word(src, e, p) {
+    var q = p;
+    if ((q < e) && (load8(src + q) == 91)) { q = q + 1; }   # `[bits 64]`, `[section …]`
+    var w = q;
+    var go = 1;
+    while ((go == 1) && (w < e) && (w - q < 8)) {
+        var c = load8(src + w);
+        if ((c >= 65) && (c <= 90)) { c = c + 32; }
+        if (_detect_is_lower(c) == 0) { go = 0; }
+        if (go == 1) { w = w + 1; }
+    }
+    if ((w >= e) || (w == q)) { return 0; }
+    var nb = load8(src + w);
+    if ((nb != 32) && (nb != 9)) { return 0; }
+    var n = w - q;
+    if (_detect_word_ci(src + q, n, "section") == 1) { return 1; }
+    if (_detect_word_ci(src + q, n, "segment") == 1) { return 1; }
+    if (_detect_word_ci(src + q, n, "global") == 1) { return 1; }
+    if (_detect_word_ci(src + q, n, "extern") == 1) { return 1; }
+    if (_detect_word_ci(src + q, n, "bits") == 1) { return 1; }
+    if (_detect_word_ci(src + q, n, "default") == 1) { return 1; }
+    if (_detect_word_ci(src + q, n, "align") == 1) { return 1; }
+    return 0;
+}
+
+# 1 if the n bytes at p spell `w`, ASCII case ignored.
+fn _detect_word_ci(p, n, w) {
+    if (strlen(w) != n) { return 0; }
+    var i = 0;
+    while (i < n) {
+        var c = load8(p + i);
+        if ((c >= 65) && (c <= 90)) { c = c + 32; }
+        if (c != load8(w + i)) { return 0; }
+        i = i + 1;
+    }
+    return 1;
 }
 
 # Public byte-API content sniff. Tries shebang → signature peek; the
@@ -585,7 +670,7 @@ fn _detect_gas_or_nasm(src, src_len) {
 # the caller has to know it's asm first (see
 # `detect_language_combined`).
 fn detect_language_from_content(src, src_len) {
-    if (src_len <= 0) { return 0; }
+    if ((src == 0) || (src_len <= 0)) { return 0; }
     var bom = _detect_skip_bom(src, src_len);
 
     var sb = _detect_shebang(src, src_len);

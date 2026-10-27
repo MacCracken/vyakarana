@@ -108,6 +108,11 @@ jobs:
       - name: Binary size
         run: sh scripts/check-size.sh build/vyk
 
+      # And smoke-tested: CI tests the default build; this one ships
+      # (2.9.12 audit, reviewer D).
+      - name: Smoke test (shipped build)
+        run: sh scripts/smoke.sh build/vyk
+
       - name: Package release artifact
         run: |
           PKG="vyakarana-${VERSION}-${{ matrix.target }}"

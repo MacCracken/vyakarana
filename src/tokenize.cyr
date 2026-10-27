@@ -102,21 +102,29 @@
 #                          (ADR 0026, 2.9.3)
 #  224  rg_kind     i64 — resumable region (ADR 0032, 2.9.10): 0 none,
 #                          else the body being read with its inner
-#                          grammar — 1 compose, 2 compose_fenced, 3
-#                          compose_region with `end_before`, 4 one to
-#                          the end of the input. buf[0] is in the body.
+#                          grammar — 1 compose, 3 compose_region with
+#                          `end_before`, 4 one to the end of the input, 5
+#                          one with `end_blank` (2.9.12); 2, compose_fenced,
+#                          through 2.9.11 only.
+#                          buf[0] is in the body.
 #  232  rg_inner    ptr —   the inner grammar
 #  240  rg_end      ptr —   the end marker (cstr, the outer grammar's), 0
 #                          for kind 4
-#  248  rg_ind      ptr —   kind 2: the fence's `end_indent` cstr, or 0
+#  248  —           i64 —   unused (2.9.10 – 2.9.11: a fence's end_indent)
 #  256  rg_from     i64 —   where the end-marker search resumes in buf
-#  264  rg_at       i64 —   kind 2: 1 if a closer may start there (line
-#                          start, or only `end_indent` bytes since one)
+#  264  —           i64 —   unused (2.9.10 – 2.9.11: a fence's line state)
 #  272  rg_off      i64 —   body bytes committed; 0 = the scan starts at
 #                          the body's start, as a single feed's nested
 #                          scan does
+#  280  hold_gave   i64 — 1 once a compose or heredoc hold passed its
+#                          bound and its bytes committed as read: from there
+#                          the tokens may differ from one feed's (2.9.12; a
+#                          document then tokenizes the text in one feed)
+#  288  stage_dead  i64 — pull adapter: staging tokens before the cursor that
+#                          `_discard_consumed` has reported dropped and that
+#                          are still to be moved out (2.9.12)
 #   -----
-#  280 bytes total (STREAM_REC_SIZE). This table stopped at offset 80
+#  296 bytes total (STREAM_REC_SIZE). This table stopped at offset 80
 #  — "88 bytes total" — from 2.5.2 until the 2.6.x audit.
 #
 # Bundled into `dist/vyakarana.cyr`. Public symbols — this list is
@@ -135,9 +143,18 @@
 #   registry      has_grammar
 #                 list_languages_into
 #                 bootstrap_grammars
+#                 grammar_load, registry_add, registry_find_by_name
+#                 (a consumer's own grammars; src/grammar.cyr)
+#   detection     detect_language, detect_language_from_content,
+#                 detect_language_combined, detect_language_registered
+#                 (2.9.8; src/detect.cyr, ADRs 0015, 0025, 0031)
 #   documents     tokenize_doc_new / _set / _edit / _tokens / _free,
 #                 tokenize_doc_changed_first / _old / _new
 #                 (2.9.11, src/tokenize_doc.cyr, ADR 0033)
+#   tokens        tokenbuf_new / _count / _kind / _start / _len / _push,
+#                 the TK_* kinds (src/token.cyr, ADR 0002)
+# (The detection, registry and token lines were missing until 2.9.12,
+# though every doc pointed here — 2.9.12 audit, reviewer D.)
 #
 # Removed in 2.0.0 (no compat shim):
 #   tokenize_source
@@ -232,7 +249,7 @@ var VYK_COMPOSE_HOLD_MAX = 8388608;
 var VYK_HEREDOC_HOLD_MAX = 1048576;
 
 # Layout in the table at the top of this file.
-var STREAM_REC_SIZE = 280;
+var STREAM_REC_SIZE = 296;
 
 # Error codes returned by tokenize_stream_feed.
 var VYK_OK            = 0;
@@ -409,6 +426,8 @@ fn tokenize_stream_new(lang) {
     store64(s + 256, 0);               #   end-marker search resume
     store64(s + 264, 0);               #   a fence closer's line-start state there
     store64(s + 272, 0);               #   body bytes committed
+    store64(s + 280, 0);               # a hold gave up at its bound (2.9.12)
+    store64(s + 288, 0);               # pull adapter: staging tokens dropped behind the cursor (2.9.12)
     return s;
 }
 
@@ -663,7 +682,12 @@ fn _stream_max_marker(g) {
     var ln = vec_len(lrs);
     var li = 0;
     while (li < ln) {
-        var ll = strlen(line_rule_start(vec_get(lrs, li)));
+        var lrr = vec_get(lrs, li);
+        var ll = strlen(line_rule_start(lrr));
+        # A next-byte condition (ADR 0027) decides on the byte after the
+        # start: `--` with `followed_by = " "` committed as operators when a
+        # feed ended after `--` (2.9.12 audit, reviewer D).
+        if ((line_rule_followed(lrr) != 0) || (line_rule_not_followed(lrr) != 0)) { ll = ll + 1; }
         if (ll > best) { best = ll; }
         li = li + 1;
     }
@@ -883,6 +907,12 @@ fn _stream_is_trailing_complete(g, buf, buf_len, temp_tb, idx) {
         }
         var t_start0 = t_start;
         var t_len0 = t_len;
+        # A verbatim string (a raw symbol prefix, C#'s `@"…"`) closed on the
+        # buffer's last byte is not settled: a `"` next would double that
+        # quote and carry the string on (2.9.12).
+        if ((tpl > 0) && (traw == 1) && (t_start0 + t_len0 == buf_len)) {
+            if (_ds_sym_prefix(g, buf, buf_len, t_start0) > 0) { return 0; }
+        }
         t_start = t_start + tpl;
         t_len = t_len - tpl;
 
@@ -1035,7 +1065,12 @@ fn _stream_save_prev(s, buf, n) {
 
 # Look for `endp` in `buf[from..buf_len]`. Honours the pair
 # rule's escape byte. Returns close-position offset or -1.
+var _stream_scan_stop = 0;
+
 fn _stream_scan_close(buf, buf_len, from, endp, elen, escape) {
+    # Where the search stopped without a close (2.9.12): always on an escape
+    # pair's boundary, so the next search resumes there.
+    _stream_scan_stop = from;
     # Defensive: `elen <= 0` (empty / null close marker) would
     # cause the memeq check to vacuously succeed at `from`,
     # producing a zero-length token. Pair-rule grammars
@@ -1051,6 +1086,7 @@ fn _stream_scan_close(buf, buf_len, from, endp, elen, escape) {
         if (memeq(buf + j, endp, elen) == 1) { return j; }
         j = j + 1;
     }
+    _stream_scan_stop = j;
     return (0 - 1);
 }
 
@@ -1255,6 +1291,25 @@ fn _stream_drain_g(s, out_tb, g, lim, finishing, in_rg) {
         var resume = load64(s + 80);
         if (resume < pbody) { resume = pbody; }
         var close_pos = _stream_scan_close(buf, buf_len, resume, endp, elen, escape);
+        # A verbatim string goes on past a doubled quote (C#'s `""`, 2.9.12):
+        # search on after it; a close on the buffer's last byte waits for the
+        # next byte, unless the stream is finishing.
+        var vbt = 0;
+        if ((load64(s + 168) == 1) && (_ds_sym_prefix(g, buf, buf_len, 0) > 0)) { vbt = 1; }
+        while ((vbt == 1) && (close_pos >= 0)) {
+            var vce = close_pos + elen;
+            vbt = 0;
+            if ((vce >= buf_len) && (finishing == 0)) {
+                _stream_scan_stop = close_pos;
+                close_pos = (0 - 1);
+            }
+            if ((vce < buf_len) && (close_pos >= 0)) {
+                if (load8(buf + vce) == 34) {
+                    close_pos = _stream_scan_close(buf, buf_len, vce + 1, endp, elen, escape);
+                    vbt = 1;
+                }
+            }
+        }
         if (close_pos >= 0) {
             var pair_total = close_pos + elen;
             # Count the token only if the push landed — a push the
@@ -1274,41 +1329,16 @@ fn _stream_drain_g(s, out_tb, g, lim, finishing, in_rg) {
             if (buf_len == 0) { return emitted; }
         }
         if (close_pos < 0) {
-            # Still pending. Cache new scan-resume — backing off
-            # `elen - 1` so a close marker straddling this
-            # buffer's tail and the next feed isn't missed.
-            var new_resume = buf_len;
-            if (elen > 0) {
-                if (new_resume > elen - 1) { new_resume = new_resume - (elen - 1); }
-            }
-            # ...and back off over a trailing RUN of escape bytes, so
-            # an escape pair split across the feed boundary is
-            # re-scanned as a pair instead of half-seen.
-            #
-            # Without this, a single-byte close marker (JSON/most
-            # string rules: endp = "\"", elen = 1) gets `elen - 1`
-            # = 0 back-off, i.e. none. A buffer ending on `\` then
-            # resumed at exactly buf_len sees the next feed's `"`
-            # with its escaping backslash already behind the resume
-            # point, closes the string on an ESCAPED quote, and
-            # mis-tokenizes everything after it. Reproduced on
-            # `tests/corpus/concept.json` at chunk=3: the string
-            # `"Scanning until '\"' - breaks on escaped quotes"`
-            # came back as a 19-byte token instead of 50.
-            #
-            # Backing off over the whole run (not just one byte) is
-            # what makes it sound: `\\` is an escaped backslash, so
-            # resuming one byte in would mis-pair it. The byte before
-            # a maximal escape run is by definition not an escape, so
-            # the run start always begins a fresh pair — scanning
-            # from there matches scanning from the token start. Runs
-            # are short, so this stays O(N).
-            if (escape != 0) {
-                while ((new_resume > pbody) &&
-                  (load8(buf + new_resume - 1) == escape)) {
-                    new_resume = new_resume - 1;
-                }
-            }
+            # Still pending. Resume where the search stopped: it has passed
+            # every position a close could start at with all its bytes in
+            # the buffer, and it stops on an escape pair's boundary, so an
+            # escape split across the feed boundary is read as a pair.
+            # Through 2.9.11 it backed off by the close's length less one
+            # and then over a trailing RUN of escape bytes — the run was
+            # re-scanned on every drain: `x = "` + 1 MB of `\` in 64-byte
+            # chunks took 31 s (2.9.12 audit, reviewer B). (The back-off
+            # was the 2.5.2 fix for a split `\"`; the stop point keeps it.)
+            var new_resume = _stream_scan_stop;
             if (new_resume < pbody) { new_resume = pbody; }
             store64(s + 80, new_resume);
             if (finishing == 1) {
@@ -1372,7 +1402,6 @@ fn _stream_drain_g(s, out_tb, g, lim, finishing, in_rg) {
     var rg_kind = _ds_rg_kind;
     var rg_inner = _ds_rg_inner;
     var rg_end = _ds_rg_end;
-    var rg_ind = _ds_rg_ind;
     _ds_hd_hold_from = (0 - 1);
     _ds_cp_hold_from = (0 - 1);
     _ds_rg_from = (0 - 1);
@@ -1453,6 +1482,7 @@ fn _stream_drain_g(s, out_tb, g, lim, finishing, in_rg) {
     # commits until it resolves, finish, or VYK_COMPOSE_HOLD_MAX — or,
     # for a region with an inner grammar, region mode takes it (below).
     if ((finishing == 0) && (cp_hold >= 0)) {
+        if (buf_len - cp_hold > VYK_COMPOSE_HOLD_MAX) { store64(s + 280, 1); }
         if (buf_len - cp_hold <= VYK_COMPOSE_HOLD_MAX) {
             cp_applied = 1;
             var cp_done = 0;
@@ -1471,6 +1501,7 @@ fn _stream_drain_g(s, out_tb, g, lim, finishing, in_rg) {
     # commits until the terminator line (and its LF) is in the buffer,
     # or finish, or the hold passes VYK_HEREDOC_HOLD_MAX.
     if ((finishing == 0) && (hd_hold >= 0)) {
+        if (buf_len - hd_hold > VYK_HEREDOC_HOLD_MAX) { store64(s + 280, 1); }
         if (buf_len - hd_hold <= VYK_HEREDOC_HOLD_MAX) {
             hd_applied = 1;
             var hd_done = 0;
@@ -1536,8 +1567,6 @@ fn _stream_drain_g(s, out_tb, g, lim, finishing, in_rg) {
         store64(s + 224, rg_kind);
         store64(s + 232, rg_inner);
         store64(s + 240, rg_end);
-        store64(s + 248, rg_ind);
-        store64(s + 264, 1);
         return emitted + _stream_region_drain(s, out_tb);
     }
     # 2.0.3 — detect pending pair-rule state for the NEXT drain.
@@ -1598,6 +1627,32 @@ fn _stream_drain_g(s, out_tb, g, lim, finishing, in_rg) {
         # bytes may be a pair's start — Lua's `--[==[…]==]` read as an
         # open `--` comment pended to the end of its line.
         if (p_start == inl_closed) { pending_ambiguous = 1; }
+        # Nor a verbatim string closed on the buffer's last byte (2.9.12): it
+        # is closed, and whether it goes on is the next byte's to say — a
+        # re-scan, not a search for a close. Closed when its quotes, after
+        # the prefix, are even in number: the opener, each `""`, the close.
+        if ((pending_ambiguous == 0) && (p_kind == TK_STRING) && (p_start + p_len == buf_len)) {
+            var vpl = _ds_sym_prefix(g, buf, buf_len, p_start);
+            if ((vpl > 0) && (_ds_sym_raw == 1)) {
+                var vq = 0;
+                var vk = p_start + vpl;
+                while (vk < p_start + p_len) {
+                    if (load8(buf + vk) == 34) { vq = vq + 1; }
+                    vk = vk + 1;
+                }
+                if ((vq % 2) == 0) { pending_ambiguous = 1; }
+            }
+        }
+        # Nor a line rule's token: line rules run before pairs (note 002),
+        # so a `--` comment whose text begins `--[[` is no open `--[[`
+        # pair — pending it ran the comment on to `]]` (2.9.12 audit,
+        # reviewer D).
+        if (pending_ambiguous == 0) {
+            var lprev = (0 - 1);
+            if (p_start > 0) { lprev = load8(buf + p_start - 1); }
+            if ((p_start == 0) && (mid_stream > 0)) { lprev = load64(s + 96); }
+            if (_ds_try_line_rules(g, buf, buf_len, p_start, lprev) != 0) { pending_ambiguous = 1; }
+        }
         if ((hold_overlaps == 0) && (pending_ambiguous == 0) &&
           ((p_kind == TK_STRING) || (p_kind == TK_COMMENT) || (p_kind == TK_PREPROCESSOR))) {
             var rule_idx = _stream_find_pair_rule(g, buf, p_start, p_len, p_kind);
@@ -1736,11 +1791,37 @@ fn _stream_drain_g(s, out_tb, g, lim, finishing, in_rg) {
     # Arm the run watch: exactly one token is left, it reaches the end of
     # the buffer, and nothing else is watching.
     if ((finishing == 0) && (hd_applied == 0) && (cp_applied == 0) && (new_pending < 0) && (load64(s + 104) == 0)) {
+        # A long number whose last byte so far is a separator (`…1_`): the
+        # separator is a token of its own until a digit follows, so two are
+        # left. Watch the number's run from the separator on (2.9.12 audit,
+        # reviewer B: `1` + `_1` x 256K in 64-byte chunks, 23 s).
+        if ((n_temp > 1) && (commit_count == n_temp - 2) && (grammar_number_sep(g) > 0)) {
+            var ns_s = tokenbuf_start(temp_tb, n_temp - 1);
+            var nn_s = tokenbuf_start(temp_tb, n_temp - 2);
+            var nn_l = tokenbuf_len(temp_tb, n_temp - 2);
+            if ((ns_s == buf_len - 1) && (nn_s + nn_l == ns_s) && (load8(buf + ns_s) == grammar_number_sep(g))) {
+                if (tokenbuf_kind(temp_tb, n_temp - 2) == TK_NUMBER) {
+                    var nrc = _stream_run_class(g, buf, TK_NUMBER, nn_s, nn_l);
+                    if ((nrc == 4) || (nrc == 5)) {
+                        store64(s + 152, nrc);
+                        store64(s + 160, buf_len - consumed);
+                    }
+                }
+            }
+        }
         if ((n_temp > 0) && (commit_count == n_temp - 1)) {
             var lt_s = tokenbuf_start(temp_tb, n_temp - 1);
             var lt_l = tokenbuf_len(temp_tb, n_temp - 1);
             if (lt_s + lt_l == buf_len) {
                 var rcls = _stream_run_class(g, buf, tokenbuf_kind(temp_tb, n_temp - 1), lt_s, lt_l);
+                # A shebang line runs to its line break as a line rule does
+                # (2.9.12 audit, reviewer B: `#!` + 1 MB in 64-byte chunks
+                # took 11 s).
+                if ((rcls == 0) && (mid_stream == 0) && (lt_s == 0) && (lt_l >= VYK_RUN_WATCH_MIN)) {
+                    if ((tokenbuf_kind(temp_tb, n_temp - 1) == TK_PREPROCESSOR) && (grammar_shebang_on(g) == 1)) {
+                        if ((load8(buf) == 35) && (load8(buf + 1) == 33)) { rcls = 1; }
+                    }
+                }
                 if (rcls != 0) {
                     store64(s + 152, rcls);
                     store64(s + 160, buf_len - consumed);
@@ -1757,6 +1838,12 @@ fn _stream_drain_g(s, out_tb, g, lim, finishing, in_rg) {
 # resumable region's search (2.9.10).
 fn _stream_compact(s, buf, n) {
     if (n <= 0) { return 0; }
+    if (load64(s + 224) != 0) {
+        # A region's first body commit: the body has no bytes before it, as
+        # a single feed's nested scan of it sees — not the opener's (2.9.12
+        # audit, reviewer B).
+        if (load64(s + 272) == 0) { store64(s + 96, (0 - 1)); }
+    }
     _stream_save_prev(s, buf, n);
     var len = load64(s + 8);
     var k = n;
@@ -1785,16 +1872,6 @@ fn _stream_compact(s, buf, n) {
 # finish over it, then the marker, and the rest drains with the outer
 # grammar. Until then the body drains no further than the earliest
 # place the marker could still start: those bytes may not be body.
-
-# A fence closer's line-start state after byte `b`, stepped as
-# `_ds_find_fenced_close` steps it: 1 after a line break, kept over
-# `end_indent` bytes, else 0.
-fn _stream_fence_at(st, b, ind) {
-    if (b == 10) { return 1; }
-    if (ind == 0) { return 0; }
-    if (_ds_byte_in(ind, b) == 0) { return 0; }
-    return st;
-}
 
 # Leave region mode, and the inner grammar's watches and pending pair.
 fn _stream_region_end(s) {
@@ -1830,34 +1907,52 @@ fn _stream_region_drain(s, out_tb) {
     var rk = load64(s + 224);
     var inner = load64(s + 232);
     var endp = load64(s + 240);
-    var ind = load64(s + 248);
     var elen = 0;
     if (endp != 0) { elen = strlen(endp); }
     var q = load64(s + 256);
     if (q < 0) { q = 0; }
-    var qs = load64(s + 264);
     var found = (0 - 1);
-    if (rk != 4) {
-        while ((found < 0) && (q + elen <= len)) {
-            if (((rk != 2) || (qs == 1)) && (memeq(buf + q, endp, elen) == 1)) { found = q; }
-            if (found < 0) {
-                qs = _stream_fence_at(qs, load8(buf + q), ind);
-                q = q + 1;
+    # Kind 5 (`end_blank`, 2.9.12): a line break that a line of only blanks
+    # and its own line break follow. `bl` is where one could still be: a
+    # line break whose blank line the buffer cuts short.
+    var bl = len;
+    if (rk == 5) {
+        var bgo = 1;
+        while ((bgo == 1) && (q < len)) {
+            if (load8(buf + q) == 10) {
+                var bk = q + 1;
+                while ((bk < len) && (_ds_is_blank_cr(load8(buf + bk)) == 1)) { bk = bk + 1; }
+                if ((bk < len) && (load8(buf + bk) == 10)) {
+                    found = q;
+                    bgo = 0;
+                }
+                if (bk >= len) {
+                    bl = q;
+                    bgo = 0;
+                }
             }
+            if (bgo == 1) { q = q + 1; }
         }
         store64(s + 256, q);
-        store64(s + 264, qs);
+    }
+    if ((rk != 4) && (rk != 5)) {
+        while ((found < 0) && (q + elen <= len)) {
+            if (memeq(buf + q, endp, elen) == 1) { found = q; }
+            if (found < 0) { q = q + 1; }
+        }
+        store64(s + 256, q);
     }
     if (found >= 0) {
         var em = _stream_region_body(s, out_tb, inner, found, 1);
-        # A `compose_region` leaves its `end_before` to the outer grammar.
-        if (rk != 3) {
+        # A `compose_region` leaves its `end_before` (or blank line) to the
+        # outer grammar.
+        if ((rk != 3) && (rk != 5)) {
             var pb = tokenbuf_count(out_tb);
             tokenbuf_push(out_tb, TK_PUNCTUATION, load64(s + 48), elen);
             em = em + (tokenbuf_count(out_tb) - pb);
         }
         _stream_region_end(s);
-        if (rk != 3) { _stream_compact(s, buf, elen); }
+        if ((rk != 3) && (rk != 5)) { _stream_compact(s, buf, elen); }
         return em + tokenize_stream_drain(s, out_tb);
     }
     if (load64(s + 32) == 1) {
@@ -1867,17 +1962,14 @@ fn _stream_region_drain(s, out_tb) {
         return fe;
     }
     # Where the marker could still start: the earliest tail of the buffer
-    # that begins it (at a line start, for a fence).
+    # that begins it.
     var lim = len;
-    if (rk != 4) {
+    if (rk == 5) { lim = bl; }
+    if ((rk != 4) && (rk != 5)) {
         var p = q;
-        var ps = qs;
         while ((p < len) && (lim == len)) {
-            if (((rk != 2) || (ps == 1)) && (memeq(buf + p, endp, len - p) == 1)) { lim = p; }
-            if (lim == len) {
-                ps = _stream_fence_at(ps, load8(buf + p), ind);
-                p = p + 1;
-            }
+            if (memeq(buf + p, endp, len - p) == 1) { lim = p; }
+            if (lim == len) { p = p + 1; }
         }
     }
     return _stream_region_body(s, out_tb, inner, lim, 0);
@@ -1919,6 +2011,8 @@ fn _stream_reset(s) {
     store64(s + 72, (0 - 1));
     store64(s + 96, (0 - 1));
     store64(s + 216, (0 - 1));
+    store64(s + 280, 0);
+    store64(s + 288, 0);
     _tokenbuf_reset(load64(s + 56));
     return 0;
 }
@@ -2106,10 +2200,21 @@ fn tokenize_stream_discard_consumed(s) {
     # `load64(tb + 8)`. Cheap one-line check; matches the null-
     # safety pattern in the rest of the streaming primitive.
     if (staging == 0) { return 0; }
-    var consumed = load64(s + 64);
+    var cur = load64(s + 64);
+    var consumed = cur - load64(s + 288);
     if (consumed <= 0) { return 0; }
-    tokenbuf_drop_front(staging, consumed);
-    store64(s + 64, 0);
+    # Dropped at once, moved lazily: the tokens behind the cursor are
+    # counted as dropped (+288) and the rest is moved down only once they
+    # are half the staging — through 2.9.11 every call moved all of it, so
+    # a call after each `_next` was quadratic: 256 KB of python, 15.8 s
+    # (2.9.12 audit, reviewer B).
+    if (cur * 2 >= tokenbuf_count(staging)) {
+        tokenbuf_drop_front(staging, cur);
+        store64(s + 64, 0);
+        store64(s + 288, 0);
+        return consumed;
+    }
+    store64(s + 288, cur);
     return consumed;
 }
 
@@ -2180,6 +2285,8 @@ fn tokenize_stream_free(s) {
     store64(s + 256, 0);
     store64(s + 264, 0);
     store64(s + 272, 0);
+    store64(s + 280, 0);  # hold bound passed (2.9.12)
+    store64(s + 288, 0);  # staging dropped (2.9.12)
     # pending_idx's "none" sentinel is -1, NOT 0 — 0 is a valid
     # pair-rule index. Every other field here poisons safely to 0,
     # and two call sites lean on that ("_free zeroes every field"

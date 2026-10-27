@@ -46,12 +46,16 @@ audit_tmpdir
 
 audit_list "$T/list" "$@" || exit $?
 
-n=0; diffs=0; overwrites=0; timeouts=0
+n=0; diffs=0; overwrites=0; timeouts=0; crashes=0; skipped=0
 while IFS= read -r f; do
     n=$((n + 1))
     ra=0; rb=0
     audit_run "$SECS" build/vyk-poisonA -- "$f" > "$T/a" 2> "$T/ea" || ra=$?
     audit_run "$SECS" build/vyk-poisonB -- "$f" > "$T/b" 2> "$T/eb" || rb=$?
+    # Exit 4 in both is "no grammar": nothing tokenized, not a run.
+    if [ "$ra" -eq 4 ] && [ "$rb" -eq 4 ]; then
+        skipped=$((skipped + 1)); continue
+    fi
     if [ "$ra" -eq 124 ] || [ "$rb" -eq 124 ]; then
         timeouts=$((timeouts + 1)); echo "TIMEOUT ($ra/$rb): $f"; continue
     fi
@@ -62,7 +66,16 @@ while IFS= read -r f; do
     if [ "$ra" -ne "$rb" ] || ! cmp -s "$T/a" "$T/b"; then
         diffs=$((diffs + 1)); echo "A/B DIFF (exit $ra/$rb): $f"
     fi
+    # A signal in either leg, even the same one in both: memory both fills
+    # leave uninitialised crashes both alike, the case poisoning is for
+    # (2.9.12 audit, reviewer D: two SIGSEGVs passed as no difference).
+    if [ "$ra" -ge 128 ] || [ "$rb" -ge 128 ]; then
+        crashes=$((crashes + 1)); echo "CRASH (exit $ra/$rb): $f"
+    fi
 done < "$T/list"
 
-echo "poison-ab: files=$n ab-diffs=$diffs overwrites=$overwrites timeouts=$timeouts"
-[ "$diffs" -eq 0 ] && [ "$overwrites" -eq 0 ] && [ "$timeouts" -eq 0 ]
+echo "poison-ab: files=$n no-grammar=$skipped ab-diffs=$diffs overwrites=$overwrites timeouts=$timeouts crashes=$crashes"
+# Checked nothing — every file without a grammar — is no pass (2.9.12
+# audit, reviewer D: it exited 0 then).
+[ $((n - skipped)) -gt 0 ] || { echo "poison-ab: nothing was tokenized" >&2; exit 2; }
+[ "$diffs" -eq 0 ] && [ "$overwrites" -eq 0 ] && [ "$timeouts" -eq 0 ] && [ "$crashes" -eq 0 ]

@@ -80,4 +80,7 @@ else
 fi
 
 echo "edit-sweep: runs=$runs fails=$bad"
+# Checked nothing — every file without a grammar — is no pass (2.9.12
+# audit, reviewer D: each of these exited 0 then).
+[ "$runs" -gt 0 ] || { echo "edit-sweep: nothing was run" >&2; exit 2; }
 [ "$bad" -eq 0 ]

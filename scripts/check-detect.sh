@@ -114,6 +114,14 @@ function num_after(s, lit,    i, r) {
     if ((index(line, "_detect_fname(path, n, ") > 0) && (line !~ /^fn /)) odd = 1
     if ((index(line, "memeq(src + word_start, \"") > 0) && (q[2] != "env")) odd = 1
     if ((index(line, "return \"") > 0) && (f != "_detect_signature") && (f != "_detect_asm_flavor") && (f != "_detect_gas_or_nasm")) odd = 1
+    # A sniff function returns only the grammars it decides between: a
+    # route planted in one passed through 2.9.11 (2.9.12 audit, reviewer D).
+    if (index(line, "return \"") > 0) {
+        r = line; sub(/^.*return "/, "", r); sub(/".*$/, "", r)
+        if ((f == "_detect_signature") && (r != "xml") && (r != "html")) odd = 1
+        if ((f == "_detect_asm_flavor") && (r != "asm_aarch64") && (r != "asm_x86_64")) odd = 1
+        if ((f == "_detect_gas_or_nasm") && (r != "nasm")) odd = 1
+    }
     if (odd == 1) printf "ODD\t%s\t%d\t%s\n", f, NR, line
 }
 ' "$DETECT" > "$TMP.rec"

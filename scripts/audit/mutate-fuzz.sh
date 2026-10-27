@@ -73,4 +73,7 @@ while IFS= read -r f; do
 done < "$T/list"
 
 echo "mutate-fuzz: files=$n fuzzed=$tried mutants=$((tried * ITERS)) failing-files=$bad"
+# Checked nothing — every file without a grammar — is no pass (2.9.12
+# audit, reviewer D: each of these exited 0 then).
+[ "$tried" -gt 0 ] || { echo "mutate-fuzz: nothing was fuzzed" >&2; exit 2; }
 [ "$bad" -eq 0 ]

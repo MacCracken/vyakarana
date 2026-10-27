@@ -280,7 +280,7 @@ fn compose_fenced_rule_end_indent(r) { return load64(r + 32); }
 # bytes, as on a line rule; `start_inner` (@ 32) — the start marker is
 # the body's first bytes, tokenized by the inner grammar, not a
 # punctuation token.
-var COMPOSE_REGION_RULE_SIZE = 40;
+var COMPOSE_REGION_RULE_SIZE = 48;
 fn compose_region_rule_new(start, end_before, inner_name) {
     var r = alloc(COMPOSE_REGION_RULE_SIZE);
     store64(r,      start);
@@ -288,6 +288,7 @@ fn compose_region_rule_new(start, end_before, inner_name) {
     store64(r + 16, inner_name);
     store64(r + 24, 0);
     store64(r + 32, 0);
+    store64(r + 40, 0);
     return r;
 }
 fn compose_region_rule_start(r)       { return load64(r); }
@@ -295,6 +296,9 @@ fn compose_region_rule_end_before(r)  { return load64(r + 8); }
 fn compose_region_rule_inner(r)       { return load64(r + 16); }
 fn compose_region_rule_after(r)       { return load64(r + 24); }
 fn compose_region_rule_start_inner(r) { return load64(r + 32); }
+# `end_blank = true` (2.9.12): the region ends before a line break that a
+# line of only blanks (space, tab, CR) and its own line break follow.
+fn compose_region_rule_end_blank(r)   { return load64(r + 40); }
 
 # ── Char-class lookup tables ────────────────
 # A 256-byte table indexed by byte; value is 0 or 1. Built from a
@@ -401,12 +405,22 @@ fn _gp_skip_to_eol(buf, len, pos) {
 # `${dir##*/}` included (2.6.0; 2.6.x audit). A backslash before
 # punctuation (`\$`, `\.`) still means that byte.
 var _gp_bad_escape = 0;
+# A value of the wrong shape (2.9.12 audit, reviewer D): a string key
+# given no quoted string (`match = line`, a key at the end of the file),
+# a bool key given anything but `true` / `false`. Through 2.9.11 the
+# first read as no string — `match = line` dereferenced it and crashed —
+# and the second as false, silently. Either rejects the grammar now.
+var _gp_bad_value = 0;
 
 # Parse a quoted string starting at buf[pos] (first byte must be `"`).
 # Writes the resulting cstr to *out_ptr and returns the position just
 # past the closing `"`. Handles \\, \", \n, \t, \r escapes.
 fn _gp_parse_string(buf, len, pos, out_ptr) {
-    if (load8(buf + pos) != 34) { store64(out_ptr, 0); return pos; }
+    if ((pos >= len) || (load8(buf + pos) != 34)) {
+        store64(out_ptr, 0);
+        _gp_bad_value = _gp_bad_value + 1;
+        return pos;
+    }
     pos = pos + 1;
     # First pass: compute the decoded length so we can allocate once.
     var p = pos;
@@ -518,16 +532,25 @@ fn _gp_read_word(buf, len, pos) {
 # Parse a bool literal (`true` / `false`) at buf[pos]. Returns 1/0;
 # writes the parsed value to *out_val. Returns the advanced position.
 fn _gp_parse_bool(buf, len, pos, out_val) {
+    store64(out_val, 0);
+    var bl = 0;
     if ((pos + 4 <= len) && (memeq(buf + pos, "true", 4) == 1)) {
         store64(out_val, 1);
-        return pos + 4;
+        bl = 4;
     }
-    if ((pos + 5 <= len) && (memeq(buf + pos, "false", 5) == 1)) {
+    if ((pos + 5 <= len) && (memeq(buf + pos, "false", 5) == 1)) { bl = 5; }
+    # The word, ended by a blank, a comment or the line's end (`truex` is
+    # no bool).
+    if ((bl > 0) && (pos + bl < len)) {
+        var nb = load8(buf + pos + bl);
+        if ((nb != 32) && (nb != 9) && (nb != 13) && (nb != 10) && (nb != 35)) { bl = 0; }
+    }
+    if (bl == 0) {
         store64(out_val, 0);
-        return pos + 5;
+        _gp_bad_value = _gp_bad_value + 1;
+        return pos;
     }
-    store64(out_val, 0);
-    return pos;
+    return pos + bl;
 }
 
 # Streq-for-slice: does the byte span at buf[pos..pos+slen) equal cstr?
@@ -728,13 +751,15 @@ fn _gp_apply_kv(g, current_rule, section, buf, len, key_pos, key_len, value_pos)
             _gp_parse_string(buf, len, value_pos, out_str_slot);
             var mname = load64(out_str_slot);
             var mt = 0;
-            if (streq(mname, "line")    == 1) { mt = 1; }
-            if (streq(mname, "pair")    == 1) { mt = 2; }
-            if (streq(mname, "words")   == 1) { mt = 3; }
-            if (streq(mname, "compose") == 1)        { mt = 4; }
-            if (streq(mname, "compose_fenced") == 1) { mt = 5; }
-            if (streq(mname, "compose_region") == 1) { mt = 6; }
-            if (streq(mname, "heredoc") == 1)        { mt = 7; }   # ADR 0023
+            if (mname != 0) {
+                if (streq(mname, "line")    == 1) { mt = 1; }
+                if (streq(mname, "pair")    == 1) { mt = 2; }
+                if (streq(mname, "words")   == 1) { mt = 3; }
+                if (streq(mname, "compose") == 1)        { mt = 4; }
+                if (streq(mname, "compose_fenced") == 1) { mt = 5; }
+                if (streq(mname, "compose_region") == 1) { mt = 6; }
+                if (streq(mname, "heredoc") == 1)        { mt = 7; }   # ADR 0023
+            }
             store64(current_rule + 8, mt);
             return 0;
         }
@@ -746,14 +771,17 @@ fn _gp_apply_kv(g, current_rule, section, buf, len, key_pos, key_len, value_pos)
         if (_gp_slice_eq(buf, key_pos, key_len, "end") == 1) {
             _gp_parse_string(buf, len, value_pos, out_str_slot);
             store64(current_rule + 24, load64(out_str_slot));
+            store64(current_rule + 176, load64(current_rule + 176) | 1);
             return 0;
         }
         if (_gp_slice_eq(buf, key_pos, key_len, "end_before") == 1) {
             # compose_region's lookahead terminator. Shares slot 24
-            # with `end` — a rule declares one or the other, and
-            # only mt==6 reads it as non-consuming. See ADR 0019.
+            # with `end`: which key was given is kept at +176, and each
+            # is refused where it would be read as the other (2.9.12).
+            # See ADR 0019.
             _gp_parse_string(buf, len, value_pos, out_str_slot);
             store64(current_rule + 24, load64(out_str_slot));
+            store64(current_rule + 176, load64(current_rule + 176) | 2);
             return 0;
         }
         if (_gp_slice_eq(buf, key_pos, key_len, "indent") == 1) {
@@ -876,6 +904,11 @@ fn _gp_apply_kv(g, current_rule, section, buf, len, key_pos, key_len, value_pos)
             store64(current_rule + 168, load64(out_bool_slot));
             return 0;
         }
+        if (_gp_slice_eq(buf, key_pos, key_len, "end_blank") == 1) {
+            _gp_parse_bool(buf, len, value_pos, out_bool_slot);
+            if (load64(out_bool_slot) == 1) { store64(current_rule + 176, load64(current_rule + 176) | 4); }
+            return 0;
+        }
         if (_gp_slice_eq(buf, key_pos, key_len, "start_after") == 1) {
             # Line rules (ADR 0022) and compose_region rules (2.9.9);
             # `_gp_close_rule` rejects it on any other match type.
@@ -964,6 +997,13 @@ fn _gp_close_rule(g, rule_acc) {
     # start_after: line rules, and compose_region since 2.9.9.
     if ((after != 0) && (mt != 1) && (mt != 6)) { return 1; }
     if ((load64(rule_acc + 168) != 0) && (mt != 6)) { return 1; }   # start_inner: compose_region only
+    # `end_before` is compose_region's; `end` every other type's (2.9.12).
+    var endk = load64(rule_acc + 176);
+    if (((endk & 2) != 0) && (mt != 6)) { return 1; }
+    if (((endk & 1) != 0) && (mt == 6)) { return 1; }
+    # `end_blank` is compose_region's, and stands for `end_before`.
+    if (((endk & 4) != 0) && (mt != 6)) { return 1; }
+    if ((endk & 6) == 6) { return 1; }
     if ((after != 0) && (_gp_nonempty(after) == 0)) { return 1; }
     var indent = load64(rule_acc + 72);
     var fby = load64(rule_acc + 80);
@@ -972,6 +1012,13 @@ fn _gp_close_rule(g, rule_acc) {
     if ((eind != 0) && (mt != 5)) { return 1; }           # end_indent: compose_fenced only
     if ((eind != 0) && (_gp_nonempty(eind) == 0)) { return 1; }
     if ((mt < 1) || (mt > 7)) { return 1; }               # unknown `match`
+    # A pair whose `end` begins with its escape byte can never close: the
+    # close search steps over every escape and the byte after it, and a
+    # stream's back-off over a trailing escape run read it differently
+    # from one feed (2.9.12 audit, reviewer D).
+    if ((mt == 2) && (esc != 0) && (endp != 0)) {
+        if (load8(endp) == esc) { return 1; }
+    }
     if ((indent != 0) && (mt != 7)) { return 1; }         # indent: heredoc rules only
     if ((indent != 0) && (_gp_nonempty(indent) == 0)) { return 1; }
     # Each byte is one marker (2.9.5: Ruby's `-~`); at most four, none
@@ -1076,6 +1123,7 @@ fn _gp_close_rule(g, rule_acc) {
         var crr = compose_region_rule_new(start, endp, region_inner);
         store64(crr + 24, after);
         store64(crr + 32, load64(rule_acc + 168));
+        if ((load64(rule_acc + 176) & 4) != 0) { store64(crr + 40, 1); }
         vec_push(grammar_compose_region_rules(g), crr);
         return 0;
     }
@@ -1086,12 +1134,13 @@ fn _gp_close_rule(g, rule_acc) {
 # 32 escape, 40 words / inner, 48 slot-40 tag, 56 kind given,
 # 64 start_after, 72 indent, 80 followed_by, 88 not_followed_by,
 # 96 end_indent (2.9.1), 104 – 160 the heredoc options (2.9.5; see the
-# parser), 168 start_inner (compose_region, 2.9.9).
+# parser), 168 start_inner (compose_region, 2.9.9), 176 which of `end`
+# (1) / `end_before` (2) was given (2.9.12).
 fn _gp_new_rule_acc() {
-    var r = alloc(176);
+    var r = alloc(184);
     if (r == 0) { return 0; }
     var i = 0;
-    while (i < 176) { store8(r + i, 0); i = i + 1; }
+    while (i < 184) { store8(r + i, 0); i = i + 1; }
     return r;
 }
 
@@ -1119,12 +1168,20 @@ fn _gp_heredoc_opts_bad(mt, start, indent, acc) {
         if ((rpt != 0) && (tag != 0)) { return 1; }
         if ((rpt == 0) && (tag == 0)) { return 1; }
         if ((rpt != 0) && (strlen(rpt) != 1)) { return 1; }
+        # A repeat byte that is also the opener's first never matches: the
+        # run swallows it (2.9.12 audit, reviewer A).
+        if ((rpt != 0) && (load8(rpt) == load8(load64(acc + 136)))) { return 1; }
         if ((tag != 0) && (_gp_nonempty(start) == 0)) { return 1; }
         return 0;
     }
     if (inl == 1) { return 1; }
     if (((fl & 64) != 0) && (indent == 0) && ((fl & HD_F_ALWAYS) == 0)) { return 1; }
     if (((fl & HD_F_REST) != 0) && ((fl & HD_F_ALWAYS) == 0)) { return 1; }
+    # `term_rest` reads the terminator as a leading identifier after blanks
+    # (key kind 3): with tabs only it would still take spaces, and a word
+    # delimiter (`END-OF`) is no identifier, so it never ended (2.9.12 audit,
+    # reviewer A).
+    if (((fl & HD_F_REST) != 0) && (((fl & HD_F_BLANKS) == 0) || ((fl & HD_F_IDENT) == 0))) { return 1; }
     return 0;
 }
 
@@ -1163,6 +1220,12 @@ fn _gp_prefix_shape(st, ct, pw) {
 # the grammar itself recursed without bound.
 fn _gp_validate(g) {
     if (grammar_number_sep(g) < 0) { return 1; }
+    # Routes that claim what nobody declared (2.9.12 audit, reviewer D): an
+    # empty extension, filename or shebang matches every path or
+    # interpreter, and an extension without its `.` (`"s"`) claims `cars`.
+    if (_gp_routes_bad(grammar_extensions(g), 1) == 1) { return 1; }
+    if (_gp_routes_bad(grammar_filenames(g), 0) == 1) { return 1; }
+    if (_gp_routes_bad(grammar_shebangs(g), 0) == 1) { return 1; }
     # Keys that would be accepted and then do nothing (2.9.1 audit,
     # reviewer C): a float or datetime shape without decimal numbers, a
     # tuple index without floats (2.9.3), a lead byte that `ident_start`
@@ -1257,11 +1320,26 @@ fn _gp_validate(g) {
     return 0;
 }
 
+# 1 if a route list holds an empty entry, or (dotted 1) an extension
+# that does not start with `.`.
+fn _gp_routes_bad(v, dotted) {
+    if (v == 0) { return 0; }
+    var k = 0;
+    while (k < vec_len(v)) {
+        var w = vec_get(v, k);
+        if (_gp_nonempty(w) == 0) { return 1; }
+        if ((dotted == 1) && (load8(w) != 46)) { return 1; }
+        k = k + 1;
+    }
+    return 0;
+}
+
 # Main parse loop.
 fn _gp_parse(buf, len) {
     var g = grammar_new();
     var invalid = 0;      # count of rules `_gp_close_rule` rejected
     _gp_bad_escape = 0;
+    _gp_bad_value = 0;
     var section = 0;      # 0=unset, 1=grammar, 2=defaults, 3=rules
     var current_rule = 0;
     var pos = 0;
@@ -1335,6 +1413,7 @@ fn _gp_parse(buf, len) {
     if (current_rule != 0) { invalid = invalid + _gp_close_rule(g, current_rule); }
     if (invalid > 0) { return 0; }
     if (_gp_bad_escape > 0) { return 0; }
+    if (_gp_bad_value > 0) { return 0; }
     if (_gp_validate(g) == 1) { return 0; }
     return g;
 }
@@ -1502,7 +1581,8 @@ fn _reg_ieq(a, b, bl) {
 # `shebangs` hold the tag — `Python`, `sh`, `bash`, `cyr`, `js`, `node`.
 # Through 2.9.0 only an exact name resolved: 3,679 of the 7,607 tagged
 # fences in one machine's 7,770 markdown files (`sh` and `bash` alone
-# 3,140) came back as one plain string.
+# 3,140) came back as one plain string. An extension the content decides
+# between grammars (`.asm`) resolves no tag (2.9.12).
 fn registry_find_fence_tag(tag) {
     if (tag == 0) { return 0; }
     var g = registry_find_by_name(tag);
@@ -1525,7 +1605,13 @@ fn registry_find_fence_tag(tag) {
             var e = 0;
             while ((v != 0) && (e < vec_len(v))) {
                 var w = vec_get(v, e);
-                if (pass == 1) {
+                # Not `.asm`: what an `.asm` file holds is decided by its
+                # content (GNU as or NASM, ADR 0015), which a fence's tag
+                # is looked up without. Through 2.9.8 no grammar claimed
+                # `.asm` and an `asm` fence was one string; 2.9.9 made it
+                # nasm, and AT&T bodies came back as error tokens (2.9.12
+                # audit, reviewer D). `nasm` still resolves by name.
+                if ((pass == 1) && (_reg_ieq(".asm", w, strlen(w)) == 0)) {
                     if ((load8(w) == 46) && (_reg_ieq(w + 1, tag, tl) == 1)) { return gg; }
                 }
                 if (pass == 2) {

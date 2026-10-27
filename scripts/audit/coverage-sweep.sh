@@ -116,4 +116,7 @@ while IFS= read -r f; do
 done < "$T/list"
 
 echo "coverage-sweep: files=$n tokenized=$((n - skipped - overcap)) no-grammar=$skipped over-cap=$overcap tokens=$tokens fails=$fails files-with-error-tokens=$errfiles"
+# Checked nothing — every file without a grammar — is no pass (2.9.12
+# audit, reviewer D: each of these exited 0 then).
+[ $((n - skipped - overcap)) -gt 0 ] || { echo "coverage-sweep: nothing was tokenized" >&2; exit 2; }
 [ "$fails" -eq 0 ]

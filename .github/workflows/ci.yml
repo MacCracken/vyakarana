@@ -118,3 +118,7 @@ jobs:
             exit 1
           fi
           rm dist/vyakarana.cyr.committed
+          # The bundle and its `.deps` sidecar, as CLAUDE.md §Gates checks
+          # them: the diff above alone passed a stale sidecar, which
+          # consumers' `cyrius deps` reads (2.9.12 audit, reviewer D).
+          cyrius distlib --check

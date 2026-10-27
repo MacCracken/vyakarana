@@ -83,6 +83,14 @@ Semantics, and how each differs from `compose`:
 
 - `start` — literal opening marker, emitted as TK_PUNCTUATION.
   Same as `compose`.
+- `end_blank = true` *(added 2.9.12)* — a lookahead terminator too:
+  the region ends before a line break that a line of only blanks
+  (space, tab, CR) and its own line break follow. MDX's ESM blocks end
+  at a blank line, and `end_before = "\n\n"` saw neither a CRLF one
+  nor one holding spaces, so the rest of the document came back as
+  JavaScript (the 2.9.12 audit, reviewer A). It stands for `end_before`;
+  the two together reject the rule, and so do `end` on a compose_region
+  and `end_before` on any other type (each was read as the other).
 - `end_before` — a **lookahead** terminator. The region ends
   immediately before it and the marker bytes are left at the
   cursor for the outer grammar. No end token is emitted, because

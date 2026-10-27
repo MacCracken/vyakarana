@@ -179,6 +179,31 @@ fn _t_rep(head, unit, reps, tail) {
     return b;
 }
 
+# 1 if `src`, fed 1, 2 … 7 bytes at a time with a drain after each,
+# gives exactly one feed's tokens (2.9.12).
+fn _t_chunked_same(lang, src) {
+    var n = strlen(src);
+    var one = _t_tokenize(src, lang);
+    var c = 1;
+    while (c <= 7) {
+        var s = tokenize_stream_new(lang);
+        var tb = tokenbuf_new();
+        var off = 0;
+        while (off < n) {
+            var t = c;
+            if (off + t > n) { t = n - off; }
+            tokenize_stream_feed(s, src + off, t);
+            tokenize_stream_drain(s, tb);
+            off = off + t;
+        }
+        tokenize_stream_finish(s, tb);
+        tokenize_stream_free(s);
+        if (_t_same_tokens(one, tb) == 0) { return 0; }
+        c = c + 1;
+    }
+    return 1;
+}
+
 # Path-detect, mapping 0 to "(none)" — same reason as `_t_detect`
 # (2.6.2).
 fn _t_path(path) {
@@ -237,7 +262,7 @@ fn _t_sub_spec(code) {
     if (code == 87) { return "iv"; }      # W  WordsRule
     if (code == 67) { return "sss--"; }   # C  ComposeRule
     if (code == 70) { return "ss--s"; }   # F  ComposeFencedRule
-    if (code == 82) { return "ssssi"; }   # R  ComposeRegionRule (2.9.9)
+    if (code == 82) { return "ssssii"; }  # R  ComposeRegionRule (2.9.9; end_blank 2.9.12)
     if (code == 72) { return "issiiiisss"; }   # H  HeredocRule (ADR 0030)
     return 0;
 }
@@ -4717,8 +4742,8 @@ fn main() {
     assert_eq(_t_len_at(sp6, 69), 5, "  ... its length");
     assert_eq(_t_kind_at(sp6, 84), TK_OPERATOR, "csharp @class: @ stays an operator");
     assert_eq(_t_len_at(sp6, 84), 1, "  ... its length");
-    assert_eq(_t_kind_at(sp6, 100), TK_STRING, "csharp @\"say \"\"hi\"\"\": a doubled quote splits it, as SQL\'s does");
-    assert_eq(_t_len_at(sp6, 100), 7, "  ... its length");
+    assert_eq(_t_kind_at(sp6, 100), TK_STRING, "csharp @\"say \"\"hi\"\"\": a doubled quote is inside it (2.9.12; 2.9.6 split it)");
+    assert_eq(_t_len_at(sp6, 100), 13, "  ... its length");
     assert_eq(_t_kind_at(sp6, 123), TK_OPERATOR, "csharp `$ \"z\"`: no prefix across a blank");
     assert_eq(_t_len_at(sp6, 123), 1, "  ... its length");
     # Validation: a symbol-shaped prefix loads; one holding a quote, or
@@ -4986,16 +5011,15 @@ fn main() {
 
 
     test_group("2.9.10 resumable regions (ADR 0032)");
-    # A body with no end marker runs to the end of the input, read with
-    # its inner grammar; through 2.9.9 its opener was outer text.
+    # A `compose` body with no end marker runs to the end of the input,
+    # read with its inner grammar; through 2.9.9 its opener was outer text.
+    # A fence with no closer did too in 2.9.10 – 2.9.11; 2.9.12 reverted
+    # that — it is no fence (ADR 0032, amended; the 2.9.12 audit's A1).
     var rr_md = _t_tokenize("# T\n```python\nx = 'a'\n", "markdown");
-    assert_eq(_t_kind_at(rr_md, 4), TK_PUNCTUATION, "markdown: a fence with no closer still opens");
-    assert_eq(_t_len_at(rr_md, 4), 10, "  ... its open line");
-    assert_eq(_t_kind_at(rr_md, 14), TK_IDENT, "  ... and its body is python to the end");
-    assert_eq(_t_kind_at(rr_md, 18), TK_STRING, "  ... a python string in it");
+    assert(_t_kind_at(rr_md, 4) != TK_PUNCTUATION, "markdown: a fence with no closer is no fence (2.9.12)");
+    assert_eq(_t_kind_at(rr_md, 14), (0 - 1), "  ... and its body is not python");
     var rr_un = _t_tokenize("```\nplain text\n", "markdown");
-    assert_eq(_t_kind_at(rr_un, 4), TK_STRING, "markdown: an untagged fence with no closer: its body is one string");
-    assert_eq(_t_len_at(rr_un, 4), 11, "  ... to the end");
+    assert_eq(_t_kind_at(rr_un, 4), (0 - 1), "markdown: an untagged fence with no closer: no body token either");
     var rr_st = _t_tokenize("<p>a</p><style>a { color: red; }", "html");
     assert_eq(_t_kind_at(rr_st, 8), TK_PUNCTUATION, "html: a <style> with no </style> opens");
     assert_eq(_t_len_at(rr_st, 8), 7, "  ... its marker");
@@ -5005,16 +5029,15 @@ fn main() {
     # before the end marker arrives, and the live buffer is the inner
     # grammar's, not the region's. Through 2.9.9 nothing past the opener
     # committed until the end marker or finish.
+    # A fence's reading depends on its closer (2.9.12): a long one is held
+    # until the closer arrives — and its tokens are one feed's.
     _t_rg_stream("markdown", "# T\n\n```python\n", "def f(x):\n    return x + 1.5  # c\n", 2000, "```\nafter `x`\n");
-    assert(_t_rg_early > 20000, "markdown: a long fence commits before its closer arrives");
-    assert(_t_rg_live < 128, "  ... with a small live buffer");
+    assert(_t_rg_early < 10, "markdown: a long fence is held until its closer arrives (2.9.12)");
     assert_eq(_t_rg_same, 1, "  ... and the tokens of one feed");
     _t_rg_stream("markdown", "- a\n\n   ```sh\n", "   echo \"x ``` y\" # z\n", 2000, "   ```\nb\n");
-    assert(_t_rg_early > 10000, "markdown: a fence in a list item, \"```\" mid-line in it, commits early");
-    assert_eq(_t_rg_same, 1, "  ... and its closer is its indented one");
+    assert_eq(_t_rg_same, 1, "markdown: a fence in a list item, \"```\" mid-line in it: the tokens of one feed");
     _t_rg_stream("markdown", "x\n```py\n", "s = 1\n", 2000, "");
-    assert(_t_rg_early > 10000, "markdown: a fence never closed commits early");
-    assert_eq(_t_rg_same, 1, "  ... and runs to the end at finish");
+    assert_eq(_t_rg_same, 1, "markdown: a fence never closed: the tokens of one feed");
     _t_rg_stream("html", "<html><style>", ".a { margin: 1.5em -2px; }\n", 2000, "</style><p>x</p>");
     assert(_t_rg_early > 20000, "html: a long <style> commits before </style> arrives");
     assert(_t_rg_live < 128, "  ... with a small live buffer");
@@ -5167,6 +5190,146 @@ fn main() {
     assert_eq(_t_doc_edit(td_l, "zz_tdlb", "x!#abcdefgh\nz\n", 1, 1, 1), 1, "  ... the blank made `!`: the tokens of the edited text");
     assert_eq(_t_kind_at(tokenize_doc_tokens(td_l), 2), TK_PREPROCESSOR, "  ... a preprocessor line");
     tokenize_doc_free(td_l);
+
+
+    test_group("2.9.12 closeout audit");
+    # Loader (reviewer D): a value of the wrong shape rejects the grammar —
+    # through 2.9.11 an unquoted `match` crashed it, a bad bool read false.
+    var au_g1 = "[grammar]\nname = \"zz_au1\"\n[defaults]\nwhitespace = true\n[[rules]]\nkind = \"comment\"\nmatch = line\nstart = \"#\"\n";
+    assert_eq(_gp_parse(au_g1, strlen(au_g1)), 0, "an unquoted `match` value rejects the grammar");
+    var au_g2 = "[grammar]\nname = \"zz_au2\"\n[[rules]]\nkind = \"comment\"\nmatch =";
+    assert_eq(_gp_parse(au_g2, strlen(au_g2)), 0, "  ... and a `match =` at the end of the file");
+    var au_g3 = "[grammar]\nname = \"zz_au3\"\n[defaults]\nwhitespace = \"true\"\n";
+    assert_eq(_gp_parse(au_g3, strlen(au_g3)), 0, "a quoted bool rejects the grammar");
+    var au_g4 = "[grammar]\nname = \"zz_au4\"\n[defaults]\nwhitespace = ture\n";
+    assert_eq(_gp_parse(au_g4, strlen(au_g4)), 0, "  ... and a misspelt one");
+    var au_g5 = "[grammar]\nname = \"zz_au5\"\nfilenames = [\"\"]\n";
+    assert_eq(_gp_parse(au_g5, strlen(au_g5)), 0, "an empty filename rejects the grammar (it matched every path)");
+    var au_g6 = "[grammar]\nname = \"zz_au6\"\nextensions = [\"s\"]\n";
+    assert_eq(_gp_parse(au_g6, strlen(au_g6)), 0, "an extension without its dot rejects the grammar");
+    var au_g7 = "[grammar]\nname = \"zz_au7\"\n[[rules]]\nkind = \"string\"\nmatch = \"pair\"\nstart = \"<\"\nend_before = \">\"\n";
+    assert_eq(_gp_parse(au_g7, strlen(au_g7)), 0, "end_before on a pair rejects the grammar (it acted as end)");
+    var au_g8 = "[grammar]\nname = \"zz_au8\"\n[[rules]]\nmatch = \"compose_region\"\nstart = \"---\"\nend = \"\\n[[\"\ninner = \"markdown\"\n";
+    assert_eq(_gp_parse(au_g8, strlen(au_g8)), 0, "  ... and end on a compose_region (it acted as end_before)");
+    var au_g9 = "[grammar]\nname = \"zz_au9\"\n[[rules]]\nkind = \"string\"\nmatch = \"pair\"\nstart = \"<\"\nend = \"\\\\>\"\nescape = \"\\\\\"\n";
+    assert_eq(_gp_parse(au_g9, strlen(au_g9)), 0, "a pair whose end starts with its escape byte rejects the grammar (it never closed)");
+    var au_g10 = "[grammar]\nname = \"zz_au10\"\n[[rules]]\nkind = \"string\"\nmatch = \"heredoc\"\nbody = \"inline\"\nrepeat = \"\\\"\"\nopen = \"\\\"\"\nclose = \"\\\"\"\n";
+    assert_eq(_gp_parse(au_g10, strlen(au_g10)), 0, "an inline heredoc whose repeat byte opens it rejects the grammar (reviewer A)");
+    var au_g11 = "[grammar]\nname = \"zz_au11\"\n[[rules]]\nkind = \"string\"\nmatch = \"heredoc\"\nstart = \"<<<\"\nindent_by = \"blanks\"\nindent_always = true\nterm_rest = true\n";
+    assert_eq(_gp_parse(au_g11, strlen(au_g11)), 0, "term_rest without delim = \"ident\" rejects the grammar (it never ended)");
+    # Consumer grammars a stream read differently from one feed (reviewer D).
+    var au_ga = "[grammar]\nname = \"zz_aua\"\n[defaults]\nwhitespace = true\nident_start = \"a-z\"\nident_cont = \"a-z\"\nnumber_decimal = true\noperators = [\"-\", \"=\"]\n[[rules]]\nkind = \"comment\"\nmatch = \"line\"\nstart = \"--\"\nfollowed_by = \" \"\n";
+    registry_add(_gp_parse(au_ga, strlen(au_ga)));
+    assert_eq(_t_chunked_same("zz_aua", "x = 1 -- c\ny = 2 --x\n"), 1, "a two-byte line start with followed_by: 1-7 byte feeds equal one feed");
+    var au_gb = "[grammar]\nname = \"zz_aub\"\n[defaults]\nwhitespace = true\nident_start = \"a-z\"\nident_cont = \"a-z\"\noperators = [\"-\", \"=\", \"[\", \"]\"]\n[[rules]]\nkind = \"comment\"\nmatch = \"line\"\nstart = \"--\"\n[[rules]]\nkind = \"comment\"\nmatch = \"pair\"\nstart = \"--[[\"\nend = \"]]\"\n";
+    registry_add(_gp_parse(au_gb, strlen(au_gb)));
+    assert_eq(_t_chunked_same("zz_aub", "x = --[[ a\nb ]] y\n"), 1, "a line start that begins a pair's: 1-7 byte feeds equal one feed (line rules first)");
+    # Detection (reviewer D).
+    assert_eq(detect_language(0), 0, "detect_language(0): no route (it crashed through 2.9.11)");
+    assert_streq(detect_language_combined(0, "#!/bin/sh\necho\n", 15), "shell", "detect_language_combined with no path: the content decides");
+    assert_eq(detect_language_from_content(0, 5), 0, "detect_language_from_content(0, n): nothing");
+    var au_arm = ".global _start\n.section .text\n_start:\n    mov x0, #1\n    svc #0\n";
+    assert_streq(detect_language_combined("arm_hello.asm", au_arm, strlen(au_arm)), "asm_aarch64", "an AArch64 .asm with .global and .section: GNU as, not NASM");
+    var au_nasm = "section .text\nglobal _start\n_start:\n    mov rax, 60\n    syscall\n";
+    assert_streq(detect_language_combined("x.asm", au_nasm, strlen(au_nasm)), "nasm", "  ... NASM still NASM");
+    var au_af = _t_tokenize("```asm\nmov rax, 0xE9\nmov [rsi], rax  # writes eight bytes\n```\n", "markdown");
+    assert_eq(tb_error_count(au_af), 0, "markdown: an asm fence is one string again, as through 2.9.8");
+    assert_eq(_t_kind_at(au_af, 7), TK_STRING, "  ... its body");
+    var au_nf = _t_tokenize("```nasm\nmov rax, 1 ; c\n```\n", "markdown");
+    assert_eq(_t_kind_at(au_nf, 19), TK_COMMENT, "  ... a nasm fence is NASM: `; c` a comment");
+    # Single feed (reviewer A).
+    var au_li = _t_tokenize("- Install:\n\n  ```sh\n  make install\n\n- Next item\n\nParagraph text that is prose.\n", "markdown");
+    assert(_t_kind_at(au_li, 14) != TK_PUNCTUATION, "markdown: a list item's fence with no closer is no fence (2.9.10 – 2.9.11 ran it to the end)");
+    var au_m1 = _t_tokenize("import {Chart} from \"./chart.js\"\r\n\r\n# Hello, world!\r\n\r\nIt's a *test*.\r\n", "mdx");
+    assert(_t_kind_at(au_m1, 57) != TK_STRING, "mdx: a CRLF blank line ends an import block (the rest was javascript)");
+    var au_m2 = _t_tokenize("export const m = {a: 1}\n  \nIt's the intro.\n", "mdx");
+    assert(_t_kind_at(au_m2, 29) != TK_STRING, "mdx: so does a line of only blanks");
+    var au_js = _t_tokenize("url = url.replace(/^\\/*|\\/*$/g, \"\");\nlet x = 1;\n", "javascript");
+    assert_eq(_t_kind_at(au_js, 37), TK_KEYWORD, "javascript: a regex's \\/* opens no comment");
+    var au_cs = _t_tokenize("var p = @\"Path: \"\"C:\\dir\\\"\"\";\nvar q = 1;\n", "csharp");
+    assert_eq(_t_len_at(au_cs, 8), 20, "csharp: a verbatim string runs on past a doubled quote, raw");
+    assert_eq(_t_kind_at(au_cs, 30), TK_KEYWORD, "  ... and the next line is code");
+    var au_le = _t_tokenize("example : p := h.2.2\n", "lean");
+    assert_eq(_t_len_at(au_le, 17), 1, "lean: h.2.2 is two projections, not h . 2.2");
+    var au_rb = registry_find_by_name("ruby");
+    var au_rtb = tokenbuf_new();
+    tokenize_with_grammar(au_rb, "<<~E\nE\n", 7, au_rtb);
+    _tokenbuf_reset(au_rtb);
+    _ds_hd_hold_from = (0 - 1);
+    _ds_hd_hold_fast = 0;
+    tokenize_with_grammar(au_rb, "a\n\n\n\nb <<~Z", 11, au_rtb);
+    assert(_ds_hd_hold_fast != 1, "ruby: a delimiter cut by the buffer's end gets no terminator watch from an earlier parse");
+    _ds_hd_hold_from = (0 - 1);
+    # The pull adapter, discarding after every token (reviewer B: it moved the
+    # whole staging each time) — the tokens of one feed.
+    var au_pt = _t_rep("", "x = f(1, 'a') + y  # c\n", 400, "");
+    var au_ps = tokenize_stream_new("python");
+    tokenize_stream_feed(au_ps, au_pt, strlen(au_pt));
+    tokenize_stream_finish(au_ps, 0);
+    var au_got = tokenbuf_new();
+    while (tokenize_stream_next(au_ps) == 1) {
+        tokenbuf_push(au_got, tokenize_stream_kind(au_ps), tokenize_stream_start(au_ps), tokenize_stream_len(au_ps));
+        tokenize_stream_discard_consumed(au_ps);
+    }
+    tokenize_stream_free(au_ps);
+    assert_eq(_t_same_tokens(au_got, _t_tokenize(au_pt, "python")), 1, "pull adapter, a discard after every token: the tokens of one feed");
+    # Documents (reviewer C).
+    var au_ct = _t_rep("", "fn f(a: u32) -> u32 { a * 2 }\n", 1500, "");
+    var au_cn = strlen(au_ct);
+    var au_cb = alloc(au_cn + 4000);
+    memcpy(au_cb, au_ct, au_cn + 1);
+    var au_cd = tokenize_doc_new("rust");
+    tokenize_doc_set(au_cd, au_cb, au_cn);
+    var au_ck0 = load64(au_cd + 32);
+    var au_seed = 11;
+    var au_k = 0;
+    while (au_k < 2000) {
+        au_seed = (au_seed * 1103515245 + 12345) % 2147483648;
+        var au_at = au_seed % (au_cn + 1);
+        var au_m = au_cn;
+        while (au_m > au_at) {
+            store8(au_cb + au_m, load8(au_cb + au_m - 1));
+            au_m = au_m - 1;
+        }
+        store8(au_cb + au_at, 50);
+        au_cn = au_cn + 1;
+        store8(au_cb + au_cn, 0);
+        tokenize_doc_edit(au_cd, au_cb, au_cn, au_at, 0, 1);
+        au_k = au_k + 1;
+    }
+    assert(load64(au_cd + 32) <= au_ck0 * 2, "a document's checkpoints stay in step with its text over 2,000 inserts (they grew per edit)");
+    assert_eq(_t_same_tokens(tokenize_doc_tokens(au_cd), _t_tokenize(au_cb, "rust")), 1, "  ... and its tokens are one feed's");
+    tokenize_doc_free(au_cd);
+    var au_lbd = tokenize_doc_new("shell");
+    _tokenize_doc_interval(au_lbd, 1);
+    var au_lb0 = "echo a#b ${#x} c d e f g h i j k l m n o p q r s t u v w\n";
+    tokenize_doc_set(au_lbd, au_lb0, strlen(au_lb0));
+    assert_eq(_t_doc_edit(au_lbd, "shell", "echo a#b  ${#x} c d e f g h i j k l m n o p q r s t u v w\n", 8, 0, 1), 1, "shell, a checkpoint every byte: a restored stream's look-behind");
+    tokenize_doc_free(au_lbd);
+    var au_sw = 1;
+    var au_iv = 1;
+    while (au_iv <= 9) {
+        var au_swd = tokenize_doc_new("swift");
+        _tokenize_doc_interval(au_swd, au_iv);
+        tokenize_doc_set(au_swd, "x = a..0.5 + 1 + 2 + 3 + 4 + 5 + 6\n", 35);
+        if (_t_doc_edit(au_swd, "swift", "x = axx0.5 + 1 + 2 + 3 + 4 + 5 + 6\n", 5, 1, 1) == 0) { au_sw = 0; }
+        if (_t_doc_edit(au_swd, "swift", "x = ax.0.5 + 1 + 2 + 3 + 4 + 5 + 6\n", 6, 1, 1) == 0) { au_sw = 0; }
+        tokenize_doc_free(au_swd);
+        au_iv = au_iv + 1;
+    }
+    assert_eq(au_sw, 1, "swift `..0.5`, checkpoints every 1-9 bytes: the second look-behind byte");
+    var au_hb = _t_rep("cat <<EOF\n", "echo 'x' # y\n", 90000, "EOF\necho done\n");
+    var au_hd = tokenize_doc_new("shell");
+    tokenize_doc_set(au_hd, au_hb, strlen(au_hb));
+    assert_eq(_t_same_tokens(tokenize_doc_tokens(au_hd), _t_tokenize(au_hb, "shell")), 1, "a document whose heredoc passes its 1 MiB bound: the tokens of one feed");
+    tokenize_doc_free(au_hd);
+    # Null and freed documents return, as streams do (they crashed).
+    assert_eq(tokenize_doc_changed_first(0), 0, "tokenize_doc_changed_first(0): 0");
+    assert_eq(tokenize_doc_changed_new(0), 0, "  ... and _changed_new");
+    var au_fd = tokenize_doc_new("rust");
+    tokenize_doc_free(au_fd);
+    assert_eq(tokenize_doc_set(au_fd, "x", 1), VYK_ERR_OVERFLOW, "a freed document: set refuses");
+    assert_eq(tokenize_doc_edit(au_fd, "xy", 2, 1, 0, 1), VYK_ERR_OVERFLOW, "  ... and edit");
 
     return assert_summary();
 }

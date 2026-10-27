@@ -100,7 +100,11 @@ Graceful degradation:
   coverage invariant still holds. *(Amended 2.9.10: the body now runs
   to the end of the input with its inner grammar, as CommonMark reads
   it — or as one string, untagged — so a stream can commit it before
-  the input ends; ADR 0032.)*
+  the input ends; ADR 0032.)* *(Amended 2.9.12: reverted — the outer
+  grammar's bytes again, ADR 0032 point 1 says why. Also: a tag resolves
+  through no extension the content decides between grammars — `asm`,
+  since `.asm` is GNU as or NASM by content — so an `asm` fence is one
+  string, as through 2.9.8.)*
 
 CYML rule shape:
 

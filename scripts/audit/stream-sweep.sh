@@ -13,8 +13,9 @@
 #   - generated stress inputs under `cutfirst` with a time limit of
 #     SECS (default 10) each: 512 KB tokens in 64-byte chunks, compose
 #     blocks in 4 KB chunks, a 1 MiB one-line heredoc body in 512-byte
-#     chunks, 20,000 unterminated heredoc openers, and five inputs that
-#     defeated 2.9.0's watches (2.9.1 audit). Each was quadratic (3 s to
+#     chunks, 20,000 unterminated heredoc openers, five inputs that
+#     defeated 2.9.0's watches (2.9.1 audit) and four that were quadratic
+#     on 2.9.11 (2.9.12 audit). Each was quadratic (3 s to
 #     over 300 s) before its fix and takes well under a second after,
 #     so a timeout here is a regression.
 # With FILEs or DIRs (real files; the grammar is detected as vyk
@@ -103,11 +104,20 @@ if [ $# -eq 0 ]; then
     gen heredoc_quote.sh 'printf "cat <<EOF \"\nEOF\n"; for (i = 0; i < 30000; i++) printf "say \\\"hi\\\"\n"; printf "\"\necho end\n"'
     gen blank_run.sh 'k = rep(" ", 63); printf "x=1"; for (i = 0; i < 16384; i++) printf "%s\n", k; printf "echo end\n"'
     gen string_line.zig 'k = rep("abcdefgh", 8); printf "const s =\n    \\\\"; for (i = 0; i < 16384; i++) printf "%s", k; printf "\n;\n"'
+    # 2.9.12 audit: quadratic on 2.9.11 at 64-byte chunks — a string ending
+    # in a run of `\` (28 s), a shebang line with no line break (10 s), a
+    # number of `_1` separators that each feed ends inside (20 s); and a
+    # heredoc delimiter whose index bucket a crowd of lines shares (29 s).
+    gen escape_run.py 'k = rep("\\", 1024); printf "x = \""; for (i = 0; i < 1024; i++) printf "%s", k; printf "\n"'
+    gen shebang_long.sh 'k = rep("a", 1024); printf "#!"; for (i = 0; i < 1024; i++) printf "%s", k; printf "\n"'
+    gen sep_number.rs 'printf "x = 1"; for (i = 0; i < 262144; i++) printf "_1"; printf ";\n"'
+    gen hd_collide.php 'printf "<?php\n"; for (i = 0; i < 40000; i++) printf "$a = <<<BAK\n"'
     for f in long_comment.py long_ident.py long_ws.py long_number.py long_fstr.py long_fstr3.py \
-        heredoc_rewritten.sh fence_nearmiss.md heredoc_quote.sh blank_run.sh string_line.zig; do
+        heredoc_rewritten.sh fence_nearmiss.md heredoc_quote.sh blank_run.sh string_line.zig \
+        escape_run.py shebang_long.sh sep_number.rs; do
         check "$SECS" auto "$T/$f" cutfirst 64 64
     done
-    for f in long_fence.md long_style.html open_style.html long_region.cyml heredoc_openers.sh; do
+    for f in long_fence.md long_style.html open_style.html long_region.cyml heredoc_openers.sh hd_collide.php; do
         check "$SECS" auto "$T/$f" cutfirst 4096 4096
     done
     check "$SECS" auto "$T/heredoc_1m.sh" cutfirst 512 512
@@ -131,4 +141,7 @@ else
 fi
 
 echo "stream-sweep: runs=$runs fails=$bad"
+# Checked nothing — every file without a grammar — is no pass (2.9.12
+# audit, reviewer D: each of these exited 0 then).
+[ "$runs" -gt 0 ] || { echo "stream-sweep: nothing was run" >&2; exit 2; }
 [ "$bad" -eq 0 ]

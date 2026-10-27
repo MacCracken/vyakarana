@@ -14,9 +14,10 @@ from this file.
   already found and reproduced — by an audit, a real-file sweep, a
   consumer — not by guesses at future demand. The closeout audits ([2.5.x](../audit/2026-10-20-2.5.x-closeout-audit.md),
   [2.6.x](../audit/2026-10-20-2.6.x-closeout-audit.md),
-  [2.9.x](../audit/2026-10-21-2.9.x-closeout-audit.md)) are the main
+  [2.9.x](../audit/2026-10-21-2.9.x-closeout-audit.md),
+  [2.9.12](../audit/2026-10-27-2.9.12-closeout-audit.md)) are the main
   source.
-- **Versioning.** The 2.9.x arc ships the former backlog as patches, as
+- **Versioning.** The 2.9.x arc shipped the former backlog as patches, as
   2.5.2, 2.6.2 and 2.7.1 shipped token-boundary changes: each entry's
   CHANGELOG lists what tokens change, and new public API still needs
   an ADR. Outside an arc: a minor when token boundaries change for some
@@ -34,20 +35,15 @@ from this file.
 
 ---
 
-## The 2.9.x arc
+## Scheduled
 
-The backlog, scheduled (decided 2026-10-21). Smallest and most
-data-only first; the two API additions last, as they reopen the most;
-a closeout audit at the end. Each entry ships only when the gates are
-green and, where it adds a gate, that gate is shown to fail on the
-release before.
-
-### 2.9.12 — Closeout audit *(patch)*
-
-- The CLAUDE.md hardening step over the arc, with the sweeps from
-  `scripts/audit/` over the whole library (their README holds 2.9.1's
-  clean numbers) and independent reviewers per area, as the 2.9.x
-  audit did.
+Nothing. The 2.9.x arc (2.9.1 – 2.9.12) is complete: what it shipped is
+in [`CHANGELOG.md`](../../CHANGELOG.md), and its closing audit in
+[`docs/audit/2026-10-27-2.9.12-closeout-audit.md`](../audit/2026-10-27-2.9.12-closeout-audit.md).
+The known limits a next release could take on are listed in
+[`state.md`](./state.md) (Known limits). An entry goes here when the user
+schedules one, and each ships only when the gates are green and, where it
+adds a gate, that gate is shown to fail on the release before.
 
 ---
 
@@ -67,7 +63,8 @@ release before.
 |---|---|
 | A grammar needs a distinction the ten kinds cannot express | Defer adding a kind; check whether a theme can distinguish by token text first |
 | Consumers want parsing, not tokens | Point them at a parser library; vyakarana stops at tokens |
-| Streaming complexity keeps concentrating in the drain (holds, watches, groups, the marker window) | Every drain decision reads scanner-reported state (ADR 0028); every drain change is gated by the every-offset split over all 49 corpora |
-| Gates that pass on inputs too narrow to fail — the recurring theme of the 2.3.4, 2.5.2, 2.6.x and 2.9.x audits | Every new gate is shown to fail against the previous release before it ships |
-| The arc adds public API in patches (2.9.8, 2.9.11) | Additive only, each behind an ADR; a contract break is 3.0.0, not a 2.9.x |
-| Resumable regions and incremental retokenization reopen the streaming engine the 2.9.x audit just closed | Last in the arc; each brings its own invariance gate, and the closeout audit follows directly |
+| Streaming complexity keeps concentrating in the drain (holds, watches, groups, the marker window) | Every drain decision reads scanner-reported state (ADR 0028); every drain change is gated by the every-offset split over all 52 corpora |
+| Gates that pass on inputs too narrow to fail — the recurring theme of the 2.3.4, 2.5.2, 2.6.x, 2.9.x and 2.9.12 audits | Every new gate is shown to fail against the previous release before it ships, and against deliberately broken code |
+| A change that reads a construct further than before — to the end of the input — swallows real documents without an error token (2.9.10's fences, the 2.9.12 audit) | `scripts/audit/ab-sweep.sh` over real files before it ships, read by largest token, not only by error count |
+| Public API added in patches (2.9.8, 2.9.11) | Additive only, each behind an ADR; a contract break is 3.0.0 |
+| A per-token cost added for one grammar's feature slows every scan of that grammar (2.9.5's inline rules, found six releases later) | `scripts/bench-paired.sh` against the arc's first tag, not only the last |

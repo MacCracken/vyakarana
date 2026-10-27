@@ -8,14 +8,14 @@
 > 2.6.2 it carried a "What X changed" block for every release back to
 > 1.13.0 — trimmed in 2.7.0; the CHANGELOG has all of it.)
 >
-> **Last refresh:** 2026-10-27, at 2.9.11. Read this first, then run the
+> **Last refresh:** 2026-10-27, at 2.9.12. Read this first, then run the
 > gates (CLAUDE.md §Gates) — do not take the "green" below on trust.
 
 ---
 
 ## Current status
 
-- **Version:** `2.9.11` — `VERSION`, `src/version_str.cyr`,
+- **Version:** `2.9.12` — `VERSION`, `src/version_str.cyr`,
   `dist/vyakarana.cyr`, the CHANGELOG header and `docs/man/vyk.1`
   agree.
 - **Toolchain pin:** `cyrius = "6.7.18"` in `cyrius.cyml`, the single
@@ -41,27 +41,29 @@
   of four stdlib leaves (alloc, string, vec, io). The embedded grammars
   are compacted — comments and blanks outside strings dropped — by a
   POSIX sh + awk generator (ADR 0029); `grammars/` is the readable copy.
-- **Size:** the shipped (`CYRIUS_DCE=1`) `vyk` is 305,592 bytes, the
-  default build 403,896. `scripts/check-size.sh` reports the shipped
+- **Size:** the shipped (`CYRIUS_DCE=1`) `vyk` is 317,928 bytes, the
+  default build 416,232. `scripts/check-size.sh` reports the shipped
   build's size in CI and at release; since 2.9.8 there is no hard limit
   (ADR 0029, amended).
-- **Next release:** 2.9.12, the closeout audit that ends the 2.9.x arc
-  ([roadmap](./roadmap.md)). The last audit's report:
-  [2.9.x](../audit/2026-10-21-2.9.x-closeout-audit.md).
+- **Next release:** none scheduled — 2.9.12's closeout audit ended the
+  2.9.x arc ([roadmap](./roadmap.md)). Its report:
+  [2.9.12](../audit/2026-10-27-2.9.12-closeout-audit.md).
 
-## Gates (green at 2.9.11, 2026-10-27)
+## Gates (green at 2.9.12, 2026-10-27)
 
-- `cyrius build` OK, 0 warnings · `cyrius test` **1462/1462** · smoke
+- `cyrius build` OK, 0 warnings · `cyrius test` **1495/1495** · smoke
   OK (it runs `scripts/check-detect.sh`) · `scripts/lint-fmt.sh`
   exit 0 (a lint warning fails it; covers `src/` and
   `scripts/audit/`) · `scripts/check-size.sh` reports · `cyrius fuzz`
-  **6/6** (87 every-offset shapes; `fuzz/retokenize.fcyr` edits every
-  offset of every corpus, about a minute), also clean under `--poison=ab` and
+  **6/6** (92 every-offset shapes; `fuzz/retokenize.fcyr` edits every
+  offset of every corpus and 16 short texts at every checkpoint spacing
+  1–12, 319,986 edits, about a minute), also clean under `--poison=ab` and
   `--bounds` · `cyrius distlib --check` clean.
 - The audit sweeps are in `scripts/audit/` — real-file coverage,
-  poison A/B, streaming invariance, mutation fuzz over vidya, and
-  whole-file edits (`edit-sweep.sh`, 2.9.11) — with
-  2.9.1's clean numbers in its README. Not gates (minutes, real files);
+  poison A/B, streaming invariance, mutation fuzz over vidya, whole-file
+  edits (`edit-sweep.sh`, 2.9.11) and a two-binary single-feed A/B
+  (`ab-sweep.sh`, 2.9.12) — with the 2.9.12 audit's clean numbers in its
+  README. Not gates (minutes, real files);
   CI builds the harness and syntax-checks the scripts. A sweep over
   nothing, or a missing path, exits 2.
 
@@ -82,9 +84,10 @@
 - **Grammar format:** CYML. Rule types line (with `start_after`,
   ADR 0022), pair, words, compose, compose_fenced (with `end_indent`,
   and tags resolved by name, extension or interpreter — ADR 0016),
-  compose_region (`end_before` optional: run to EOF, ADR 0019) — a
-  compose or compose_fenced body with no end marker runs to EOF too
-  (ADR 0032),
+  compose_region (`end_before` or, since 2.9.12, `end_blank` — a blank
+  line — optional: run to EOF; `start_after` / `start_inner`, 2.9.9;
+  ADR 0019) — a compose body with no end marker runs to EOF too (ADR
+  0032; a fence's does not since 2.9.12),
   heredoc (ADR 0023; since ADR 0030 also an inline body for raw
   literals — a closer computed from a `repeat` run or a `tag` — and the
   line options `indent_by`, `indent_always`, `term_rest`, `delim`,
@@ -105,21 +108,25 @@
 - **Coverage:** tokens tile the input exactly, for every grammar and
   every input.
 - **Chunk invariance:** streaming output equals a single feed at every
-  split offset for all 49 corpus inputs — the compose grammars
+  split offset for all 52 corpus inputs — the compose grammars
   (markdown, html, vue, svelte, cyml) included since 2.8.0 — gated by
   `fuzz/chunk_invariance.fcyr` (8 chunk sizes, two-feed splits every
-  37 bytes; 87 shapes at every split offset and in 1-, 2- and 3-byte
+  37 bytes; 92 shapes at every split offset and in 1-, 2- and 3-byte
   feeds). The drain commits only what the
   scanner reports settled: heredoc and compose holds, groups that
   commit whole, the marker window, watches that wait on new bytes
-  (ADR 0028). A compose region still open at the buffer's end, with an
-  inner grammar, is read as that grammar's own stream (ADR 0032).
+  (ADR 0028). A `compose` or `compose_region` body still open at the
+  buffer's end, with an inner grammar, is read as that grammar's own
+  stream (ADR 0032); a fence is held until its closer arrives (since
+  2.9.12, a fence with no closer is no fence).
 - **Incremental retokenization:** a document's tokens after
   `tokenize_doc_edit` equal tokenizing the edited text from scratch
   (ADR 0033), gated by `fuzz/retokenize.fcyr`. An edit restarts at the
   last checkpoint (every `VYK_DOC_INTERVAL`, 4096 bytes) before it and
   stops at the first checkpoint past it whose stream state matches; the
-  caller's description of the edit is trusted beyond its lengths.
+  caller's description of the edit is trusted beyond its lengths. A text
+  whose stream passes a hold's bound is tokenized in one feed (2.9.12),
+  so the contract holds up to `VYK_STREAM_CAP`.
 - **Streaming bounds:** `VYK_STREAM_CAP` 16 MiB live buffer;
   `VYK_COMPOSE_HOLD_MAX` 8 MiB for a held compose opener — a body that
   is one token (an untagged fence, an inner grammar not loaded), a
@@ -135,45 +142,60 @@
   ending (`ci/app.Dockerfile`) or `name.` + a suffix that starts with a
   letter and is not a compression, patch or tool suffix
   (`Makefile.in`, not `Dockerfile.5.gz`). The content sniff is a shebang,
-  `<?xml`, `<!DOCTYPE html>`, and the `.s` / `.S` asm vote (ADR 0015).
+  `<?xml`, `<!DOCTYPE html>`, the `.s` / `.S` asm flavour vote, and the
+  `.asm` GNU as / NASM vote by line-start directives (ADR 0015, amended
+  2.9.12).
 
 ## Known limits (coverage holds)
 
-Each names the 2.9.x arc release that takes it on ([roadmap](./roadmap.md)).
+None is scheduled: the 2.9.x arc is closed ([roadmap](./roadmap.md)).
 
 - **Numbers** (ADR 0026): hex floats, CSS units (`10px` is number +
   ident), C++ user-defined literals (`10ms`) and PowerShell multipliers
   (`10kb`) split; so does a trailing dot before another `.`
-  (`1..__add__`). Not scheduled.
+  (`1..__add__`). Shapes that differ from the reference lexers on odd or
+  invalid code (2.9.12 audit): Rust `1.e5` / `1.f32` one number (rustc
+  rejects both), Python `1..real` and JS `1..toString()` as `1` `.` `.`,
+  JS `a?.5:1` as `?.` `5`.
 - **String prefixes** are declared per grammar, identifier- or
   symbol-shaped (ADR 0027): Julia string macros other than Base's `raw`
-  / `r` / `b` / `v` are not declared (prefix + string); a C# verbatim
-  string's doubled quote splits it into adjacent strings, as SQL's `''`
-  does; C# 11 raw strings (`"""…"""`) are not declared.
+  / `r` / `b` / `v` are not declared (prefix + string); C# 11 raw strings
+  (`"""…"""`) are not declared. (A C# verbatim string's doubled quote is
+  inside it since 2.9.12; SQL's `''` still splits a string in two.)
 - **The 2.9.9 grammars** (overview.md's table): an MDX expression ends at
-  its first `}` (`{ {a: 1} }`), an unmatched `{` runs as JavaScript to
-  the end (ADR 0032), and JSX tags are markdown tokens; NASM's
-  letter-led hex `0FFh` is number + identifier; Lean's Unicode operators
-  are identifiers. Not scheduled.
+  its first `}` (`{ {a: 1} }`, or a `}` inside a template literal in
+  it — the backtick after then opens a code span), an unmatched `{` runs
+  as JavaScript to the end (ADR 0032), and JSX tags are markdown tokens;
+  NASM's `h`-suffixed hex splits at its first letter digit (`0Dh` is
+  `0` + `Dh`, `0B800h` `0B` + `800h`: a digit-led run settles only at its
+  `h`, more lookahead than a stream keeps); Lean's Unicode operators are
+  identifiers.
 - **Raw literals and heredocs, what is not read** (ADR 0030): Swift's
   `\#"` escape inside `#"…"#` (`#"\#"#"#` closes at the first `"#`);
   Ruby `<<~` indentation removal and heredoc interpolation (the body is
-  one string, ADR 0003); Perl and Crystal heredocs. Not scheduled.
+  one string, ADR 0003); Perl and Crystal heredocs.
 - **Nested block comments** close at the first `*/` (rust, swift),
   `-}` (haskell), `-/` (lean), `*)` (ocaml) or `=#` (julia): a pair rule does not
-  count depth, so the rest of the outer comment tokenizes as code. Not
-  scheduled.
+  count depth, so the rest of the outer comment tokenizes as code.
 - **Markdown fences:** `~~~` and four-or-more-backtick fences and
   indented code blocks are not recognised (ADR 0016); a closer may be
   indented by any run of spaces, tabs and `>`, so a column-0 fence whose
-  body holds an indented ```` ``` ```` line closes there.
+  body holds an indented ```` ``` ```` line closes there. An opener counts
+  mid-line too, and the scanner sees no containers, so a fence's pairing
+  can differ from CommonMark's — which is why a fence with no closer is
+  no fence (ADR 0032, amended 2.9.12). Fence tags resolve by name,
+  extension or interpreter; aliases such as `c++`, `tsx`, `jsx`, `jsonc`,
+  `shellscript`, `golang` and `make` do not, and `asm` resolves to nothing
+  (its extension's grammar is the content's to decide).
 - **Streaming inside compose regions** goes one level deep (ADR 0032):
-  a region open inside a streamed body (a fence still open in a cyml
-  body), an untagged fence and a region whose inner grammar is not
-  loaded are held whole until they close. Not scheduled.
+  a region open inside a streamed body, a fence (any), and a region whose
+  inner grammar is not loaded are held whole until they close.
+- **The heredoc line index** (ADR 0028) uses an unkeyed hash: distinct
+  keys crafted to collide modulo its bucket count make building it
+  quadratic (natural collisions with a crowded key no longer do, 2.9.12).
 - **Edits** (ADR 0033): moving the tokens after an edit is linear in
   their number (an insert at the start of a 937 KB C file, 4.9 ms), and
-  the edited text must be passed contiguous. Not scheduled.
+  the edited text must be passed contiguous.
 - **Out of scope:** Python INDENT / DEDENT and anything structural —
   vyakarana yields spans.
 

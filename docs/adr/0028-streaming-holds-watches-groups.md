@@ -73,6 +73,17 @@ Keep rescan-and-commit, and change who knows what:
    understands string prefixes (and raw prefixes' lack of escapes). A
    watch only ever delays a scan that would have committed nothing — a
    hold is always safe — so none can change a token.
+   *(Amended 2.9.12: three more quadratic cases on chunked input, and
+   one per pull — a pending string ending in a run of escape bytes
+   re-scanned the run each drain (`x = "` + 1 MB of `\`, 64-byte chunks,
+   31 s); a long shebang line got no run watch (11 s); a number of `_1`
+   separators each feed ended inside left two tokens and no watch (23 s);
+   and `tokenize_stream_discard_consumed` moved the whole staging each
+   call. Fixed: the pending search resumes where it stopped, always on
+   an escape pair's boundary; a shebang line is watched like a line
+   rule; a number followed by a lone separator is watched; the discard
+   moves the staging only once the dropped tokens are half of it. All
+   under 0.05 s (the 2.9.12 audit, reviewer B).)*
    *(Amended 2.9.1. The audit's streaming reviewer confirmed that half
    structurally — every watch returns having committed nothing, or
    clears itself and falls through to a full scan — and found the

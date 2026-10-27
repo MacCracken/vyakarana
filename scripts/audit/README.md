@@ -17,13 +17,14 @@ script. A missing argument, or nothing to check, exits 2 — through
 1 when it finds a failure. All of them run under dash, mawk and
 busybox as well as bash and gawk.
 
-| Script | Checks | Input | Clean at 2.9.1 |
+| Script | Checks | Input | Clean at 2.9.12 (2.9.1 in the 2.9.x audit) |
 |---|---|---|---|
-| `coverage-sweep.sh` | `vyk FILE` over real files: every NDJSON line a token of a known kind, tokens tiling the file (the coverage invariant), exit 1 if and only if an error token, no crash, no timeout; files over the CLI's 1 MiB cap are counted, not failed (`stream-sweep.sh` takes them through the library) | real files | 4,500 files (2.6.x list): 0 fails; 5,166 sampled per grammar (2.9.x list): 0 fails, 4 over the cap |
-| `poison-ab.sh` | two `CYRIUS_POISON` builds (fill 0xA5 / 0x5A) print the same bytes and exit for every file — no output depends on unwritten memory; exit 86 is a redzone overwrite | real files | 5,166 files, 0 diffs, 0 overwrites |
-| `stream-sweep.sh` | chunked feeds equal one feed (ADR 0017 / 0028). No FILE: the every-offset split over all 49 corpora, the heredoc shapes under every offset and every pair of offsets, and seventeen generated stress inputs under a time limit. With FILEs: `chunks`, `rand` and `cutfirst` per file | corpora + `shapes/`, or real files | fixed set 164 runs, 0 fails, about 6 m; 2,384 real files 6,702 runs, 0 fails |
-| `edit-sweep.sh` | incremental retokenization (ADR 0033): at every offset of a whole file, an edit — a marker inserted, bytes deleted or replaced — through a `tokenize_doc` document, held to one feed of the edited text, and its undo to the original's. No FILE: every corpus at every offset, at the default checkpoint spacing and at 48 bytes. With FILEs: every 97th offset (`-s`) | corpora, or real files | added 2.9.11: 104 corpus runs (529,156 edits), 0 fails; 1,243 real files of 64 KB or less at `-s 97`, 0 fails |
-| `mutate-fuzz.sh` | mutants of real code (bytes overwritten; quote, comment, heredoc and compose markers inserted; ranges deleted or duplicated) tile their bytes and match one feed under random chunking | vidya's `content/` by default | 976 files, 97,600 mutants (`-i 100`), 0 fails (vidya `f753c5a`) |
+| `coverage-sweep.sh` | `vyk FILE` over real files: every NDJSON line a token of a known kind, tokens tiling the file (the coverage invariant), exit 1 if and only if an error token, no crash, no timeout; files over the CLI's 1 MiB cap are counted, not failed (`stream-sweep.sh` takes them through the library) | real files | 13,619 files (the 2.9.12 audit's lists): 0 fails, 28 with error tokens, each invalid input or a documented limit |
+| `poison-ab.sh` | two `CYRIUS_POISON` builds (fill 0xA5 / 0x5A) print the same bytes and exit for every file — no output depends on unwritten memory; exit 86 is a redzone overwrite | real files | 5,630 files: 0 diffs, 0 overwrites, 0 crashes |
+| `stream-sweep.sh` | chunked feeds equal one feed (ADR 0017 / 0028). No FILE: the every-offset split over all 52 corpora, the heredoc shapes under every offset and every pair of offsets, and twenty-one generated stress inputs under a time limit. With FILEs: `chunks`, `rand` and `cutfirst` per file | corpora + `shapes/`, or real files | fixed set 171 runs, 0 fails; 2,385 real files 7,155 runs, 0 fails |
+| `ab-sweep.sh` | single-feed output of two `vyk` binaries over the same files: each file whose output or exit differs, with both error-token counts and both largest tokens (a regression with no error token shows in the largest token — 2.9.12 audit, G-A1). Informational: exits 1 only when a binary crashes or times out | real files | 2.9.11 → 2.9.12 over 13,619 files: 68 differ, each traced in the 2.9.12 audit |
+| `edit-sweep.sh` | incremental retokenization (ADR 0033): at every offset of a whole file, an edit — a marker inserted, bytes deleted or replaced — through a `tokenize_doc` document, held to one feed of the edited text, and its undo to the original's. No FILE: every corpus at every offset, at the default checkpoint spacing and at 48 bytes. With FILEs: every 97th offset (`-s`) | corpora, or real files | corpora: 104 runs (529,156 edits), 0 fails; 5,454 real files at `-s 151`, 0 fails |
+| `mutate-fuzz.sh` | mutants of real code (bytes overwritten; quote, comment, heredoc and compose markers inserted; ranges deleted or duplicated) tile their bytes and match one feed under random chunking | vidya's `content/` by default | 976 files, 97,600 mutants (`-i 100`), 0 fails (vidya `9f13e35`) |
 
 `scripts/bench-paired.sh` (one level up) is the latency protocol —
 `performance.md` explains it.
@@ -48,13 +49,26 @@ rewritten heredoc delimiter, a fence of mid-line "```", a heredoc line
 held open by `\"`, a blank run in shell, a Zig `\\` string line — each
 time out at 10 s; 2.9.1 takes well under one.
 
+Against 2.9.11 (2.9.12 audit): the four stress inputs added then — a
+string ending in 1 MB of `\`, a 1 MB shebang line, a number of `_1`
+separators, 40,000 colliding heredoc delimiters — took 10–29 s each, over
+the 10 s limit; 2.9.12 takes 0.01–0.65 s. `edit-sweep.sh` and
+`fuzz/retokenize.fcyr` fail on six of nine broken resyncs (ADR 0033),
+and the fuzz's short-text pass on the two look-behind mutants the corpus
+passes missed.
+
 `coverage-sweep.sh` was checked against stub binaries (a gap, an
 unknown kind, exit 1 without an error token, a crash, a hang): each is
-a FAIL line.
+a FAIL line. Since 2.9.12 every sweep exits 2 on a list where no file
+has a grammar, and `poison-ab.sh` fails a crash in either leg.
 
 ## Inputs
 
-- **Real files.** The numbers above use two lists: the 2.6.x audit's
+- **Real files.** The 2.9.12 numbers use a fresh per-grammar sample
+  (up to 250 files per grammar from `~/Repos`, `/usr`, `/etc`, by each
+  grammar's declared routes: 5,552 files), 2.9.4's 7,527-file sample, the
+  5,000 compose-grammar files of 2.9.10 and 2.9.9's 78 downloaded MDX and
+  Lean files — 13,619 unique. The 2.9.1 numbers used two lists: the 2.6.x audit's
   4,500 files, almost all from the AGNOS repositories, a few dozen
   from `/usr/share`, `/usr/lib` and `/usr/include`; and the 2.9.x
   audit's 5,166, up to 250 per grammar from `~/Repos`, `/usr` and

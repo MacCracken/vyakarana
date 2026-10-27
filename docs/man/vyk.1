@@ -8,7 +8,7 @@
 .\" file, which is how the .TH line sat at 1.13.1 across the whole
 .\" 2.x line.  Smoke probes `--help` output, never this page.
 .\"
-.TH VYK 1 "2026-10-27" "vyakarana 2.9.11" "User Commands"
+.TH VYK 1 "2026-10-27" "vyakarana 2.9.12" "User Commands"
 .SH NAME
 vyk \- source-code tokenizer (vyakarana demo CLI)
 .SH SYNOPSIS
@@ -39,9 +39,10 @@ then a content sniff (a shebang, or a signature such as
 .B <?xml
 or
 .B <!DOCTYPE html>
-after any UTF-8 BOM), and an asm
-flavour vote for
-.IR .s / .S .
+after any UTF-8 BOM), and two asm votes: GNU as x86-64 or AArch64 for
+.IR .s / .S ,
+and GNU as or NASM for
+.IR .asm .
 Override with
 .B \-\-language=<name>\fR.
 .PP

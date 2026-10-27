@@ -134,4 +134,8 @@ path, with escapes off. Opted in: csharp — `$"…"` plain, `@"…"`,
 `$@"…"`, `@$"…"` raw (a verbatim `@"C:\"` ends at its quote). A doubled
 quote inside a verbatim string (`@"a""b"`) comes back as adjacent string
 tokens, as SQL's `''` does; C# 11 raw strings (`"""…"""`) are not
-declared.
+declared. *(Amended 2.9.12: the second token was an ordinary string,
+escapes on, so `@"""C:\dir\"""` ran on to the end — "all string" did not
+hold (the 2.9.12 audit, reviewer A). A raw symbol-prefixed string now
+goes on past each doubled quote, raw, as C# reads it; a stream holds one
+whose close is its buffer's last byte for the next byte.)*

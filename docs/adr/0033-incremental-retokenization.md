@@ -1,6 +1,6 @@
 # 0033 — Incremental retokenization: documents that restart their stream
 
-- **Status:** Accepted
+- **Status:** Accepted (amended 2.9.12: checkpoint thinning, the hold-bound fallback)
 - **Date:** 2026-10-27
 - **Deciders:** 2.9.11 edit-API work (proposed) / user (accepted via the
   2.9.11 roadmap entry)
@@ -50,7 +50,14 @@ on.
    bytes a checkpoint, about 6 % of the text. A state that keeps a
    string in the stream's copy buffer (a rewritten heredoc delimiter,
    an unterminated inline literal's closer) is not saved; a missing
-   checkpoint only means restarting further back.
+   checkpoint only means restarting further back. *(Amended 2.9.12: an
+   edit saved one at each drain, including the drain a few bytes before
+   the next old checkpoint moved by an insert, and nothing thinned them:
+   25,000 inserts into a 161 KB file took 40 checkpoints to 23,063 and
+   an edit from 0.9 ms to 2.4 ms (the 2.9.12 audit, reviewer C). An edit
+   now drains at the next moved old checkpoint when it lies within half
+   an interval past the grid point, and saves none within half an
+   interval of the last: 40 stay 40.)*
 3. **Restart.** An edit restores the last checkpoint fed no further
    than the edit's start. That stream had seen only bytes the edit left
    alone, so what it had committed is final in the edited text too, and
@@ -69,7 +76,17 @@ on.
    covers every field a drain reads: the look-behind always; the
    pending pair, the watch, the run watch and the region only while
    each is on; a region's committed-body count only as zero or not.
-5. **Why the result is a single feed's.** By construction an edit's
+5. **Past a hold's bound.** *(Added 2.9.12.)* A stream fed in chunks
+   gives up a compose or heredoc hold at its bound (`VYK_*_HOLD_MAX`,
+   ADR 0028) and commits those bytes as the drain read them; one feed
+   does not. A stream's caller can feed at once, a document's cannot —
+   it always streams. So a stream records when a hold passed its bound
+   (record +280), and a set or edit that saw one tokenizes the text in
+   one feed instead, keeping only the first checkpoint. Through 2.9.11 a
+   1.17 MB heredoc gave 540,011 tokens against one feed's 11 (reviewer C).
+   One feed holds `VYK_STREAM_CAP` (16 MiB) at most; past that, the
+   streamed tokens stand.
+6. **Why the result is a single feed's.** By construction an edit's
    tokens are those the restored stream gives for the edited text fed
    in those chunks — the old tokens it keeps are what the same stream
    would have produced from an equal state — and a stream fed in chunks
@@ -84,7 +101,9 @@ on.
   edit on average (1.4 ms at most); a 774 KB markdown file, 99 ms and
   0.78 ms; a 937 KB C file (610,187 tokens), 226 ms and 1.6 ms (2.5 ms at
   most). An edit whose effect runs far re-scans as far as it runs. A
-  document's memory does not grow with the edits made to it.
+  document's memory does not grow with the edits made to it. *(Amended
+  2.9.12: that was measured with edits and their undos; inserts that
+  were never undone grew the checkpoints until the thinning in point 2.)*
 - Gated. `fuzz/retokenize.fcyr` edits every offset of every corpus, in
   1 KB windows each a document of its own with checkpoints every 48
   bytes, and every 61st offset of each whole file at 4096 and at 48 —
@@ -99,6 +118,13 @@ on.
   the pending-pair or the watch comparison fails nothing. Those fields
   never change a token (ADR 0028, point 4); they are compared so that
   resynchronisation rests on plain state equality, not on that claim.
+  *(Amended 2.9.12: reviewer C found two more holes — restoring the
+  look-behind and comparing its second byte were checked by nothing — and
+  the fuzz checked the changed range only for soundness. The fuzz now
+  also edits 16 short texts that lean on the bytes before a token at
+  every checkpoint spacing from 1 to 12, on fresh and chained documents,
+  and holds every edit's and undo's changed range to its exact minimum;
+  unit tests pin both look-behind bytes. 319,986 edits.)*
 
 ### Negative
 

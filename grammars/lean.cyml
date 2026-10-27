@@ -46,6 +46,9 @@ number_0x      = true
 number_0b      = true
 number_0o      = true
 number_float   = true      # `1.5`, `1e10` (ADR 0026)
+# `h.2.2` is two projections, not `h . 2.2` (2.9.12 audit, reviewer A;
+# Mathlib writes them everywhere).
+number_tuple_index = true
 
 special_vars = false
 char_literal = true

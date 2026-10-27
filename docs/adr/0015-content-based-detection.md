@@ -181,4 +181,13 @@ by default — and then the asm flavour vote above picks x86-64 or
 AArch64. All 81 `.asm` files on the dev host (ring's pregenerated
 NASM, aom's) stay nasm. `_detect_gas_or_nasm` is a content sniff, like
 `_detect_asm_flavor`, so `scripts/check-detect.sh` lets it return a
-name.
+name. *(Amended 2.9.12: NASM's `section .` was searched anywhere, so GNU
+as's own `.section .text` scored it, and `.global` counted for nothing —
+503 of one machine's 1,417 GNU as files voted NASM as `.asm` (the 2.9.12
+audit, reviewer D). The vote now counts line starts: a `.directive` line
+(not a `.label:`) for GNU as against NASM's `section`, `segment`,
+`global`, `extern`, `bits`, `default`, `align` and `%` lines, beside the
+strong substrings. 66 of the 1,417 still vote NASM, files with nothing
+decisive in them; all 83 NASM `.asm` files stay nasm. And
+`check-detect.sh` now lets each sniff return only the grammars it
+decides between.)*

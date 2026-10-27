@@ -1,6 +1,6 @@
 # 0032 — Unclosed compose bodies run to the end; open regions stream
 
-- **Status:** Accepted
+- **Status:** Accepted — fences excluded since 2.9.12 (point 1, amended)
 - **Date:** 2026-10-27
 - **Deciders:** 2.9.10 streaming work (proposed) / user (accepted via
   the 2.9.10 roadmap entry)
@@ -39,6 +39,23 @@ after its `---` until finish. Two things kept it that way:
    (ADR 0019); an untagged or unknown fence's body is still one string.
    The opener's meaning no longer depends on input that has not
    arrived, which is what makes point 2 possible.
+   *(Amended 2.9.12: not for `compose_fenced`. A fence with no closer is
+   no fence again, as through 2.9.9, and is held for a closer that may
+   still arrive. CommonMark does run an unclosed fence to the end, but
+   only one CommonMark itself opens; vyakarana opens fences CommonMark
+   does not — a mid-line "```", a list item's or a blockquote's fence it
+   cannot see the end of, a pairing an inline code span crossing blocks
+   has shifted. 52 of one machine's 5,768 markdown files had a fence
+   2.9.11 ran to the end where CommonMark (micromark) closes it, with no
+   error token to show it — one CHANGELOG's largest token 29 KB → 300 KB
+   (the 2.9.12 audit, reviewer A). Region mode keeps kinds 1, 3, 4 and
+   the new 5 (`end_blank`, ADR 0019); `<style>` and `<script>` run to the
+   end as HTML reads them. Also from that audit (reviewer B): the
+   fence-only line-start state the region search kept was not carried
+   over bytes the inner drain committed past the search point, so a
+   closer after a Lua `--` comment was missed in a stream — gone with
+   fence regions; and a region's first body commit no longer inherits
+   the opener's bytes as look-behind.)*
 2. **An open region streams with its inner grammar.** When a drain's
    scan reports its compose hold as a region still open at the
    buffer's end whose body has an inner grammar, everything before the
@@ -114,3 +131,6 @@ after its `---` until finish. Two things kept it that way:
 - A consumer needs a region open inside an open region to stream (a
   long fence still open in a cyml body): a stack of region states, every
   level's end marker searched, the shortest limit applied.
+- Fences open the way CommonMark opens them — at a line start, inside
+  containers it tracks: then an unclosed fence can run to the end again
+  and stream (amendment to point 1).

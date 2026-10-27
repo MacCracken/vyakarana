@@ -341,7 +341,7 @@ fn _ds_try_compose_rules(g, src, src_len, i, tb) {
             if (unclosed == 1) {
                 # Open at the buffer's end: more input may close it.
                 _ds_cp_hold(i, 3, endp, 0);
-                _ds_rg_report(i, body_start, 1, registry_find_by_name(compose_rule_inner(r)), endp, 0);
+                _ds_rg_report(i, body_start, 1, registry_find_by_name(compose_rule_inner(r)), endp);
                 return src_len - i;
             }
             tokenbuf_push(tb, TK_PUNCTUATION, j, elen);
@@ -350,6 +350,29 @@ fn _ds_try_compose_rules(g, src, src_len, i, tb) {
         }
         r_i = r_i + 1;
     }
+    return 0;
+}
+
+# The first line break at or after `from` that a line of only blanks
+# (space, tab, CR) and its own line break follow — an `end_blank` region's
+# end (2.9.12) — or -1. A blank line the buffer cuts short does not count:
+# more input may make it one.
+fn _ds_blank_line_end(src, src_len, from) {
+    var j = from;
+    while (j < src_len) {
+        if (load8(src + j) == 10) {
+            var k = j + 1;
+            while ((k < src_len) && (_ds_is_blank_cr(load8(src + k)) == 1)) { k = k + 1; }
+            if ((k < src_len) && (load8(src + k) == 10)) { return j; }
+            if (k > j + 1) { j = k - 1; }
+        }
+        j = j + 1;
+    }
+    return (0 - 1);
+}
+
+fn _ds_is_blank_cr(b) {
+    if ((b == 32) || (b == 9) || (b == 13)) { return 1; }
     return 0;
 }
 
@@ -395,6 +418,14 @@ fn _ds_try_compose_region_rules(g, src, src_len, i, tb, prev0) {
             # EOF case, and body_end is already correct for it.
             var body_end = src_len;
             var found = 0;
+            var eblank = compose_region_rule_end_blank(r);
+            if (eblank == 1) {
+                var jb = _ds_blank_line_end(src, src_len, body_start);
+                if (jb >= 0) {
+                    body_end = jb;
+                    found = 1;
+                }
+            }
             if (elen > 0) {
                 var j = body_start;
                 while ((j < src_len) && (found == 0)) {
@@ -410,11 +441,16 @@ fn _ds_try_compose_region_rules(g, src, src_len, i, tb, prev0) {
             if (found == 0) {
                 var rg_k = 3;
                 if (elen > 0) { _ds_cp_hold(i, 3, endb, 0); }
-                if (elen == 0) {
+                if ((elen == 0) && (eblank == 1)) {
+                    # Wait for a line break; region mode reads the rest.
+                    _ds_cp_hold(i, 3, "\n", 0);
+                    rg_k = 5;
+                }
+                if ((elen == 0) && (eblank == 0)) {
                     _ds_cp_hold(i, 4, 0, 0);
                     rg_k = 4;
                 }
-                _ds_rg_report(i, body_start, rg_k, registry_find_by_name(compose_region_rule_inner(r)), endb, 0);
+                _ds_rg_report(i, body_start, rg_k, registry_find_by_name(compose_region_rule_inner(r)), endb);
             }
             if (found == 1) { _ds_grp_add(i, body_end); }
             if (cr_in == 0) { tokenbuf_push(tb, TK_PUNCTUATION, i, slen); }
@@ -631,15 +667,20 @@ fn _ds_try_compose_fenced_rules(g, src, src_len, i, tb) {
                         store64(r + 24, body_start);
                     }
                 }
-                # No closing fence: the body runs to the end of the input
-                # (2.9.10, ADR 0032), as CommonMark reads an unclosed fence.
-                var fen_open = 0;
+                # No closing fence: not a fence — the bytes are the outer
+                # grammar's — held for a closer that may still arrive. 2.9.10
+                # ran such a body to the end of the input (ADR 0032), but a
+                # scanner that sees no containers and pairs a stray backtick
+                # across blocks opens fences CommonMark does not: 52 of one
+                # machine's 5,768 markdown files had a fence 2.9.11 ran to the
+                # end and CommonMark closed (a mid-line "```", a list item's or
+                # blockquote's fence, a pairing an inline span had shifted),
+                # one CHANGELOG's largest token 29 KB → 300 KB (2.9.12 audit,
+                # reviewer A). Reverted to 2.9.9's reading (ADR 0032, amended).
                 if (close_pos < 0) {
                     var flead = compose_fenced_rule_end_indent(r);
                     if (flead == 0) { flead = 1; }
                     _ds_cp_hold(i, 3, endp, flead);
-                    fen_open = 1;
-                    close_pos = src_len;
                 }
                 if (close_pos >= 0) {
                     # Resolve inner grammar from captured tag.
@@ -692,15 +733,9 @@ fn _ds_try_compose_fenced_rules(g, src, src_len, i, tb) {
                         }
                     }
 
-                    if (fen_open == 1) {
-                        result = open_len + body_len;
-                        _ds_rg_report(i, body_start, 2, inner_g, endp, compose_fenced_rule_end_indent(r));
-                    }
-                    if (fen_open == 0) {
-                        tokenbuf_push(tb, TK_PUNCTUATION, close_pos, elen);
-                        _ds_grp_add(i, close_pos + elen);
-                        result = open_len + body_len + elen;
-                    }
+                    tokenbuf_push(tb, TK_PUNCTUATION, close_pos, elen);
+                    _ds_grp_add(i, close_pos + elen);
+                    result = open_len + body_len + elen;
                 }
             }
         }
@@ -745,6 +780,23 @@ fn _ds_prefixed_string(g, src, src_len, i, ilen) {
         if (cl > 0) { return ilen + cl; }
     }
     return 0;
+}
+
+# The length of a closed raw symbol-prefixed string at src[i], `len` so
+# far, carried over each doubled quote right after its close (2.9.12): the
+# quote that follows opens the next raw segment of the same string.
+fn _ds_verbatim_run(g, src, src_len, i, len) {
+    var e = i + len;
+    var go = 1;
+    while ((go == 1) && (e < src_len) && (e > i) && (load8(src + e) == 34) && (load8(src + e - 1) == 34)) {
+        go = 0;
+        var seg = _ds_try_pair_rules_x(g, src, src_len, e, 1);
+        if ((seg != 0) && ((seg >> 56) == TK_STRING)) {
+            e = e + (seg & 0x00FFFFFFFFFFFFFF);
+            go = 1;
+        }
+    }
+    return e - i;
 }
 
 # A symbol-shaped string prefix at src[i] that a quote follows (ADR 0027,
@@ -1430,16 +1482,15 @@ var _ds_cp_hold_scratch = 0;
 # still open at the buffer's end whose body has an inner grammar, the
 # drain can stream the body with that grammar instead of holding it all.
 # `_ds_rg_from` is the hold's opener (-1: the hold is not one), `_body`
-# where the body starts, `_kind` 1 compose, 2 compose_fenced, 3
-# compose_region with `end_before`, 4 compose_region to the end of the
-# input; `_end` the end marker (cstr, 0 for kind 4) and `_ind` a fence's
-# `end_indent` (cstr or 0). Depth 1 only, like the hold it describes.
+# where the body starts, `_kind` 1 compose, 3 compose_region with
+# `end_before`, 4 compose_region to the end of the input (2, a fence, until
+# 2.9.12 — a fence with no closer is no fence again); `_end` the end marker
+# (cstr, 0 for kind 4). Depth 1 only, like the hold it describes.
 var _ds_rg_from = (0 - 1);
 var _ds_rg_body = 0;
 var _ds_rg_kind = 0;
 var _ds_rg_inner = 0;
 var _ds_rg_end = 0;
-var _ds_rg_ind = 0;
 
 fn _ds_cp_hold(i, mode, marker, lead) {
     if (_ds_depth != 1) { return 0; }
@@ -1453,14 +1504,13 @@ fn _ds_cp_hold(i, mode, marker, lead) {
     return 0;
 }
 
-fn _ds_rg_report(i, body, kind, inner, endp, ind) {
+fn _ds_rg_report(i, body, kind, inner, endp) {
     if ((_ds_depth != 1) || (_ds_cp_hold_from != i) || (inner == 0)) { return 0; }
     _ds_rg_from = i;
     _ds_rg_body = body;
     _ds_rg_kind = kind;
     _ds_rg_inner = inner;
     _ds_rg_end = endp;
-    _ds_rg_ind = ind;
     return 0;
 }
 
@@ -1535,6 +1585,9 @@ var _ds_hdd_pos = (0 - 1);  # src offset of the bytes when contiguous, else -1
 # word in `_ds_hdd_*`, 1 if the buffer ends inside it (undecided), 2
 # if there is no delimiter here.
 fn _ds_hd_parse_delim(src, src_len, p, slot) {
+    # Unset until this parse sets it: a delimiter the buffer cuts short
+    # returns 1 without a pointer (2.9.12 audit, reviewer A).
+    _ds_hdd_ptr = 0;
     var start = p;
     var n = 0;
     var segs = 0;
@@ -1634,6 +1687,7 @@ fn _ds_hd_parse_delim(src, src_len, p, slot) {
 # `_ds_hd_parse_delim` does; the delimiter is always contiguous in
 # `src`. 0 parsed, 1 the buffer ends inside it, 2 not a delimiter.
 fn _ds_hd_parse_ident(src, src_len, p) {
+    _ds_hdd_ptr = 0;
     if (p >= src_len) { return 1; }
     var b = load8(src + p);
     if ((b == 39) || (b == 34) || (b == 96)) {
@@ -1755,28 +1809,37 @@ fn _ds_hdi_hash(src, p, n) {
     return h;
 }
 
-# The line index for the current depth (struct, 272 bytes):
+# The line index for the current depth (struct, 336 bytes):
 #    0 gen          8 src         16 lcap (lines)  24 n (lines)
 #   32 B (buckets, a power of 2)   48 last_from   56 ls u32[lcap] line start
 #   64 last line's end (LF or src_len)   72 ready: bit k, key kind k built
-#   80 + 48k, one block per key kind k (`_ds_hd_key`):
-#      +0 cs u32 key start (k > 0)   +8 nx u32 next line, same bucket (+1; 0 = end)
-#      +16 heads u32[B]   +24 cursors u32[B]   +32 line cap   +40 bucket cap
+#   80 + 64k, one block per key kind k (`_ds_hd_key`):
+#      +0 cs u32 key start (k > 0)
+#      +8 nx u32 the next line with the same key (+1; 0 = end)
+#      +16 heads u32[B] a bucket's first distinct key: its first line (+1)
+#      +24 kn u32 for a key's first line, the bucket's next distinct key
+#      +32 line cap   +40 bucket cap   +48 kc u32 a key's cursor (by first line)
 # A line's end is the next line's start less one, so it is not stored,
-# and each kind's block is built on its first lookup in the scan: 16
-# bytes a line for exact keys, 20 for the others (2.9.4; 36 for either
-# through 2.9.3, 52 in 2.8.0). A 1 MiB newline flood after one
-# `cat <<EOF` peaks at 23 MB (43 through 2.9.3), after `<<-EOF` at 27.
+# and each kind's block is built on its first lookup in the scan: 20
+# bytes a line for exact keys, 24 for the others (2.9.12; 16 / 20 from
+# 2.9.4, 36 for either through 2.9.3, 52 in 2.8.0).
+# Lines are chained by key, not by bucket (2.9.12 audit, reviewer A):
+# through 2.9.11 a bucket's one chain held every line that hashed there,
+# so a delimiter sharing a bucket with a crowded key — PHP's empty
+# leading identifier, which every `$x = …` and `}` line has — walked the
+# whole crowd on each lookup that failed: 40,000 unterminated `<<<BAK`
+# openers took 14.5 s against 0.29 s. A lookup now compares the bucket's
+# distinct keys, usually one, then walks only its own key's lines.
 fn _ds_hdi_get() {
     if (_ds_hdi_pool == 0) {
         _ds_hdi_pool = vec_new();
         if (_ds_hdi_pool == 0) { return 0; }
     }
     while (vec_len(_ds_hdi_pool) <= _ds_depth) {
-        var x = alloc(272);
+        var x = alloc(336);
         if (x == 0) { return 0; }
         var z = 0;
-        while (z < 272) { store8(x + z, 0); z = z + 1; }
+        while (z < 336) { store8(x + z, 0); z = z + 1; }
         vec_push(_ds_hdi_pool, x);
     }
     return vec_get(_ds_hdi_pool, _ds_depth);
@@ -1854,12 +1917,18 @@ fn _ds_hdi_half(x, src, ind) {
     if ((load64(x + 72) & bit) != 0) { return 1; }
     var n = load64(x + 24);
     var b = load64(x + 32);
-    var blk = x + 80 + ind * 48;
+    var blk = x + 80 + ind * 64;
     if (n > load64(blk + 32)) {
         var cap = _ds_hdi_grow(load64(blk + 32), n);
         var na = alloc(cap * 4);
         if (na == 0) { return 0; }
+        var kna = alloc(cap * 4);
+        if (kna == 0) { return 0; }
+        var kca = alloc(cap * 4);
+        if (kca == 0) { return 0; }
         store64(blk + 8, na);
+        store64(blk + 24, kna);
+        store64(blk + 48, kca);
         if (ind > 0) {
             var ta = alloc(cap * 4);
             if (ta == 0) { return 0; }
@@ -1870,24 +1939,22 @@ fn _ds_hdi_half(x, src, ind) {
     if (b > load64(blk + 40)) {
         var ha = alloc(b * 4);
         if (ha == 0) { return 0; }
-        var ca = alloc(b * 4);
-        if (ca == 0) { return 0; }
         store64(blk + 16, ha);
-        store64(blk + 24, ca);
         store64(blk + 40, b);
     }
     var heads = load64(blk + 16);
-    var curs = load64(blk + 24);
     var nxa = load64(blk + 8);
+    var kna2 = load64(blk + 24);
+    var kca2 = load64(blk + 48);
     var csa = load64(blk);
     var lsa = load64(x + 56);
     var zi = 0;
     while (zi < b) {
         store32(heads + zi * 4, 0);
-        store32(curs + zi * 4, 0);
         zi = zi + 1;
     }
-    # Insert last line first, so each bucket chain runs in input order.
+    # Last line first, so each key's chain runs in input order and a key's
+    # head ends as its first line.
     var r = n - 1;
     while (r >= 0) {
         var ls = load32(lsa + r * 4);
@@ -1895,8 +1962,33 @@ fn _ds_hdi_half(x, src, ind) {
         var cs = _ds_hk_cs;
         if (ind > 0) { store32(csa + r * 4, cs); }
         var h = _ds_hdi_hash(src, cs, ce - cs) & (b - 1);
-        store32(nxa + r * 4, load32(heads + h * 4));
-        store32(heads + h * 4, r + 1);
+        # This key among the bucket's distinct ones.
+        var prev = 0;
+        var k = load32(heads + h * 4);
+        var same = 0;
+        while ((k != 0) && (same == 0)) {
+            var kcs = load32(lsa + (k - 1) * 4);
+            if (ind > 0) { kcs = load32(csa + (k - 1) * 4); }
+            var kce = _ds_hdi_kend(src, x, k - 1, kcs, ind);
+            if ((kce - kcs == ce - cs) && (memeq(src + kcs, src + cs, ce - cs) == 1)) { same = k; }
+            if (same == 0) {
+                prev = k;
+                k = load32(kna2 + (k - 1) * 4);
+            }
+        }
+        store32(kca2 + r * 4, 0);
+        if (same != 0) {
+            # Line r comes first in the input: it heads the key now.
+            store32(nxa + r * 4, same);
+            store32(kna2 + r * 4, load32(kna2 + (same - 1) * 4));
+            if (prev == 0) { store32(heads + h * 4, r + 1); }
+            if (prev != 0) { store32(kna2 + (prev - 1) * 4, r + 1); }
+        }
+        if (same == 0) {
+            store32(nxa + r * 4, 0);
+            store32(kna2 + r * 4, load32(heads + h * 4));
+            store32(heads + h * 4, r + 1);
+        }
         r = r - 1;
     }
     store64(x + 72, load64(x + 72) | bit);
@@ -1921,28 +2013,39 @@ fn _ds_hd_find_term(src, src_len, from, dptr, dlen, ind) {
     if (_ds_hdi_half(x, src, ind) == 0) {
         return _ds_hd_find_term_linear(src, src_len, from, dptr, dlen, ind);
     }
-    var blk = x + 80 + ind * 48;
+    var blk = x + 80 + ind * 64;
     var b = load64(x + 32);
     var h = _ds_hdi_hash(dptr, 0, dlen) & (b - 1);
     var heads = load64(blk + 16);
-    var curs = load64(blk + 24);
     var nxt = load64(blk + 8);
+    var kna = load64(blk + 24);
+    var kca = load64(blk + 48);
     var csa = load64(blk);
     var lsa = load64(x + 56);
-    var k = load32(curs + h * 4);
-    if ((k == 0) || (from < load64(x + 48))) { k = load32(heads + h * 4); }
+    # The delimiter's key among the bucket's distinct keys.
+    var kh = load32(heads + h * 4);
+    var key = 0;
+    while ((kh != 0) && (key == 0)) {
+        var hcs = load32(lsa + (kh - 1) * 4);
+        if (ind > 0) { hcs = load32(csa + (kh - 1) * 4); }
+        var hce = _ds_hdi_kend(src, x, kh - 1, hcs, ind);
+        if ((hce - hcs == dlen) && (memeq(src + hcs, dptr, dlen) == 1)) { key = kh; }
+        if (key == 0) { kh = load32(kna + (kh - 1) * 4); }
+    }
+    if (key == 0) { return (0 - 1); }
+    # Its first line at or after `from`. Searches in a scan only move
+    # forward, so each key keeps a cursor, stored + 1 (0 unset, 1 the chain
+    # passed); one that moves back restarts from the key's first line.
+    var kc = load32(kca + (key - 1) * 4);
+    var k = key;
+    if ((kc != 0) && (from >= load64(x + 48))) { k = kc - 1; }
     if (from > load64(x + 48)) { store64(x + 48, from); }
     while ((k != 0) && (load32(lsa + (k - 1) * 4) < from)) { k = load32(nxt + (k - 1) * 4); }
-    if (from >= load64(x + 48)) { store32(curs + h * 4, k); }
-    var found = (0 - 1);
-    while ((k != 0) && (found < 0)) {
-        var cs = load32(lsa + (k - 1) * 4);
-        if (ind > 0) { cs = load32(csa + (k - 1) * 4); }
-        var ce = _ds_hdi_kend(src, x, k - 1, cs, ind);
-        if ((ce - cs == dlen) && (memeq(src + cs, dptr, dlen) == 1)) { found = cs + dlen; }
-        if (found < 0) { k = load32(nxt + (k - 1) * 4); }
-    }
-    return found;
+    if (from >= load64(x + 48)) { store32(kca + (key - 1) * 4, k + 1); }
+    if (k == 0) { return (0 - 1); }
+    var cs = load32(lsa + (k - 1) * 4);
+    if (ind > 0) { cs = load32(csa + (k - 1) * 4); }
+    return cs + dlen;
 }
 
 # Arithmetic `((` … `))` state for the opener check — inside it `<<`
@@ -2065,7 +2168,13 @@ fn _ds_heredoc_open(g, src, src_len, i, hdq, hd_n, in_arith) {
                     if ((hfl & HD_F_IDENT) != 0) { dst = _ds_hd_parse_ident(src, src_len, p); }
                     if ((hfl & HD_F_IDENT) == 0) { dst = _ds_hd_parse_delim(src, src_len, p, dslot + qslot * 256); }
                     if (dst == 1) { undecided = 1; }
-                    if (dst != 2) {
+                    # Only what this parse set: through 2.9.11 a delimiter
+                    # the buffer cut short (an open quote, a `\` or a word at
+                    # the end) left the last parse's `_ds_hdd_*` in place, and
+                    # the lookup hashed through a pointer into an earlier
+                    # caller's buffer — freed, it faulted (2.9.12 audit,
+                    # reviewer A).
+                    if ((dst != 2) && (_ds_hdd_ptr != 0)) {
                         dptr = _ds_hdd_ptr;
                         dl = _ds_hdd_len;
                         dend = _ds_hdd_end;
@@ -2188,7 +2297,7 @@ fn _ds_inline_at(r, src, src_len, i) {
         }
         if (p == run_s) { return 0; }
     }
-    if (rb == 0) {
+    if (heredoc_rule_tag(r) == 1) {
         while ((p < src_len) && (p - run_s <= 16) && (_ds_inl_tag_byte(load8(src + p), ob) == 1)) { p = p + 1; }
         if (p - run_s > 16) { return 0; }
         if (p >= src_len) {
@@ -2302,6 +2411,10 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
     var hd_all = grammar_heredoc_rules(g);
     var hd_rules = 0;
     var inl_rules = 0;
+    var inl_m0 = 0;
+    var inl_m1 = 0;
+    var inl_m2 = 0;
+    var inl_m3 = 0;
     var hd_one = 0;
     var hk = 0;
     while (hk < vec_len(hd_all)) {
@@ -2310,7 +2423,21 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
             hd_rules = hd_rules + 1;
             hd_one = hr;
         }
-        if (heredoc_rule_body(hr) == 1) { inl_rules = inl_rules + 1; }
+        if (heredoc_rule_body(hr) == 1) {
+            inl_rules = inl_rules + 1;
+            # The byte an inline opener begins with: its start's first, or
+            # its repeat byte when it has none (ADR 0030 requires a start
+            # for a tag) — a 256-bit set, so step 1b runs only where one
+            # could open. Through 2.9.11 it walked the rules at every token:
+            # rust's three made `tokenize/rust-small` 16 % slower (2.9.12).
+            var ib = 0;
+            if (heredoc_rule_start(hr) != 0) { ib = load8(heredoc_rule_start(hr)); }
+            if (heredoc_rule_start(hr) == 0) { ib = heredoc_rule_repeat(hr); }
+            if (ib < 64) { inl_m0 = inl_m0 | (1 << ib); }
+            if ((ib >= 64) && (ib < 128)) { inl_m1 = inl_m1 | (1 << (ib - 64)); }
+            if ((ib >= 128) && (ib < 192)) { inl_m2 = inl_m2 | (1 << (ib - 128)); }
+            if (ib >= 192) { inl_m3 = inl_m3 | (1 << (ib - 192)); }
+        }
         hk = hk + 1;
     }
     var hdq = 0;
@@ -2472,7 +2599,14 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
         # 1b. Inline heredoc rules (ADR 0030): raw literals whose closer
         # the opener computes — `r#"…"#`, `#"…"#`, `[==[…]==]`, `R"d(…)d"`.
         # Before line rules, so Lua's `--[==[` is not a `--` comment.
+        var inl_here = 0;
         if ((len == 0) && (inl_rules > 0)) {
+            if (b < 64) { inl_here = (inl_m0 >> b) & 1; }
+            if ((b >= 64) && (b < 128)) { inl_here = (inl_m1 >> (b - 64)) & 1; }
+            if ((b >= 128) && (b < 192)) { inl_here = (inl_m2 >> (b - 128)) & 1; }
+            if (b >= 192) { inl_here = (inl_m3 >> (b - 192)) & 1; }
+        }
+        if (inl_here == 1) {
             var packed_i = _ds_try_inline_rules(g, src, src_len, i);
             if (packed_i != 0) {
                 kind = packed_i >> 56;
@@ -2563,10 +2697,17 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
         if (len == 0) {
             var spl = _ds_sym_prefix(g, src, src_len, i);
             if (spl > 0) {
-                var spk = _ds_try_pair_rules_x(g, src, src_len, i + spl, _ds_sym_raw);
+                var spraw = _ds_sym_raw;
+                var spk = _ds_try_pair_rules_x(g, src, src_len, i + spl, spraw);
                 if ((spk != 0) && ((spk >> 56) == TK_STRING)) {
                     kind = TK_STRING;
                     len = spl + (spk & 0x00FFFFFFFFFFFFFF);
+                    # A verbatim string's `""` is a quote inside it (C#):
+                    # the string goes on, raw, past each one. Through 2.9.11
+                    # the part after it was an ordinary string, escapes on,
+                    # and `@"""C:\dir\"""` ran on to the end (2.9.12 audit,
+                    # reviewer A).
+                    if (spraw == 1) { len = _ds_verbatim_run(g, src, src_len, i, len); }
                 }
             }
         }

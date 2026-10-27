@@ -16,6 +16,8 @@
 # cyrius (cc5 --version) and cyim use.
 
 set -e
+# From the repo root wherever it is run (2.9.12 audit, reviewer D).
+cd "$(dirname "$0")/.."
 
 if [ -z "$1" ]; then
     echo "Usage: $0 <version>"
@@ -70,6 +72,12 @@ if ! grep -q "## \[$NEW\]" CHANGELOG.md 2>/dev/null; then
 \\
 ## [$NEW] — $(date +%Y-%m-%d)" CHANGELOG.md 2>/dev/null || true
 fi
+# Say so when it did not go in (a `## [Unreleased]` line with trailing
+# blanks matches nothing): through 2.9.11 this reported it inserted.
+if ! grep -q "## \[$NEW\]" CHANGELOG.md 2>/dev/null; then
+    echo "version-bump: CHANGELOG.md has no '## [Unreleased]' line to put '## [$NEW]' under — add it by hand" >&2
+    exit 1
+fi
 
 echo "$OLD -> $NEW"
 echo ""
@@ -80,6 +88,7 @@ echo "  CHANGELOG.md (new header inserted)"
 echo ""
 echo "Still manual:"
 echo "  - CHANGELOG.md body (Added / Changed / Fixed / Security)"
+echo "  - docs/man/vyk.1 — the .TH line's version and date"
 echo "  - docs/development/state.md current-status block if state shifted"
 echo "  - cyrius toolchain pin in cyrius.cyml [package].cyrius"
 echo "    (separate from vyakarana's own version)"

@@ -194,13 +194,7 @@ fn tokenbuf_drop_front(tb, n) {
     }
     var keep = count - n;
     var data = load64(tb);
-    var src = data + n * TOKEN_SIZE;
-    var bytes = keep * TOKEN_SIZE;
-    var i = 0;
-    while (i < bytes) {
-        store8(data + i, load8(src + i));
-        i = i + 1;
-    }
+    _tb_move(data, data + n * TOKEN_SIZE, keep * TOKEN_SIZE);
     store64(tb + 8, keep);
     return 0;
 }

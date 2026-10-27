@@ -139,6 +139,15 @@ was removed in 2.0.0 (ADR 0017).
 
 ## Status
 
+**2.9.12** (2026-10-27) — the closeout audit of the 2.9.x arc: four
+reviewers and every audit sweep. A markdown fence with no closer is no
+fence again (2.9.10 ran it to the end, and swallowed the rest of real
+documents CommonMark reads otherwise); MDX blocks end at CRLF and
+blank-with-spaces lines; C# verbatim strings keep doubled quotes; a JS
+regex's `\/*` opens no comment; four quadratic streaming cases and a
+loader crash are fixed; Rust tokenizes 13 % faster. 1495/1495 tests
+([audit](docs/audit/2026-10-27-2.9.12-closeout-audit.md)).
+
 **2.9.11** (2026-10-27) — documents for editors: `tokenize_doc_edit`
 re-tokenizes only what an edit can change — about 4 KB either side of a
 keystroke, under 2 ms in a 937 KB C file that takes 226 ms whole — and

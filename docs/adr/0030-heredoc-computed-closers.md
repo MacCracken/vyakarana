@@ -46,10 +46,15 @@ off by default so shell is unchanged:
   tabs (default `"tabs"`, shell's `<<-`).
 - `indent_always = true` — the terminator may be indented with no marker.
 - `term_rest = true` — the terminator line may go on after the delimiter
+  *(2.9.12: only with `indent_by = "blanks"` and `delim = "ident"`, the
+  only combination it worked in; and an inline rule whose `repeat` byte
+  is its `open`'s first is refused — it never matched)*
   at a byte that cannot continue an identifier (`EOT;`, `EOT)`); the
   token ends after the delimiter and the rest of the line is code.
 - `delim = "ident"` — the delimiter is a bare identifier
-  (`[A-Za-z_][A-Za-z0-9_]*`) or the bytes between a matching `'`, `"` or
+  (`[A-Za-z_][A-Za-z0-9_]*`, and bytes 0x80 and above, as Ruby and PHP
+  take them — *amended 2.9.12*, the code always did) or the bytes
+  between a matching `'`, `"` or
   `` ` `` on the opener line, not a bash word with quote removal — so
   `<<~EOS.strip` is the delimiter `EOS`, then `.strip`.
 - `blanks = false` — the delimiter must follow `start` (and a marker)

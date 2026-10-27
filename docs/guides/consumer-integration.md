@@ -4,7 +4,7 @@ How to integrate vyakarana into a downstream Cyrius project
 (owl, cyim, vidya, or anything else that needs to tokenize
 source code).
 
-> **Last updated:** 2026-10-21 (2.9.1)
+> **Last updated:** 2026-10-27 (2.9.12)
 >
 > Audience: implementers writing the *renderer*, *editor*,
 > *theme*, or *content pipeline* that sits on top of vyakarana.
@@ -25,7 +25,7 @@ project's `cyrius.cyml`:
 ```toml
 [deps.vyakarana]
 git     = "https://github.com/MacCracken/vyakarana.git"
-tag     = "2.9.11"
+tag     = "2.9.12"
 modules = ["dist/vyakarana.cyr"]
 ```
 
@@ -151,12 +151,15 @@ should win a route a bundled grammar also declares. The function
 bootstraps the bundled grammars itself, as `has_grammar` does.
 
 The compiled three stay pure and know only the bundled grammars; they
-also carry what declarations cannot say — the `.s` / `.S` content vote
-and the `<?xml` signature sniff (`detect_language_combined`). For the
-bundled grammars the two paths agree on every declared route; the one
-designed difference is a declared shebang being a plain prefix
-(`#!/usr/bin/shellcheck` routes to shell), where the compiled sniff
-bounds `sh` to three bytes.
+also carry what declarations cannot say — the `.s` / `.S` and `.asm`
+content votes and the `<?xml` signature sniff
+(`detect_language_combined`). For the bundled grammars the two paths
+agree on every declared route. They differ by design in two places: a
+declared shebang is a plain prefix (`#!/usr/bin/shellcheck` routes to
+shell), where the compiled sniff bounds `sh` to three bytes; and an
+`.asm` file whose content reads as GNU as routes to the asm grammars
+through `detect_language_combined`, to `nasm` (the declaration) through
+`detect_language_registered`.
 
 ### Tokenbuf accessors
 
@@ -303,6 +306,10 @@ tokenize_doc_free(d);
   whole text.
 - The text must be contiguous for the call, and the document does
   not keep it.
+- A text whose stream passes a hold's bound (a heredoc group over
+  1 MiB, a one-token compose body over 8 MiB) is tokenized in one feed
+  on each set and edit, so the result still equals tokenizing from
+  scratch, at the cost of the whole text (2.9.12).
 - A one-byte edit costs about one interval re-scanned either side
   (under 2 ms on a 937 KB C file, against 226 ms for the whole
   file); an edit that changes the rest of the text, such as an
