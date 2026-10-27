@@ -21,7 +21,8 @@
 # pending pair, 2.6.0's heredoc watch, 2.8.0's run and compose
 # watches — ADR 0028) skip that re-scan while the buffer's tail is
 # still waiting; a resumable scanner was considered there and
-# rejected.
+# rejected. 2.9.10 made one piece resumable: an open compose region's
+# body streams as its inner grammar's own (ADR 0032).
 #
 # The pull adapter (`tokenize_stream_next` + the `_kind` / `_start`
 # / `_len` accessors) shipped in 2.0.2 and lives at the bottom of
@@ -99,8 +100,23 @@
 #  216  last_byte2  i64 — the committed byte before last_byte, -1 = none;
 #                          `number_tuple_index` looks two bytes back
 #                          (ADR 0026, 2.9.3)
+#  224  rg_kind     i64 — resumable region (ADR 0032, 2.9.10): 0 none,
+#                          else the body being read with its inner
+#                          grammar — 1 compose, 2 compose_fenced, 3
+#                          compose_region with `end_before`, 4 one to
+#                          the end of the input. buf[0] is in the body.
+#  232  rg_inner    ptr —   the inner grammar
+#  240  rg_end      ptr —   the end marker (cstr, the outer grammar's), 0
+#                          for kind 4
+#  248  rg_ind      ptr —   kind 2: the fence's `end_indent` cstr, or 0
+#  256  rg_from     i64 —   where the end-marker search resumes in buf
+#  264  rg_at       i64 —   kind 2: 1 if a closer may start there (line
+#                          start, or only `end_indent` bytes since one)
+#  272  rg_off      i64 —   body bytes committed; 0 = the scan starts at
+#                          the body's start, as a single feed's nested
+#                          scan does
 #   -----
-#  224 bytes total (STREAM_REC_SIZE). This table stopped at offset 80
+#  280 bytes total (STREAM_REC_SIZE). This table stopped at offset 80
 #  — "88 bytes total" — from 2.5.2 until the 2.6.x audit.
 #
 # Bundled into `dist/vyakarana.cyr`. Public symbols — this list is
@@ -171,28 +187,26 @@ var VYK_OFFSET_CAP = 4294967295;
 
 # Largest region a single unresolved compose opener may pin.
 #
-# While a compose opener is held with no end marker in the buffer,
-# the drain commits nothing and the rolling buffer cannot compact —
-# the live window degenerates from "longest in-progress span" to
-# "everything since the opener". Two consequences, both measured in
-# the 2.3.4 audit: cost grows superlinearly, and VYK_STREAM_CAP
-# turns into a TOTAL-INPUT ceiling, so an unterminated `<style>`
-# eventually makes every `tokenize_stream_feed` return
-# VYK_ERR_OVERFLOW forever. That directly contradicts this file's
-# own "Total input can exceed this freely".
+# While a compose opener is held, the drain commits nothing from it
+# and the rolling buffer cannot compact — the live window degenerates
+# from "longest in-progress span" to "everything since the opener". Two
+# consequences, both measured in the 2.3.4 audit: cost grows
+# superlinearly, and VYK_STREAM_CAP turns into a TOTAL-INPUT ceiling,
+# so an unterminated `<style>` eventually made every
+# `tokenize_stream_feed` return VYK_ERR_OVERFLOW forever. That directly
+# contradicts this file's own "Total input can exceed this freely".
 #
-# Holding is semantically required — `_ds_try_compose_rules` refuses
-# to half-consume a compose rule whose end marker has not arrived,
-# so a `<style>` body cannot route to the css grammar until
-# `</style>` does. So bound it instead of removing it: past this
-# many bytes, stop holding and commit the bytes as that drain's scan
-# read them — with the OUTER grammar for a `compose` or
-# `compose_fenced` opener whose end has not arrived; a still-running
-# `compose_region` is read with its inner grammar to the buffer's
-# end. Coverage and the zero-error bar still hold; what is lost is
-# agreement with a single feed from there on. (This said "give up on
-# compose routing … with the OUTER grammar" for every rule type until
-# 2.9.1.)
+# Since 2.9.10 a region open at the buffer's end whose body has an inner
+# grammar is not held at all: its body streams as that grammar's own
+# (ADR 0032). Still held: a body that is one token (an untagged fence, a
+# region whose inner grammar is not loaded), a fence's info line, an
+# inline literal (ADR 0030), and a region open inside one being
+# streamed. So bound it: past this many bytes, stop holding and commit
+# the bytes as that drain's scan read them — a body running to the
+# buffer's end. Coverage and the zero-error bar still hold; what is lost
+# is agreement with a single feed from there on. (Through 2.9.9 a
+# `compose` or `compose_fenced` opener with no end in the buffer read as
+# OUTER text here.)
 #
 # 8 MiB is deliberately generous: every real embedded stylesheet or
 # fenced block is orders of magnitude smaller, so this only fires on
@@ -215,7 +229,7 @@ var VYK_COMPOSE_HOLD_MAX = 8388608;
 var VYK_HEREDOC_HOLD_MAX = 1048576;
 
 # Layout in the table at the top of this file.
-var STREAM_REC_SIZE = 224;
+var STREAM_REC_SIZE = 280;
 
 # Error codes returned by tokenize_stream_feed.
 var VYK_OK            = 0;
@@ -385,6 +399,13 @@ fn tokenize_stream_new(lang) {
     store64(s + 200, 0);               # mode 3: where the marker counts (2.9.1)
     store64(s + 208, 0);               # mode 3: escape byte, 0 = none (2.9.1)
     store64(s + 216, (0 - 1));         # the committed byte before that, -1 = none (2.9.3)
+    store64(s + 224, 0);               # resumable region: kind, 0 = none (2.9.10)
+    store64(s + 232, 0);               #   inner grammar
+    store64(s + 240, 0);               #   end marker
+    store64(s + 248, 0);               #   a fence's end_indent
+    store64(s + 256, 0);               #   end-marker search resume
+    store64(s + 264, 0);               #   a fence closer's line-start state there
+    store64(s + 272, 0);               #   body bytes committed
     return s;
 }
 
@@ -1054,10 +1075,18 @@ fn tokenize_stream_drain(s, out_tb) {
     # A freed stream has a 0 staging tokenbuf; pushing into it wrote
     # through NULL (2.5.2 audit P3).
     if (out_tb == 0) { return 0; }
+    if (load64(s + 224) != 0) { return _stream_region_drain(s, out_tb); }
+    return _stream_drain_g(s, out_tb, load64(s + 24), load64(s + 8), load64(s + 32), 0);
+}
+
+# The drain proper, with grammar `g` over the first `lim` bytes of the
+# buffer — the stream's own grammar over all of it, or a resumable
+# region's inner grammar over its body (`in_rg` 1, 2.9.10): bytes past
+# `lim` stay in the buffer untouched, and the body's start is the scan's
+# file start, as a single feed's nested scan of it sees.
+fn _stream_drain_g(s, out_tb, g, lim, finishing, in_rg) {
     var buf = load64(s);
-    var buf_len = load64(s + 8);
-    var g = load64(s + 24);
-    var finishing = load64(s + 32);
+    var buf_len = lim;
     var abs_offset = load64(s + 48);
     var pending_idx = load64(s + 72);
     if (buf_len == 0) { return 0; }
@@ -1236,18 +1265,9 @@ fn tokenize_stream_drain(s, out_tb) {
             # Remember the last two bytes leaving the buffer — a
             # `start_after` boundary at the new buffer start needs the
             # last (ADR 0022), `number_tuple_index` both (2.9.3).
-            _stream_save_prev(s, buf, pair_total);
-            var k0 = pair_total;
-            var dst0 = 0;
-            while (k0 < buf_len) {
-                store8(buf + dst0, load8(buf + k0));
-                dst0 = dst0 + 1;
-                k0 = k0 + 1;
-            }
+            _stream_compact(s, buf, pair_total);
             buf_len = buf_len - pair_total;
             abs_offset = abs_offset + pair_total;
-            store64(s + 8, buf_len);
-            store64(s + 48, abs_offset);
             if (buf_len == 0) { return emitted; }
         }
         if (close_pos < 0) {
@@ -1293,8 +1313,7 @@ fn tokenize_stream_drain(s, out_tb) {
                 tokenbuf_push(out_tb, pair_rule_kind(rule), abs_offset, buf_len);
                 store64(s + 72, (0 - 1));
                 store64(s + 80, 0);
-                store64(s + 8, 0);
-                store64(s + 48, abs_offset + buf_len);
+                _stream_compact(s, buf, buf_len);
                 return emitted + (tokenbuf_count(out_tb) - fin_before);
             }
             return emitted;
@@ -1313,7 +1332,9 @@ fn tokenize_stream_drain(s, out_tb) {
     var temp_tb = load64(s + 88);
     if (temp_tb == 0) { return 0; }
     _tokenbuf_reset(temp_tb);
-    if (abs_offset > 0) {
+    var mid_stream = abs_offset;
+    if (in_rg == 1) { mid_stream = load64(s + 272); }
+    if (mid_stream > 0) {
         _ds_not_file_start = 1;
         _ds_buf_prev = load64(s + 96);
         _ds_buf_prev2 = load64(s + 216);
@@ -1325,8 +1346,11 @@ fn tokenize_stream_drain(s, out_tb) {
     _ds_cp_hold_marker = 0;
     _ds_cp_hold_scratch = 0;
     _ds_inl_last_start = (0 - 1);
+    _ds_rg_from = (0 - 1);
     _ds_grp_collect = 1;
+    _ds_rg_bias = in_rg;
     tokenize_with_grammar(g, buf, buf_len, temp_tb);
+    _ds_rg_bias = 0;
     _ds_grp_collect = 0;
     var hd_hold = _ds_hd_hold_from;
     var hd_fast = _ds_hd_hold_fast;
@@ -1340,8 +1364,15 @@ fn tokenize_stream_drain(s, out_tb) {
     var cp_lead = _ds_cp_hold_lead;
     var cp_scratch = _ds_cp_hold_scratch;
     var inl_closed = _ds_inl_last_start;
+    var rg_from = _ds_rg_from;
+    var rg_body = _ds_rg_body;
+    var rg_kind = _ds_rg_kind;
+    var rg_inner = _ds_rg_inner;
+    var rg_end = _ds_rg_end;
+    var rg_ind = _ds_rg_ind;
     _ds_hd_hold_from = (0 - 1);
     _ds_cp_hold_from = (0 - 1);
+    _ds_rg_from = (0 - 1);
     var hd_applied = 0;
     var cp_applied = 0;
     var n_temp = tokenbuf_count(temp_tb);
@@ -1416,7 +1447,8 @@ fn tokenize_stream_drain(s, out_tb) {
         }
     }
     # Compose hold (2.8.0): nothing from an unresolved compose opener on
-    # commits until it resolves, finish, or VYK_COMPOSE_HOLD_MAX.
+    # commits until it resolves, finish, or VYK_COMPOSE_HOLD_MAX — or,
+    # for a region with an inner grammar, region mode takes it (below).
     if ((finishing == 0) && (cp_hold >= 0)) {
         if (buf_len - cp_hold <= VYK_COMPOSE_HOLD_MAX) {
             cp_applied = 1;
@@ -1446,6 +1478,36 @@ fn tokenize_stream_drain(s, out_tb) {
             }
         }
     }
+    # A resumable region (2.9.10, ADR 0032): the hold is a region still
+    # open at the buffer's end whose body has an inner grammar. Commit
+    # through its opener and read the body as that grammar's own stream,
+    # rather than hold all of it until the end marker arrives. One level:
+    # a region opened inside the body is held as before.
+    var rg_enter = 0;
+    if ((in_rg == 0) && (cp_applied == 1) && (hd_applied == 0) && (rg_from == cp_hold)) {
+        # The opener is final once every marker that could claim its first
+        # byte instead is in the buffer, as for any token (the window).
+        var rg_mm = _stream_max_marker(g);
+        if ((commit_count < n_temp) && (cp_hold + rg_mm <= buf_len)) {
+            if (tokenbuf_start(temp_tb, commit_count) == cp_hold) {
+                rg_enter = 1;
+                if (rg_body > cp_hold) {
+                    rg_enter = 0;
+                    if (cp_hold + tokenbuf_len(temp_tb, commit_count) == rg_body) {
+                        rg_enter = 1;
+                        commit_count = commit_count + 1;
+                    }
+                }
+            }
+        }
+        # While a token before the opener may still be waiting on bytes
+        # past it (the window, a number's lookahead), entry waits: re-scan
+        # at the next drain, a few bytes on. The end-marker watch would
+        # hold the whole body again.
+        var rg_la = _stream_num_lookahead(g);
+        if (rg_mm > rg_la) { rg_la = rg_mm; }
+        if ((rg_enter == 0) && (cp_hold + rg_la > buf_len)) { cp_mode = 0; }
+    }
     # Count what actually landed, not what we attempted.
     # `tokenbuf_push` drops the token (rather than writing through a
     # NULL data pointer) when its buffer cannot grow — see
@@ -1465,6 +1527,16 @@ fn tokenize_stream_drain(s, out_tb) {
         j = j + 1;
     }
     emitted = emitted + (tokenbuf_count(out_tb) - before_push);
+    if (rg_enter == 1) {
+        _stream_region_end(s);
+        _stream_compact(s, buf, rg_body);
+        store64(s + 224, rg_kind);
+        store64(s + 232, rg_inner);
+        store64(s + 240, rg_end);
+        store64(s + 248, rg_ind);
+        store64(s + 264, 1);
+        return emitted + _stream_region_drain(s, out_tb);
+    }
     # 2.0.3 — detect pending pair-rule state for the NEXT drain.
     # If a trailing partial pair-rule open is uncommitted, save
     # its rule index + how far we've already scanned the body.
@@ -1673,19 +1745,139 @@ fn tokenize_stream_drain(s, out_tb) {
             }
         }
     }
-    if (consumed > 0) {
-        _stream_save_prev(s, buf, consumed);   # see the fast path (ADR 0022)
-        var k = consumed;
-        var dst = 0;
-        while (k < buf_len) {
-            store8(buf + dst, load8(buf + k));
-            dst = dst + 1;
-            k = k + 1;
-        }
-        store64(s + 8,  buf_len - consumed);
-        store64(s + 48, abs_offset + consumed);
-    }
+    _stream_compact(s, buf, consumed);
     return emitted;
+}
+
+# Drop the buffer's first `n` bytes: committed. Remembers the last two
+# for the next scan's look-behind (ADR 0022, 2.9.3) and rebases a
+# resumable region's search (2.9.10).
+fn _stream_compact(s, buf, n) {
+    if (n <= 0) { return 0; }
+    _stream_save_prev(s, buf, n);
+    var len = load64(s + 8);
+    var k = n;
+    var dst = 0;
+    while (k < len) {
+        store8(buf + dst, load8(buf + k));
+        dst = dst + 1;
+        k = k + 1;
+    }
+    store64(s + 8, len - n);
+    store64(s + 48, load64(s + 48) + n);
+    if (load64(s + 224) != 0) {
+        store64(s + 256, load64(s + 256) - n);
+        store64(s + 272, load64(s + 272) + n);
+    }
+    return 0;
+}
+
+# ── Resumable regions (2.9.10, ADR 0032) ─────
+# A compose body still open at the buffer's end is read as its inner
+# grammar's own stream: `_stream_drain_g` with that grammar over the
+# body, so the live buffer and the work per feed are the inner
+# grammar's, not the region's. Each drain looks for the end marker in
+# the new bytes FIRST — once it is in, the body ends there whatever the
+# inner grammar was waiting for: the body commits as that grammar's
+# finish over it, then the marker, and the rest drains with the outer
+# grammar. Until then the body drains no further than the earliest
+# place the marker could still start: those bytes may not be body.
+
+# A fence closer's line-start state after byte `b`, stepped as
+# `_ds_find_fenced_close` steps it: 1 after a line break, kept over
+# `end_indent` bytes, else 0.
+fn _stream_fence_at(st, b, ind) {
+    if (b == 10) { return 1; }
+    if (ind == 0) { return 0; }
+    if (_ds_byte_in(ind, b) == 0) { return 0; }
+    return st;
+}
+
+# Leave region mode, and the inner grammar's watches and pending pair.
+fn _stream_region_end(s) {
+    store64(s + 72, (0 - 1));
+    store64(s + 80, 0);
+    store64(s + 168, 0);
+    store64(s + 104, 0);
+    store64(s + 152, 0);
+    store64(s + 224, 0);
+    store64(s + 232, 0);
+    store64(s + 240, 0);
+    store64(s + 248, 0);
+    store64(s + 256, 0);
+    store64(s + 264, 0);
+    store64(s + 272, 0);
+    return 0;
+}
+
+# Drain the body's first `lim` bytes with the inner grammar. The scan
+# NUL-terminates at `lim`; the byte there is still input, so put it back.
+fn _stream_region_body(s, out_tb, inner, lim, fin) {
+    var buf = load64(s);
+    var save = load8(buf + lim);
+    var a0 = load64(s + 48);
+    var em = _stream_drain_g(s, out_tb, inner, lim, fin, 1);
+    store8(buf + lim - (load64(s + 48) - a0), save);
+    return em;
+}
+
+fn _stream_region_drain(s, out_tb) {
+    var buf = load64(s);
+    var len = load64(s + 8);
+    var rk = load64(s + 224);
+    var inner = load64(s + 232);
+    var endp = load64(s + 240);
+    var ind = load64(s + 248);
+    var elen = 0;
+    if (endp != 0) { elen = strlen(endp); }
+    var q = load64(s + 256);
+    if (q < 0) { q = 0; }
+    var qs = load64(s + 264);
+    var found = (0 - 1);
+    if (rk != 4) {
+        while ((found < 0) && (q + elen <= len)) {
+            if (((rk != 2) || (qs == 1)) && (memeq(buf + q, endp, elen) == 1)) { found = q; }
+            if (found < 0) {
+                qs = _stream_fence_at(qs, load8(buf + q), ind);
+                q = q + 1;
+            }
+        }
+        store64(s + 256, q);
+        store64(s + 264, qs);
+    }
+    if (found >= 0) {
+        var em = _stream_region_body(s, out_tb, inner, found, 1);
+        # A `compose_region` leaves its `end_before` to the outer grammar.
+        if (rk != 3) {
+            var pb = tokenbuf_count(out_tb);
+            tokenbuf_push(out_tb, TK_PUNCTUATION, load64(s + 48), elen);
+            em = em + (tokenbuf_count(out_tb) - pb);
+        }
+        _stream_region_end(s);
+        if (rk != 3) { _stream_compact(s, buf, elen); }
+        return em + tokenize_stream_drain(s, out_tb);
+    }
+    if (load64(s + 32) == 1) {
+        # No end marker: the body runs to the end of the input.
+        var fe = _stream_region_body(s, out_tb, inner, len, 1);
+        _stream_region_end(s);
+        return fe;
+    }
+    # Where the marker could still start: the earliest tail of the buffer
+    # that begins it (at a line start, for a fence).
+    var lim = len;
+    if (rk != 4) {
+        var p = q;
+        var ps = qs;
+        while ((p < len) && (lim == len)) {
+            if (((rk != 2) || (ps == 1)) && (memeq(buf + p, endp, len - p) == 1)) { lim = p; }
+            if (lim == len) {
+                ps = _stream_fence_at(ps, load8(buf + p), ind);
+                p = p + 1;
+            }
+        }
+    }
+    return _stream_region_body(s, out_tb, inner, lim, 0);
 }
 
 # Mark the stream as finished and emit every remaining token
@@ -1878,6 +2070,13 @@ fn tokenize_stream_free(s) {
     store64(s + 200, 0);  # mode-3 lead (2.9.1)
     store64(s + 208, 0);  # mode-3 escape (2.9.1)
     store64(s + 216, 0);  # byte before the last committed one (2.9.3)
+    store64(s + 224, 0);  # resumable region (2.9.10)
+    store64(s + 232, 0);
+    store64(s + 240, 0);
+    store64(s + 248, 0);
+    store64(s + 256, 0);
+    store64(s + 264, 0);
+    store64(s + 272, 0);
     # pending_idx's "none" sentinel is -1, NOT 0 — 0 is a valid
     # pair-rule index. Every other field here poisons safely to 0,
     # and two call sites lean on that ("_free zeroes every field"

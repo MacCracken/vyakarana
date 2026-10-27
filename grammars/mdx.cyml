@@ -12,7 +12,8 @@
 #   - Expressions — `{…}` is JavaScript (`compose`), in prose and in JSX
 #     attributes (`<Chart data={rows} />`) alike; `{/* … */}` is MDX's
 #     comment. The expression ends at the first `}`: one nested brace
-#     (`{ {a: 1} }`) ends it early. An unclosed `{` is text.
+#     (`{ {a: 1} }`) ends it early. An unclosed `{` runs as JavaScript to
+#     the end of the input (ADR 0032); MDX itself rejects one.
 #
 # JSX tags themselves (`<Chart …>`, `</Chart>`) tokenize as markdown's
 # operators, identifiers and punctuation, as raw HTML does in markdown.

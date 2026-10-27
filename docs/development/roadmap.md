@@ -42,17 +42,6 @@ a closeout audit at the end. Each entry ships only when the gates are
 green and, where it adds a gate, that gate is shown to fail on the
 release before.
 
-### 2.9.10 — Tokens inside a long, still-open compose region *(patch)*
-
-- Today a `<style>`, fence or cyml body that has not closed yields no
-  tokens until it does (ADR 0028's known limit). Make the region
-  resumable: the stream remembers the inner grammar and re-scans only
-  the body, committing what the inner grammar settles — ADR 0028's
-  "when to revisit".
-- Done when chunk invariance holds at every offset for the compose
-  corpora as now, and a long open region's live buffer and latency are
-  bounded by the inner grammar's own, not by the region.
-
 ### 2.9.11 — Incremental retokenization *(patch)*
 
 - An edit API for live editors (`retokenize_range` or an edit-feed

@@ -8,14 +8,14 @@
 > 2.6.2 it carried a "What X changed" block for every release back to
 > 1.13.0 — trimmed in 2.7.0; the CHANGELOG has all of it.)
 >
-> **Last refresh:** 2026-10-27, at 2.9.9. Read this first, then run the
+> **Last refresh:** 2026-10-27, at 2.9.10. Read this first, then run the
 > gates (CLAUDE.md §Gates) — do not take the "green" below on trust.
 
 ---
 
 ## Current status
 
-- **Version:** `2.9.9` — `VERSION`, `src/version_str.cyr`,
+- **Version:** `2.9.10` — `VERSION`, `src/version_str.cyr`,
   `dist/vyakarana.cyr`, the CHANGELOG header and `docs/man/vyk.1`
   agree.
 - **Toolchain pin:** `cyrius = "6.7.18"` in `cyrius.cyml`, the single
@@ -41,23 +41,22 @@
   of four stdlib leaves (alloc, string, vec, io). The embedded grammars
   are compacted — comments and blanks outside strings dropped — by a
   POSIX sh + awk generator (ADR 0029); `grammars/` is the readable copy.
-- **Size:** the shipped (`CYRIUS_DCE=1`) `vyk` is 297,312 bytes, the
-  default build 391,520. `scripts/check-size.sh` reports the shipped
+- **Size:** the shipped (`CYRIUS_DCE=1`) `vyk` is 305,568 bytes, the
+  default build 399,776. `scripts/check-size.sh` reports the shipped
   build's size in CI and at release; since 2.9.8 there is no hard limit
   (ADR 0029, amended).
-- **Next release:** 2.9.10, tokens inside a long, still-open compose
-  region — the eighth of the 2.9.x arc, which runs to incremental
-  retokenization at 2.9.11 and a closeout audit at 2.9.12
+- **Next release:** 2.9.11, incremental retokenization — the ninth of
+  the 2.9.x arc, which ends with a closeout audit at 2.9.12
   ([roadmap](./roadmap.md)). The last audit's report:
   [2.9.x](../audit/2026-10-21-2.9.x-closeout-audit.md).
 
-## Gates (green at 2.9.9, 2026-10-27)
+## Gates (green at 2.9.10, 2026-10-27)
 
-- `cyrius build` OK, 0 warnings · `cyrius test` **1395/1395** · smoke
+- `cyrius build` OK, 0 warnings · `cyrius test` **1427/1427** · smoke
   OK (it runs `scripts/check-detect.sh`) · `scripts/lint-fmt.sh`
   exit 0 (a lint warning fails it; covers `src/` and
   `scripts/audit/`) · `scripts/check-size.sh` reports · `cyrius fuzz`
-  **5/5** (79 every-offset shapes), also clean under `--poison=ab` and
+  **5/5** (87 every-offset shapes), also clean under `--poison=ab` and
   `--bounds` · `cyrius distlib --check` clean.
 - The audit sweeps are in `scripts/audit/` — real-file coverage,
   poison A/B, streaming invariance, mutation fuzz over vidya — with
@@ -81,7 +80,9 @@
 - **Grammar format:** CYML. Rule types line (with `start_after`,
   ADR 0022), pair, words, compose, compose_fenced (with `end_indent`,
   and tags resolved by name, extension or interpreter — ADR 0016),
-  compose_region (`end_before` optional: run to EOF, ADR 0019),
+  compose_region (`end_before` optional: run to EOF, ADR 0019) — a
+  compose or compose_fenced body with no end marker runs to EOF too
+  (ADR 0032),
   heredoc (ADR 0023; since ADR 0030 also an inline body for raw
   literals — a closer computed from a `repeat` run or a `tag` — and the
   line options `indent_by`, `indent_always`, `term_rest`, `delim`,
@@ -105,19 +106,22 @@
   split offset for all 49 corpus inputs — the compose grammars
   (markdown, html, vue, svelte, cyml) included since 2.8.0 — gated by
   `fuzz/chunk_invariance.fcyr` (8 chunk sizes, two-feed splits every
-  37 bytes; 49 shapes at every split offset and in 1-, 2- and 3-byte
+  37 bytes; 87 shapes at every split offset and in 1-, 2- and 3-byte
   feeds). The drain commits only what the
   scanner reports settled: heredoc and compose holds, groups that
   commit whole, the marker window, watches that wait on new bytes
-  (ADR 0028).
+  (ADR 0028). A compose region still open at the buffer's end, with an
+  inner grammar, is read as that grammar's own stream (ADR 0032).
 - **Streaming bounds:** `VYK_STREAM_CAP` 16 MiB live buffer;
-  `VYK_COMPOSE_HOLD_MAX` 8 MiB for a still-open compose region and
+  `VYK_COMPOSE_HOLD_MAX` 8 MiB for a held compose opener — a body that
+  is one token (an untagged fence, an inner grammar not loaded), a
+  fence's info line, a region open inside a streamed one — and
   `VYK_HEREDOC_HOLD_MAX` 1 MiB for a still-open heredoc group, measured
   from its line's first opener. Past a bound, fed in chunks, the held
   bytes commit as that drain's scan read them, which may differ from a
-  single feed from there on; 4 GiB per stream (ADR 0021). An unresolved
-  compose region gives no tokens until it closes or the stream
-  finishes.
+  single feed from there on; 4 GiB per stream (ADR 0021). An open
+  compose region with an inner grammar is not held: its tokens commit
+  as they settle and its live buffer is the inner grammar's (ADR 0032).
 - **Detection:** compiled in `src/detect.cyr`, declared by the grammars,
   checked both ways (ADR 0025). A `filenames` entry matches an anchored
   ending (`ci/app.Dockerfile`) or `name.` + a suffix that starts with a
@@ -139,7 +143,8 @@ Each names the 2.9.x arc release that takes it on ([roadmap](./roadmap.md)).
   string's doubled quote splits it into adjacent strings, as SQL's `''`
   does; C# 11 raw strings (`"""…"""`) are not declared.
 - **The 2.9.9 grammars** (overview.md's table): an MDX expression ends at
-  its first `}` (`{ {a: 1} }`), and JSX tags are markdown tokens; NASM's
+  its first `}` (`{ {a: 1} }`), an unmatched `{` runs as JavaScript to
+  the end (ADR 0032), and JSX tags are markdown tokens; NASM's
   letter-led hex `0FFh` is number + identifier; Lean's Unicode operators
   are identifiers. Not scheduled.
 - **Raw literals and heredocs, what is not read** (ADR 0030): Swift's
@@ -154,9 +159,10 @@ Each names the 2.9.x arc release that takes it on ([roadmap](./roadmap.md)).
   indented code blocks are not recognised (ADR 0016); a closer may be
   indented by any run of spaces, tabs and `>`, so a column-0 fence whose
   body holds an indented ```` ``` ```` line closes there.
-- **Streaming latency inside compose regions:** a long, still-open
-  `<style>` / fence / cyml body is held whole until it closes (ADR 0028;
-  a resumable region is 2.9.10).
+- **Streaming inside compose regions** goes one level deep (ADR 0032):
+  a region open inside a streamed body (a fence still open in a cyml
+  body), an untagged fence and a region whose inner grammar is not
+  loaded are held whole until they close. Not scheduled.
 - **No incremental retokenization:** an edit means tokenizing the
   buffer again (or streaming it); an edit API is 2.9.11.
 - **Out of scope:** Python INDENT / DEDENT and anything structural —

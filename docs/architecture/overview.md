@@ -100,8 +100,10 @@ path can never silently drift away from the M1 reference.
   same stream. Loads bundled grammars
   lazily on first `_new` / `has_grammar` call.
   `bootstrap_grammars()` is the explicit-load hook. See
-  [ADR 0017](../adr/0017-streaming-api.md) and
-  [ADR 0028](../adr/0028-streaming-holds-watches-groups.md). The 1.x
+  [ADR 0017](../adr/0017-streaming-api.md),
+  [ADR 0028](../adr/0028-streaming-holds-watches-groups.md) and
+  [ADR 0032](../adr/0032-resumable-compose-regions.md) (an open compose
+  region's body streams with its inner grammar). The 1.x
   `tokenize_source(src, lang)` synchronous entry was removed. The
   file's header is the authoritative list of public symbols.
 - **`src/detect.cyr`** — `detect_language` (path),
@@ -302,3 +304,4 @@ behaviour:
 - [ADR 0029 — Compacted grammar blobs, a POSIX generator, a checked size budget](../adr/0029-compacted-blobs-posix-generator-size-budget.md)
 - [ADR 0030 — Heredoc rule: computed closers and Ruby / PHP terminators](../adr/0030-heredoc-computed-closers.md)
 - [ADR 0031 — `detect_language_registered`: routing by the registry's declarations](../adr/0031-detect-language-registered.md)
+- [ADR 0032 — Unclosed compose bodies run to the end; open regions stream](../adr/0032-resumable-compose-regions.md)

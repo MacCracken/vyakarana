@@ -25,7 +25,7 @@ project's `cyrius.cyml`:
 ```toml
 [deps.vyakarana]
 git     = "https://github.com/MacCracken/vyakarana.git"
-tag     = "2.9.9"
+tag     = "2.9.10"
 modules = ["dist/vyakarana.cyr"]
 ```
 
@@ -300,10 +300,15 @@ if (s == 0) {
   4 GiB per stream (`VYK_OFFSET_CAP`, 2.3.4,
   [ADR 0021](../adr/0021-token-span-width-ceiling.md)): past it
   `feed` returns this code rather than wrap token offsets. A
-  still-open compose region or heredoc group is held for at most
-  `VYK_COMPOSE_HOLD_MAX` (8 MiB) / `VYK_HEREDOC_HOLD_MAX` (1 MiB)
-  before its bytes commit ([ADR 0028](../adr/0028-streaming-holds-watches-groups.md);
-  state.md has the exact bounds).
+  still-open heredoc group is held for at most
+  `VYK_HEREDOC_HOLD_MAX` (1 MiB) before its bytes commit
+  ([ADR 0028](../adr/0028-streaming-holds-watches-groups.md);
+  state.md has the exact bounds). A still-open compose region whose
+  body has an inner grammar is not held: its body streams as that
+  grammar's own, so its live buffer is the inner grammar's (2.9.10,
+  [ADR 0032](../adr/0032-resumable-compose-regions.md)); one whose body
+  is a single token (an untagged fence) holds for at most
+  `VYK_COMPOSE_HOLD_MAX` (8 MiB).
 - `VYK_ERR_FINISHED` (-2) — `tokenize_stream_finish` already
   ran on this stream; create a fresh one for new input.
 
@@ -337,9 +342,13 @@ manual re-sync step.
   **streaming** drain's quadratic cases — a very long comment,
   identifier, whitespace or digit run, or a long fence or `<style>`
   body, fed in small chunks — are linear since 2.8.0
-  ([ADR 0028](../adr/0028-streaming-holds-watches-groups.md)). What
-  remains is latency: a still-open compose region is held whole until
-  it closes (state.md, Known limits).
+  ([ADR 0028](../adr/0028-streaming-holds-watches-groups.md)). Since
+  2.9.10 a long, still-open compose region streams too: a fence,
+  `<style>`, `<script>` or cyml body commits as its inner grammar
+  settles it, before its end marker arrives
+  ([ADR 0032](../adr/0032-resumable-compose-regions.md)). An untagged
+  fence's body, one token, still waits for its closer (state.md, Known
+  limits).
 - `tokenbuf` allocates by doubling, not per-token (ADR 0002).
   For an N-byte input expect ≤ log₂(N) allocations.
 - Public API has no syscalls beyond what your project's stdlib

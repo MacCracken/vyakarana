@@ -412,6 +412,19 @@ fn _ci_main() {
     if (_ci_every("swift", "let x = ##############\"a\"##############\n") != 0) { rc = 1; }
     if (_ci_every("lua", "x = [======[a]======] y\n") != 0) { rc = 1; }
     if (_ci_every("cpp", "auto x = R\"abcdefghijklmnop(a)abcdefghijklmnop\"; y\n") != 0) { rc = 1; }
+    # 2.9.10 (ADR 0032): resumable regions. A split after an opener reads
+    # the body with its inner grammar as a stream of its own: the end
+    # marker split, "```" mid-line, a closer after `end_indent` bytes, a
+    # partial `</sty` that is body after all, a `#!` at a body's start,
+    # bodies with no end at all, a cyml `\n[[` and an mdx blank line.
+    if (_ci_every("markdown", "a\n\n```python\nx = 'a'  # c\ny = \"\"\"doc\n```\nz = 1.5\n```\nafter `x` ``y``\n") != 0) { rc = 1; }
+    if (_ci_every("markdown", "x\n```python\ns = \"```\" + t\nu = 1 ```\n  v ```\n> ```\nw\n```\nend\n") != 0) { rc = 1; }
+    if (_ci_every("markdown", "```python\n#!/usr/bin/env python\nprint('x')\n``` \n``` trailing\n````\n```\n") != 0) { rc = 1; }
+    if (_ci_every("markdown", "text\n```rust\nfn main() { let r = r#\"x\"#; }\n// open comment") != 0) { rc = 1; }
+    if (_ci_every("html", "<p>a</p><style>a{b:1.5em} /* c */ .x{}</style><script>let a = '</scr' + \"x\"; // c\n</script><p>z</p>") != 0) { rc = 1; }
+    if (_ci_every("html", "<style>a { color: red; }</sty</style>x<style>open") != 0) { rc = 1; }
+    if (_ci_every("cyml", "[a]\nb = 1\n---\n# H\n\n```py\nx = 1\n```\ntext `c`\n[[e]]\nq = 2\n---\nbody\n\n[[e]]\n---\nlast *x*\n") != 0) { rc = 1; }
+    if (_ci_every("mdx", "import A from 'a'\nimport B from 'b'\n\n# T\n\n{1 + 2} and {open\n\nexport const x = 1\nexport default y\n") != 0) { rc = 1; }
 
     return rc;
 }

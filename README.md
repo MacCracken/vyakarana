@@ -139,6 +139,12 @@ was removed in 2.0.0 (ADR 0017).
 
 ## Status
 
+**2.9.10** (2026-10-27) — a long fence, `<style>`, `<script>` or cyml body
+still open in a stream yields its tokens as they settle, instead of only
+once it closes; the stream holds the inner grammar's few bytes, not the
+whole region. A body with no end marker runs to the end of the input with
+its inner grammar, as CommonMark and HTML read it. 1427/1427 tests.
+
 **2.9.9** (2026-10-27) — three new grammars: **NASM** (`.asm`, `.nasm` — an
 `.asm` that reads as GNU as still goes to the asm grammars), **MDX**
 (markdown with JavaScript `import` / `export` blocks and `{…}`

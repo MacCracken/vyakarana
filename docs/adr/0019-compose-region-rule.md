@@ -43,7 +43,9 @@ rather than inferred:
    outer grammar (confirmed: an unterminated `<style>` tokenizes
    as plain HTML). Every CYML file's final body runs to EOF, so
    under `compose` the last body — often the largest — would never
-   be routed at all.
+   be routed at all. *(Amended 2.9.10: no longer — a `compose` body
+   with no end marker runs to the end too (ADR 0032). The `end_before`
+   reason above stands.)*
 
 What shipped instead, from 1.9.0 through 2.3.0, was a single rule
 set tuned for the union of TOML and markdown. `grammars/cyml.cyml`

@@ -4,6 +4,83 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.9.10] — 2026-10-27
+
+**Tokens inside a long, still-open compose region** (roadmap 2.9.10), the
+eighth of the 2.9.x arc. A fence, `<style>`, `<script>`, cyml body or MDX
+block still open in a stream now commits as its inner grammar settles it,
+before its end marker arrives, and its live buffer is the inner grammar's,
+not the region's (ADR 0032). A body with no end marker at all now runs to
+the end of the input with its inner grammar, where 2.9.9 read its opener as
+outer text. That is the one change to single-feed output: 21 of 5,000
+compose-grammar files (all markdown) and 2 of the 18 real MDX files, each
+from a fence its document leaves open, with no change in error tokens; 0
+of 2.9.4's 7,527-file sample. 1427/1427 tests (32 new), fuzz 5/5 (87
+every-offset shapes, 8 new; also under `--poison=ab` and `--bounds`),
+lint+fmt exit 0, `cyrius distlib --check` clean. `vyk` 391,520 → 399,776
+bytes; the shipped DCE build 297,312 → 305,568.
+
+### Changed
+
+- **A compose body with no end marker runs to the end of the input**, read
+  by its inner grammar: an unclosed fence as CommonMark reads it, an
+  unclosed `<style>` or `<script>` as HTML does (`compose`,
+  `compose_fenced`; `compose_region` always did). The opener is its
+  punctuation token; an untagged fence's body is one string. Through 2.9.9
+  the opener and everything after it were the outer grammar's text. Of the
+  21 markdown files, 9 leave a fence open (an odd count). The other 12, and
+  both MDX files, have an even count that an earlier inline code span had
+  already shifted: a span opened by a stray backtick runs into a fence
+  line, and every later fence pairs one off. An unmatched `{` in MDX prose
+  now runs as JavaScript to the end (MDX itself rejects one). ADRs 0013,
+  0016 and 0019 amended.
+- **Open regions stream** (ADR 0032; ADR 0028's "when to revisit"). A drain
+  that reaches a region still open at the buffer's end, whose body has an
+  inner grammar, commits through the opener and reads the body as that
+  grammar's own stream, with its holds, watches and fast paths. It
+  searches only the new bytes for the end marker and stops short of a tail
+  that could still begin it. When the marker arrives, the body commits as
+  the inner grammar's finish over it, then the marker, and the rest drains
+  with the outer grammar. Live buffer fed in 4 KB chunks, 2.9.9 → 2.9.10:
+  a 425 KB python fence 425,963 → 6 bytes; a 372 KB `<style>` 372,725 → 7;
+  a 467 KB `<script>` 466,933 → 10; a 540 KB cyml body 542,674 → 7; a
+  536 KB MDX import block 536,577 → 6. Total time is unchanged at
+  0.2 – 0.3 s. Streaming goes one level deep: a region open inside a
+  streamed body (a fence still open in a cyml body) holds as before. So do
+  an untagged fence and a region whose inner grammar is not loaded, whose
+  body is one token.
+- The drain is `_stream_drain_g` (grammar, scan limit and finish as
+  parameters) under a region driver. The stream record grows 224 → 280
+  bytes (internal). The nesting cap counts a streamed body one level up,
+  so it cuts where a single feed's does.
+
+### Tests
+
+- 32 new assertions. Unclosed bodies in a single feed. Long fences (plain,
+  in a list item with "```" mid-line, never closed), a `<style>`, a vue
+  `<script>`, a cyml body and an MDX import block streamed a line at a
+  time: each commits before its end marker, keeps its live buffer under
+  128 bytes and equals one feed. An opener that a longer one may still
+  claim (`<a`, then `b`). The nesting cap, with two grammars composing
+  each other 40 deep. 19 of the assertions fail on 2.9.9's sources.
+- `fuzz/chunk_invariance.fcyr`: 8 region shapes at every split offset and
+  in 1 – 3 byte feeds. They cover a split end marker, "```" mid-line,
+  closers after `end_indent` bytes, a partial `</sty` that turns out to be
+  body, a `#!` at a body's start, bodies never closed, cyml's `\n[[` and
+  MDX's blank line.
+- Nine mutants of region mode each fail the suite or the fuzz: no scan
+  limit, no body-start look-behind, no fence line state, the scan's NUL
+  left in the buffer, the close not finished, no marker window, the
+  window alone as the entry bound, no nesting bias, no entry at all.
+
+### Verified
+
+- Streaming: `stream-sweep.sh` (167 fixed runs) and 5,000 compose-grammar
+  files under chunks, rand and cutfirst (15,000 runs), 0 fails;
+  `mutate-fuzz.sh -i 100` over vidya `9f13e35`, 976 files and 97,600
+  mutants, 0 fails; the region shapes at every pair of split offsets
+  (three feeds), 0 fails.
+
 ## [2.9.9] — 2026-10-27
 
 **New grammars** (roadmap 2.9.9), the seventh of the 2.9.x arc: **nasm**,

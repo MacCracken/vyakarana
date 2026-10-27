@@ -88,6 +88,11 @@ can decide what to do. **Never falls to `TK_ERROR`** — the
 compose rule is opt-in and missing inner grammars shouldn't
 break the outer tokenization.
 
+*(Amended 2.9.10: a body with no end marker used to be no region —
+the start marker matched nothing and the bytes went to the outer
+grammar. It now runs to the end of the input with its inner grammar,
+as HTML reads an unclosed `<style>`; ADR 0032.)*
+
 ### Recursion
 
 `tokenize_with_grammar` is the recursion target, and step 0

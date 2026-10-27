@@ -216,6 +216,10 @@ var _ds_nolf_from = 0;
 # inner grammar. The bundled grammars nest three deep at most (cyml →
 # markdown → html → css).
 var DS_MAX_DEPTH = 32;
+# Levels above this scan's depth 1 (2.9.10): 1 while a streaming drain
+# scans a resumable region's body at the top level, which a single feed
+# reaches one compose level down — so the cap cuts at the same place.
+var _ds_rg_bias = 0;
 
 # Scratch tokenbuf for a compose body's inner tokens at the current
 # nesting depth, emptied for reuse; 0 if it cannot be allocated, or
@@ -227,7 +231,7 @@ var DS_MAX_DEPTH = 32;
 # caller copies the inner tokens out before returning, and a nested
 # call runs one depth deeper, on its own slot.
 fn _ds_inner_tb() {
-    if (_ds_depth >= DS_MAX_DEPTH) { return 0; }
+    if (_ds_depth + _ds_rg_bias >= DS_MAX_DEPTH) { return 0; }
     if (_ds_inner_pool == 0) {
         _ds_inner_pool = vec_new();
         if (_ds_inner_pool == 0) { return 0; }
@@ -284,60 +288,65 @@ fn _ds_try_compose_rules(g, src, src_len, i, tb) {
             # this one either. Through 2.5.1 every opener re-scanned
             # to EOF: `<style>` x 150k with no `</style>` (1 MiB html)
             # ran past 300 s (2.5.2 audit P2-5).
-            if ((load64(r + 24) == _ds_cur_gen) && (body_start >= load64(r + 32))) {
-                _ds_cp_hold(i, 3, endp, 0);
-                return 0;
-            }
+            var cl = (0 - 1);
+            var known_none = 0;
+            if ((load64(r + 24) == _ds_cur_gen) && (body_start >= load64(r + 32))) { known_none = 1; }
             var j = body_start;
-            while (j < src_len) {
-                if ((j + elen <= src_len) && (memeq(src + j, endp, elen) == 1)) {
-                    # Found end marker. Emit start, body, end.
-                    tokenbuf_push(tb, TK_PUNCTUATION, i, slen);
-                    var body_len = j - body_start;
-                    if (body_len > 0) {
-                        var inner_name = compose_rule_inner(r);
-                        var inner_g = registry_find_by_name(inner_name);
-                        var inner_tb = 0;
-                        if (inner_g != 0) { inner_tb = _ds_inner_tb(); }
-                        if (inner_tb != 0) {
-                            # Inner grammar found — tokenize body
-                            # in the depth's scratch buf, copy with
-                            # shifted offsets.
-                            tokenize_with_grammar(inner_g, src + body_start, body_len, inner_tb);
-                            var k = 0;
-                            var nk = tokenbuf_count(inner_tb);
-                            while (k < nk) {
-                                var ik = tokenbuf_kind(inner_tb, k);
-                                var is = tokenbuf_start(inner_tb, k);
-                                var il = tokenbuf_len(inner_tb, k);
-                                tokenbuf_push(tb, ik, is + body_start, il);
-                                k = k + 1;
-                            }
-                        } else {
-                            # Inner grammar missing (or no scratch
-                            # tokenbuf — out of memory; was a NULL
-                            # write through 2.5.1) — graceful degrade:
-                            # body is one string span.
-                            tokenbuf_push(tb, TK_STRING, body_start, body_len);
-                        }
-                    }
-                    tokenbuf_push(tb, TK_PUNCTUATION, j, elen);
-                    _ds_grp_add(i, j + elen);
-                    return slen + body_len + elen;
-                }
+            while ((known_none == 0) && (j < src_len) && (cl < 0)) {
+                if ((j + elen <= src_len) && (memeq(src + j, endp, elen) == 1)) { cl = j; }
                 j = j + 1;
             }
-            # End marker not found. Record it for this call, then hand
-            # the opener back to the normal pipeline. NOTE: this
-            # returns from the whole compose step — later compose
-            # rules are not tried at this cursor. The comment here
-            # used to say "fall through (next compose rule …)"; it
-            # never did, and it only matters for two rules whose
-            # starts share a prefix (no bundled grammar).
-            store64(r + 24, _ds_cur_gen);
-            store64(r + 32, body_start);
-            _ds_cp_hold(i, 3, endp, 0);
-            return 0;
+            # No end marker: the body runs to the end of the input (2.9.10,
+            # ADR 0032) — as HTML reads an unclosed `<style>` or `<script>`.
+            # Through 2.9.9 the opener went back to the outer grammar as
+            # text, so nothing in such a body could ever commit early.
+            var unclosed = 0;
+            if (cl < 0) {
+                unclosed = 1;
+                cl = src_len;
+                store64(r + 24, _ds_cur_gen);
+                store64(r + 32, body_start);
+            }
+            j = cl;
+            # Emit start, body, end (the end only when present).
+            tokenbuf_push(tb, TK_PUNCTUATION, i, slen);
+            var body_len = j - body_start;
+            if (body_len > 0) {
+                var inner_name = compose_rule_inner(r);
+                var inner_g = registry_find_by_name(inner_name);
+                var inner_tb = 0;
+                if (inner_g != 0) { inner_tb = _ds_inner_tb(); }
+                if (inner_tb != 0) {
+                    # Inner grammar found — tokenize body
+                    # in the depth's scratch buf, copy with
+                    # shifted offsets.
+                    tokenize_with_grammar(inner_g, src + body_start, body_len, inner_tb);
+                    var k = 0;
+                    var nk = tokenbuf_count(inner_tb);
+                    while (k < nk) {
+                        var ik = tokenbuf_kind(inner_tb, k);
+                        var is = tokenbuf_start(inner_tb, k);
+                        var il = tokenbuf_len(inner_tb, k);
+                        tokenbuf_push(tb, ik, is + body_start, il);
+                        k = k + 1;
+                    }
+                } else {
+                    # Inner grammar missing (or no scratch
+                    # tokenbuf — out of memory; was a NULL
+                    # write through 2.5.1) — graceful degrade:
+                    # body is one string span.
+                    tokenbuf_push(tb, TK_STRING, body_start, body_len);
+                }
+            }
+            if (unclosed == 1) {
+                # Open at the buffer's end: more input may close it.
+                _ds_cp_hold(i, 3, endp, 0);
+                _ds_rg_report(i, body_start, 1, registry_find_by_name(compose_rule_inner(r)), endp, 0);
+                return src_len - i;
+            }
+            tokenbuf_push(tb, TK_PUNCTUATION, j, elen);
+            _ds_grp_add(i, j + elen);
+            return slen + body_len + elen;
         }
         r_i = r_i + 1;
     }
@@ -399,8 +408,13 @@ fn _ds_try_compose_region_rules(g, src, src_len, i, tb, prev0) {
             # Running into the buffer's end is not the EOF case until the
             # stream finishes: hold it (2.8.0).
             if (found == 0) {
+                var rg_k = 3;
                 if (elen > 0) { _ds_cp_hold(i, 3, endb, 0); }
-                if (elen == 0) { _ds_cp_hold(i, 4, 0, 0); }
+                if (elen == 0) {
+                    _ds_cp_hold(i, 4, 0, 0);
+                    rg_k = 4;
+                }
+                _ds_rg_report(i, body_start, rg_k, registry_find_by_name(compose_region_rule_inner(r)), endb, 0);
             }
             if (found == 1) { _ds_grp_add(i, body_end); }
             if (cr_in == 0) { tokenbuf_push(tb, TK_PUNCTUATION, i, slen); }
@@ -598,10 +612,15 @@ fn _ds_try_compose_fenced_rules(g, src, src_len, i, tb) {
                         store64(r + 24, body_start);
                     }
                 }
+                # No closing fence: the body runs to the end of the input
+                # (2.9.10, ADR 0032), as CommonMark reads an unclosed fence.
+                var fen_open = 0;
                 if (close_pos < 0) {
                     var flead = compose_fenced_rule_end_indent(r);
                     if (flead == 0) { flead = 1; }
                     _ds_cp_hold(i, 3, endp, flead);
+                    fen_open = 1;
+                    close_pos = src_len;
                 }
                 if (close_pos >= 0) {
                     # Resolve inner grammar from captured tag.
@@ -654,9 +673,15 @@ fn _ds_try_compose_fenced_rules(g, src, src_len, i, tb) {
                         }
                     }
 
-                    tokenbuf_push(tb, TK_PUNCTUATION, close_pos, elen);
-                    _ds_grp_add(i, close_pos + elen);
-                    result = open_len + body_len + elen;
+                    if (fen_open == 1) {
+                        result = open_len + body_len;
+                        _ds_rg_report(i, body_start, 2, inner_g, endp, compose_fenced_rule_end_indent(r));
+                    }
+                    if (fen_open == 0) {
+                        tokenbuf_push(tb, TK_PUNCTUATION, close_pos, elen);
+                        _ds_grp_add(i, close_pos + elen);
+                        result = open_len + body_len + elen;
+                    }
                 }
             }
         }
@@ -1358,9 +1383,10 @@ fn _ds_grp_add(from, to) {
 
 # Compose hold (2.8.0): the lowest depth-1 compose opener this scan could
 # not resolve — a `compose` or `compose_fenced` start with no close in
-# the buffer (the scanner then tokenizes it as outer text, but more
-# input may close it), or a `compose_region` running into the buffer's
-# end. The drain commits nothing from there until it resolves, with a
+# the buffer (read as a body running to the buffer's end, ADR 0032 — more
+# input may close it; through 2.9.9 it read as outer text), a fence whose
+# info line has not ended, or a `compose_region` running into the
+# buffer's end. The drain commits nothing from there until it resolves, with a
 # watch on `_ds_cp_hold_marker`: mode 2 waits for a line break, 3 for
 # the marker (a cstr) anywhere in the new bytes, 4 for finish. Through
 # 2.7.1 the drain guessed at this from outside (`prefix_hold`), and the
@@ -1381,6 +1407,21 @@ var _ds_cp_hold_lead = 0;
 # drain must copy before another scan reuses it (ADR 0030).
 var _ds_cp_hold_scratch = 0;
 
+# Resumable region (2.9.10, ADR 0032): when the compose hold is a region
+# still open at the buffer's end whose body has an inner grammar, the
+# drain can stream the body with that grammar instead of holding it all.
+# `_ds_rg_from` is the hold's opener (-1: the hold is not one), `_body`
+# where the body starts, `_kind` 1 compose, 2 compose_fenced, 3
+# compose_region with `end_before`, 4 compose_region to the end of the
+# input; `_end` the end marker (cstr, 0 for kind 4) and `_ind` a fence's
+# `end_indent` (cstr or 0). Depth 1 only, like the hold it describes.
+var _ds_rg_from = (0 - 1);
+var _ds_rg_body = 0;
+var _ds_rg_kind = 0;
+var _ds_rg_inner = 0;
+var _ds_rg_end = 0;
+var _ds_rg_ind = 0;
+
 fn _ds_cp_hold(i, mode, marker, lead) {
     if (_ds_depth != 1) { return 0; }
     if ((_ds_cp_hold_from < 0) || (i < _ds_cp_hold_from)) {
@@ -1388,7 +1429,19 @@ fn _ds_cp_hold(i, mode, marker, lead) {
         _ds_cp_hold_mode = mode;
         _ds_cp_hold_marker = marker;
         _ds_cp_hold_lead = lead;
+        _ds_rg_from = (0 - 1);
     }
+    return 0;
+}
+
+fn _ds_rg_report(i, body, kind, inner, endp, ind) {
+    if ((_ds_depth != 1) || (_ds_cp_hold_from != i) || (inner == 0)) { return 0; }
+    _ds_rg_from = i;
+    _ds_rg_body = body;
+    _ds_rg_kind = kind;
+    _ds_rg_inner = inner;
+    _ds_rg_end = endp;
+    _ds_rg_ind = ind;
     return 0;
 }
 

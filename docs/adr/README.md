@@ -45,6 +45,7 @@ sub-blocks).
 | 0029 | [Compacted grammar blobs, a POSIX generator, a checked size budget](0029-compacted-blobs-posix-generator-size-budget.md) | Accepted (amends 0014; size limit removed in 2.9.8) | 2026-10-21 |
 | 0030 | [Heredoc rule: computed closers and Ruby / PHP terminators](0030-heredoc-computed-closers.md) | Accepted (extends 0023) | 2026-10-27 |
 | 0031 | [`detect_language_registered`: routing by the registry's declarations](0031-detect-language-registered.md) | Accepted | 2026-10-27 |
+| 0032 | [Unclosed compose bodies run to the end; open regions stream](0032-resumable-compose-regions.md) | Accepted (extends 0028; amends 0013, 0016) | 2026-10-27 |
 
 ## Conventions
 

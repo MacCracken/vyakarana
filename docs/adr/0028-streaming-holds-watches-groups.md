@@ -1,6 +1,6 @@
 # 0028 — Streaming engine: scanner-reported holds, watches and groups
 
-- **Status:** Accepted
+- **Status:** Accepted — open compose regions stream since 2.9.10 ([ADR 0032](0032-resumable-compose-regions.md))
 - **Date:** 2026-10-20
 - **Deciders:** 2.8.0 streaming-engine work (proposed) / user (accepted
   via the pinned 2.8.0 roadmap entry)
@@ -123,6 +123,11 @@ Keep rescan-and-commit, and change who knows what:
   up to the buffer's end; either may differ from a single feed from
   there on — the documented bound). The
   tokens are the single feed's; only their arrival is later.
+  *(Amended 2.9.10: a region with an inner grammar now streams — its
+  body is read as that grammar's own stream, the live buffer its
+  grammar's (ADR 0032). Still held: an untagged fence, a region whose
+  inner grammar is not loaded, and a region open inside an open
+  region.)*
 - The stream record grows to 192 bytes (internal; 216 in 2.9.1, 224 in 2.9.3); the scanner keeps a
   per-depth line index for heredoc grammars.
 
@@ -131,4 +136,5 @@ Keep rescan-and-commit, and change who knows what:
 - A consumer needs tokens from inside a long, still-open compose region
   as they arrive: make the region resumable — the stream remembers the
   inner grammar and re-scans only the body — the narrowest piece of the
-  rejected state machine.
+  rejected state machine. *(Amended 2.9.10: done, one level deep —
+  ADR 0032.)*

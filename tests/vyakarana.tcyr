@@ -110,6 +110,48 @@ fn _t_same_tokens(a, b) {
     return 1;
 }
 
+# A long region streamed (2.9.10): `head`, then `unit` x `reps` with a
+# drain after each, then `tail` and finish. Sets how many tokens had
+# committed before the tail arrived, the largest live buffer after a
+# drain, and whether the tokens equal one feed of the same bytes.
+var _t_rg_early = 0;
+var _t_rg_live = 0;
+var _t_rg_same = 0;
+
+fn _t_rg_stream(lang, head, unit, reps, tail) {
+    var hl = strlen(head);
+    var ul = strlen(unit);
+    var tl = strlen(tail);
+    var n = hl + ul * reps + tl;
+    var src = alloc(n + 1);
+    memcpy(src, head, hl);
+    var k = 0;
+    while (k < reps) {
+        memcpy(src + hl + k * ul, unit, ul);
+        k = k + 1;
+    }
+    memcpy(src + hl + reps * ul, tail, tl);
+    store8(src + n, 0);
+    var s = tokenize_stream_new(lang);
+    var tb = tokenbuf_new();
+    _t_rg_live = 0;
+    tokenize_stream_feed(s, head, hl);
+    tokenize_stream_drain(s, tb);
+    k = 0;
+    while (k < reps) {
+        tokenize_stream_feed(s, unit, ul);
+        tokenize_stream_drain(s, tb);
+        if (load64(s + 8) > _t_rg_live) { _t_rg_live = load64(s + 8); }
+        k = k + 1;
+    }
+    _t_rg_early = tokenbuf_count(tb);
+    tokenize_stream_feed(s, tail, tl);
+    tokenize_stream_finish(s, tb);
+    tokenize_stream_free(s);
+    _t_rg_same = _t_same_tokens(tb, _t_tokenize(src, lang));
+    return tb;
+}
+
 # Path-detect, mapping 0 to "(none)" — same reason as `_t_detect`
 # (2.6.2).
 fn _t_path(path) {
@@ -4914,6 +4956,87 @@ fn main() {
     assert_eq(_gp_parse(ng9_g2, strlen(ng9_g2)), 0, "start_after on a compose rule rejects the grammar");
     var ng9_g3 = "[grammar]\nname = \"x\"\n[[rules]]\nmatch = \"compose_region\"\nstart = \"import \"\nend_before = \"\\n\\n\"\ninner = \"javascript\"\nstart_after = \"\\n\"\nstart_inner = true\n";
     assert(_gp_parse(ng9_g3, strlen(ng9_g3)) != 0, "a compose_region with start_after and start_inner loads");
+
+
+    test_group("2.9.10 resumable regions (ADR 0032)");
+    # A body with no end marker runs to the end of the input, read with
+    # its inner grammar; through 2.9.9 its opener was outer text.
+    var rr_md = _t_tokenize("# T\n```python\nx = 'a'\n", "markdown");
+    assert_eq(_t_kind_at(rr_md, 4), TK_PUNCTUATION, "markdown: a fence with no closer still opens");
+    assert_eq(_t_len_at(rr_md, 4), 10, "  ... its open line");
+    assert_eq(_t_kind_at(rr_md, 14), TK_IDENT, "  ... and its body is python to the end");
+    assert_eq(_t_kind_at(rr_md, 18), TK_STRING, "  ... a python string in it");
+    var rr_un = _t_tokenize("```\nplain text\n", "markdown");
+    assert_eq(_t_kind_at(rr_un, 4), TK_STRING, "markdown: an untagged fence with no closer: its body is one string");
+    assert_eq(_t_len_at(rr_un, 4), 11, "  ... to the end");
+    var rr_st = _t_tokenize("<p>a</p><style>a { color: red; }", "html");
+    assert_eq(_t_kind_at(rr_st, 8), TK_PUNCTUATION, "html: a <style> with no </style> opens");
+    assert_eq(_t_len_at(rr_st, 8), 7, "  ... its marker");
+    assert_eq(_t_kind_at(rr_st, 17), TK_PUNCTUATION, "  ... and its body is css");
+    assert_eq(_t_len_at(rr_st, 19), 5, "  ... `color` one css token");
+    # A long body still open streams with its inner grammar: tokens commit
+    # before the end marker arrives, and the live buffer is the inner
+    # grammar's, not the region's. Through 2.9.9 nothing past the opener
+    # committed until the end marker or finish.
+    _t_rg_stream("markdown", "# T\n\n```python\n", "def f(x):\n    return x + 1.5  # c\n", 2000, "```\nafter `x`\n");
+    assert(_t_rg_early > 20000, "markdown: a long fence commits before its closer arrives");
+    assert(_t_rg_live < 128, "  ... with a small live buffer");
+    assert_eq(_t_rg_same, 1, "  ... and the tokens of one feed");
+    _t_rg_stream("markdown", "- a\n\n   ```sh\n", "   echo \"x ``` y\" # z\n", 2000, "   ```\nb\n");
+    assert(_t_rg_early > 10000, "markdown: a fence in a list item, \"```\" mid-line in it, commits early");
+    assert_eq(_t_rg_same, 1, "  ... and its closer is its indented one");
+    _t_rg_stream("markdown", "x\n```py\n", "s = 1\n", 2000, "");
+    assert(_t_rg_early > 10000, "markdown: a fence never closed commits early");
+    assert_eq(_t_rg_same, 1, "  ... and runs to the end at finish");
+    _t_rg_stream("html", "<html><style>", ".a { margin: 1.5em -2px; }\n", 2000, "</style><p>x</p>");
+    assert(_t_rg_early > 20000, "html: a long <style> commits before </style> arrives");
+    assert(_t_rg_live < 128, "  ... with a small live buffer");
+    assert_eq(_t_rg_same, 1, "  ... and the tokens of one feed");
+    _t_rg_stream("vue", "<template><p/></template>\n<script>", "const a = `x${b}` + 'c'; // </scrip\n", 2000, "</script>\n");
+    assert(_t_rg_early > 20000, "vue: a long <script> commits early");
+    assert_eq(_t_rg_same, 1, "  ... and the tokens of one feed");
+    _t_rg_stream("cyml", "[[e]]\nt = 1\n---\n", "Some *text* and `code`.\n\n", 2000, "\n[[e]]\n---\nend\n");
+    assert(_t_rg_early > 20000, "cyml: a long body commits before the next [[ header arrives");
+    assert(_t_rg_live < 128, "  ... with a small live buffer");
+    assert_eq(_t_rg_same, 1, "  ... and the tokens of one feed");
+    _t_rg_stream("mdx", "import A from 'a'\n", "import B from 'b'\n", 2000, "\n# Doc\n");
+    assert(_t_rg_early > 10000, "mdx: a long import block commits before its blank line");
+    assert_eq(_t_rg_same, 1, "  ... and the tokens of one feed");
+    # An opener a longer one may still claim does not open a region early:
+    # `<a` at a feed's end may be `<ab`.
+    var rr_wg = "[grammar]\nname = \"zz_rgwin\"\n[defaults]\nwhitespace = true\nident_start = \"a-z\"\nident_cont = \"a-z\"\n[[rules]]\nmatch = \"compose\"\nstart = \"<ab\"\nend = \"</ab>\"\ninner = \"json\"\n[[rules]]\nmatch = \"compose\"\nstart = \"<a\"\nend = \"</a>\"\ninner = \"css\"\n";
+    var rr_wgr = _gp_parse(rr_wg, strlen(rr_wg));
+    assert_neq(rr_wgr, 0, "a grammar whose compose openers share a prefix loads");
+    registry_add(rr_wgr);
+    var rr_ws = tokenize_stream_new("zz_rgwin");
+    var rr_wtb = tokenbuf_new();
+    tokenize_stream_feed(rr_ws, "x <a", 4);
+    tokenize_stream_drain(rr_ws, rr_wtb);
+    tokenize_stream_feed(rr_ws, "b[1]</ab> y", 11);
+    tokenize_stream_finish(rr_ws, rr_wtb);
+    tokenize_stream_free(rr_ws);
+    assert_eq(_t_same_tokens(rr_wtb, _t_tokenize("x <ab[1]</ab> y", "zz_rgwin")), 1, "  ... `<a` then `b`: the tokens of one feed");
+    # Read at the top level, a region's body is one compose level down
+    # from where a single feed reads it: the nesting cap cuts at the same
+    # place (two grammars composing each other, 40 deep).
+    var rr_dx = "[grammar]\nname = \"zz_rgx\"\n[defaults]\nwhitespace = true\nident_start = \"a-z\"\nident_cont = \"a-z\"\n[[rules]]\nmatch = \"compose\"\nstart = \"(\"\nend = \")\"\ninner = \"zz_rgy\"\n";
+    var rr_dy = "[grammar]\nname = \"zz_rgy\"\n[defaults]\nwhitespace = true\nident_start = \"a-z\"\nident_cont = \"a-z\"\n[[rules]]\nmatch = \"compose\"\nstart = \"(\"\nend = \")\"\ninner = \"zz_rgx\"\n";
+    var rr_dgx = _gp_parse(rr_dx, strlen(rr_dx));
+    var rr_dgy = _gp_parse(rr_dy, strlen(rr_dy));
+    assert((rr_dgx != 0) && (rr_dgy != 0), "two grammars composing each other load");
+    registry_add(rr_dgx);
+    registry_add(rr_dgy);
+    var rr_deep = "((((((((((((((((((((((((((((((((((((((((a b";
+    var rr_ds = tokenize_stream_new("zz_rgx");
+    var rr_dtb = tokenbuf_new();
+    tokenize_stream_feed(rr_ds, rr_deep, 1);
+    tokenize_stream_drain(rr_ds, rr_dtb);
+    tokenize_stream_feed(rr_ds, rr_deep + 1, strlen(rr_deep) - 1);
+    tokenize_stream_finish(rr_ds, rr_dtb);
+    tokenize_stream_free(rr_ds);
+    var rr_d1 = _t_tokenize(rr_deep, "zz_rgx");
+    assert_eq(_t_kind_at(rr_d1, 32), TK_STRING, "  ... one feed: the 32nd level's body is one string");
+    assert_eq(_t_same_tokens(rr_dtb, rr_d1), 1, "  ... streamed: the same tokens");
 
     return assert_summary();
 }

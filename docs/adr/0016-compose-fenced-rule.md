@@ -97,7 +97,10 @@ Graceful degradation:
 - **Unclosed fence** (no `<end>` before EOF) → step 0b returns 0
   and the rest of the cursor falls through to the regular pair /
   line / words pipeline. The outer grammar eats the bytes; the
-  coverage invariant still holds.
+  coverage invariant still holds. *(Amended 2.9.10: the body now runs
+  to the end of the input with its inner grammar, as CommonMark reads
+  it — or as one string, untagged — so a stream can commit it before
+  the input ends; ADR 0032.)*
 
 CYML rule shape:
 
