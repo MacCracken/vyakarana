@@ -70,7 +70,8 @@
 #                          (2.6.0; mode 2 in 2.6.2)
 #  112  watch_dpos  i64 —   mode 1: delimiter offset in buf
 #  120  watch_dlen  i64 —   mode 1: delimiter length
-#  128  watch_ind   i64 —   mode 1: tab-stripped (`<<-`) terminator
+#  128  watch_ind   i64 —   mode 1: the terminator's key kind — 0 exact, 1
+#                          tabs, 2 blanks, 3 leading identifier (ADR 0030)
 #  136  watch_from  i64 —   where the next search resumes in buf
 #  144  hold_start  i64 —   the held region's start in buf, for the
 #                          VYK_HEREDOC_HOLD_MAX bound (2.6.2)
@@ -86,8 +87,10 @@
 #  184  hold_max    i64 —   the held region's bound: VYK_HEREDOC_HOLD_MAX
 #                          or VYK_COMPOSE_HOLD_MAX (2.8.0; modes 3 / 4
 #                          and +112 as a marker cstr are compose holds)
-#  192  watch_dcopy ptr —   mode 1: a copy of a delimiter quote removal
-#                          rewrote, when +112 is -1 (2.9.1)
+#  192  watch_dcopy ptr —   512 bytes: mode 1's copy of a delimiter quote
+#                          removal rewrote, when +112 is -1 (2.9.1), or
+#                          mode 3's copy of an inline literal's closer
+#                          (ADR 0030, 2.9.5)
 #  200  watch_lead  i64 —   mode 3: where the marker counts — 0 anywhere,
 #                          1 at a line start, else a cstr of the bytes
 #                          allowed before it on its line (2.9.1)
@@ -1104,12 +1107,10 @@ fn tokenize_stream_drain(s, out_tb) {
                     hsc = buf_len;
                 }
                 if (hf >= 0) {
-                    var hcp = hls;
-                    if (hind == 1) {
-                        while ((hcp < hf) && (load8(buf + hcp) == 9)) { hcp = hcp + 1; }
-                    }
-                    var hce = hf;
-                    if ((hce > hcp) && (load8(buf + hce - 1) == 13)) { hce = hce - 1; }
+                    # The line's key, as the scanner's lookup reads it
+                    # (exact, tabs, blanks, leading identifier; ADR 0030).
+                    var hce = _ds_hd_key(buf, hls, hf, hind);
+                    var hcp = _ds_hk_cs;
                     if ((hce - hcp == hdl) && (memeq(buf + hcp, hdp, hdl) == 1)) {
                         hdone = 1;
                         hgo = 0;
@@ -1274,6 +1275,8 @@ fn tokenize_stream_drain(s, out_tb) {
     _ds_cp_hold_from = (0 - 1);
     _ds_cp_hold_mode = 0;
     _ds_cp_hold_marker = 0;
+    _ds_cp_hold_scratch = 0;
+    _ds_inl_last_start = (0 - 1);
     _ds_grp_collect = 1;
     tokenize_with_grammar(g, buf, buf_len, temp_tb);
     _ds_grp_collect = 0;
@@ -1287,6 +1290,8 @@ fn tokenize_stream_drain(s, out_tb) {
     var cp_mode = _ds_cp_hold_mode;
     var cp_marker = _ds_cp_hold_marker;
     var cp_lead = _ds_cp_hold_lead;
+    var cp_scratch = _ds_cp_hold_scratch;
+    var inl_closed = _ds_inl_last_start;
     _ds_hd_hold_from = (0 - 1);
     _ds_cp_hold_from = (0 - 1);
     var hd_applied = 0;
@@ -1466,6 +1471,10 @@ fn tokenize_stream_drain(s, out_tb) {
         if (p_start + _stream_max_marker(g) > buf_len) {
             pending_ambiguous = 1;
         }
+        # Nor an inline literal (ADR 0030) the scan has closed: its first
+        # bytes may be a pair's start — Lua's `--[==[…]==]` read as an
+        # open `--` comment pended to the end of its line.
+        if (p_start == inl_closed) { pending_ambiguous = 1; }
         if ((hold_overlaps == 0) && (pending_ambiguous == 0) &&
           ((p_kind == TK_STRING) || (p_kind == TK_COMMENT) || (p_kind == TK_PREPROCESSOR))) {
             var rule_idx = _stream_find_pair_rule(g, buf, p_start, p_len, p_kind);
@@ -1526,7 +1535,7 @@ fn tokenize_stream_drain(s, out_tb) {
         # 960 KB in 4 KB chunks took 10.8 s (2.9.1 audit, reviewers A, B).
         var hd_copied = 0;
         if ((hd_fast == 1) && (hd_dpos < 0) && (hd_dlen < 256) && (_ds_hd_hold_dptr != 0)) {
-            if (load64(s + 192) == 0) { store64(s + 192, alloc(256)); }
+            if (load64(s + 192) == 0) { store64(s + 192, alloc(512)); }
             if (load64(s + 192) != 0) {
                 memcpy(load64(s + 192), _ds_hd_hold_dptr, hd_dlen);
                 hd_copied = 1;
@@ -1572,6 +1581,24 @@ fn tokenize_stream_drain(s, out_tb) {
         var cpl = buf_len - consumed;
         store64(s + 104, cp_mode);
         if (cp_mode == 2) { store64(s + 136, cpl); }
+        # An inline literal's closer (ADR 0030) is scanner scratch: watch
+        # the stream's own copy of it (+192, shared with mode 1's
+        # delimiter copy — one watch at a time), or not at all.
+        if ((cp_mode == 3) && (cp_scratch == 1)) {
+            var cpc = 0;
+            if (strlen(cp_marker) < 512) {
+                if (load64(s + 192) == 0) { store64(s + 192, alloc(512)); }
+                cpc = load64(s + 192);
+            }
+            if (cpc == 0) {
+                cp_mode = 0;
+                store64(s + 104, 0);
+            }
+            if (cpc != 0) {
+                memcpy(cpc, cp_marker, strlen(cp_marker) + 1);
+                cp_marker = cpc;
+            }
+        }
         if (cp_mode == 3) {
             store64(s + 112, cp_marker);
             store64(s + 200, cp_lead);

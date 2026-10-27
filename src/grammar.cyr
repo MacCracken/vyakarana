@@ -124,21 +124,42 @@ fn grammar_raw_string_prefixes(g)  { return load64(g + 240); }
 fn grammar_number_tuple_index(g)   { return load64(g + 248); }
 
 # Here-document rule (ADR 0023): `start` opens it (`<<`); an optional
-# one-byte `indent` marker right after the start (`-` for `<<-`) lets
-# the terminator line be indented by tabs. The body plus terminator is
-# one `kind` token (string).
-var HEREDOC_RULE_SIZE = 24;
+# `indent` marker right after the start (`-` for `<<-`; several bytes
+# are several markers, 2.9.5) lets the terminator line be indented. The
+# body plus terminator is one `kind` token (string). ADR 0030 (2.9.5)
+# adds the line options in `flags` and the inline body form — the token
+# runs from the opener to a closer computed from it (`r#"…"#`, `R"d(…)d"`).
+#    0 kind   8 start (0 = none: inline with `repeat`)   16 indent (markers)
+#   24 flags (HD_F_*)   32 body (0 line, 1 inline)   40 repeat byte (0 none)
+#   48 tag (0/1)   56 open   64 close   72 close_end (cstr, inline only)
+var HEREDOC_RULE_SIZE = 80;
+enum HeredocFlags {
+    HD_F_BLANKS = 1;       # indent_by = "blanks": spaces and tabs, not tabs only
+    HD_F_ALWAYS = 2;       # indent_always: indentable with no marker
+    HD_F_REST = 4;         # term_rest: code may follow the delimiter
+    HD_F_IDENT = 8;        # delim = "ident": an identifier or a quoted word
+    HD_F_TOUCH = 16;       # blanks = false: the delimiter follows directly
+}
 fn heredoc_rule_new(kind, start, indent) {
     var r = alloc(HEREDOC_RULE_SIZE);
     if (r == 0) { return 0; }
+    var z = 0;
+    while (z < HEREDOC_RULE_SIZE) { store8(r + z, 0); z = z + 1; }
     store64(r,      kind);
     store64(r + 8,  start);
     store64(r + 16, indent);
     return r;
 }
-fn heredoc_rule_kind(r)   { return load64(r); }
-fn heredoc_rule_start(r)  { return load64(r + 8); }
-fn heredoc_rule_indent(r) { return load64(r + 16); }
+fn heredoc_rule_kind(r)      { return load64(r); }
+fn heredoc_rule_start(r)     { return load64(r + 8); }
+fn heredoc_rule_indent(r)    { return load64(r + 16); }
+fn heredoc_rule_flags(r)     { return load64(r + 24); }
+fn heredoc_rule_body(r)      { return load64(r + 32); }
+fn heredoc_rule_repeat(r)    { return load64(r + 40); }
+fn heredoc_rule_tag(r)       { return load64(r + 48); }
+fn heredoc_rule_open(r)      { return load64(r + 56); }
+fn heredoc_rule_close(r)     { return load64(r + 64); }
+fn heredoc_rule_close_end(r) { return load64(r + 72); }
 
 # ── Rule sub-records ────────────────────────
 
@@ -708,6 +729,93 @@ fn _gp_apply_kv(g, current_rule, section, buf, len, key_pos, key_len, value_pos)
             store64(current_rule + 72, load64(out_str_slot));
             return 0;
         }
+        # Heredoc options (ADR 0030, 2.9.5). Accumulator: 104 body (1 line,
+        # 2 inline, 3 unknown), 112 flags (HD_F_*, 32 = an unknown value),
+        # 120 repeat, 128 tag, 136 open, 144 close, 152 close_end, 160 any
+        # of these given (heredoc rules only).
+        if (_gp_slice_eq(buf, key_pos, key_len, "body") == 1) {
+            _gp_parse_string(buf, len, value_pos, out_str_slot);
+            var bv = load64(out_str_slot);
+            store64(current_rule + 104, 3);
+            if (bv != 0) {
+                if (streq(bv, "line") == 1) { store64(current_rule + 104, 1); }
+                if (streq(bv, "inline") == 1) { store64(current_rule + 104, 2); }
+            }
+            store64(current_rule + 160, 1);
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "indent_by") == 1) {
+            _gp_parse_string(buf, len, value_pos, out_str_slot);
+            var ibv = load64(out_str_slot);
+            var ibf = 32;
+            if (ibv != 0) {
+                if (streq(ibv, "tabs") == 1) { ibf = 0; }
+                if (streq(ibv, "blanks") == 1) { ibf = HD_F_BLANKS; }
+            }
+            store64(current_rule + 112, load64(current_rule + 112) | ibf | 64);
+            store64(current_rule + 160, 1);
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "delim") == 1) {
+            _gp_parse_string(buf, len, value_pos, out_str_slot);
+            var dlv = load64(out_str_slot);
+            var dlf = 32;
+            if (dlv != 0) {
+                if (streq(dlv, "word") == 1) { dlf = 0; }
+                if (streq(dlv, "ident") == 1) { dlf = HD_F_IDENT; }
+            }
+            store64(current_rule + 112, load64(current_rule + 112) | dlf);
+            store64(current_rule + 160, 1);
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "indent_always") == 1) {
+            _gp_parse_bool(buf, len, value_pos, out_bool_slot);
+            if (load64(out_bool_slot) == 1) { store64(current_rule + 112, load64(current_rule + 112) | HD_F_ALWAYS); }
+            store64(current_rule + 160, 1);
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "term_rest") == 1) {
+            _gp_parse_bool(buf, len, value_pos, out_bool_slot);
+            if (load64(out_bool_slot) == 1) { store64(current_rule + 112, load64(current_rule + 112) | HD_F_REST); }
+            store64(current_rule + 160, 1);
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "blanks") == 1) {
+            _gp_parse_bool(buf, len, value_pos, out_bool_slot);
+            if (load64(out_bool_slot) == 0) { store64(current_rule + 112, load64(current_rule + 112) | HD_F_TOUCH); }
+            store64(current_rule + 160, 1);
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "repeat") == 1) {
+            _gp_parse_string(buf, len, value_pos, out_str_slot);
+            store64(current_rule + 120, load64(out_str_slot));
+            store64(current_rule + 160, 1);
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "tag") == 1) {
+            _gp_parse_bool(buf, len, value_pos, out_bool_slot);
+            store64(current_rule + 128, load64(out_bool_slot));
+            store64(current_rule + 160, 1);
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "open") == 1) {
+            _gp_parse_string(buf, len, value_pos, out_str_slot);
+            store64(current_rule + 136, load64(out_str_slot));
+            store64(current_rule + 160, 1);
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "close") == 1) {
+            _gp_parse_string(buf, len, value_pos, out_str_slot);
+            store64(current_rule + 144, load64(out_str_slot));
+            store64(current_rule + 160, 1);
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "close_end") == 1) {
+            _gp_parse_string(buf, len, value_pos, out_str_slot);
+            store64(current_rule + 152, load64(out_str_slot));
+            store64(current_rule + 160, 1);
+            return 0;
+        }
         if (_gp_slice_eq(buf, key_pos, key_len, "end_indent") == 1) {
             # compose_fenced rules only (2.9.1): bytes that may precede
             # the end marker on its line.
@@ -825,9 +933,22 @@ fn _gp_close_rule(g, rule_acc) {
     if ((mt < 1) || (mt > 7)) { return 1; }               # unknown `match`
     if ((indent != 0) && (mt != 7)) { return 1; }         # indent: heredoc rules only
     if ((indent != 0) && (_gp_nonempty(indent) == 0)) { return 1; }
-    # One byte: the scanner compares only the first, so `indent = "-="`
-    # silently meant `-` (2.6.x audit, fixed 2.7.1).
-    if ((indent != 0) && (strlen(indent) != 1)) { return 1; }
+    # Each byte is one marker (2.9.5: Ruby's `-~`); at most four, none
+    # repeated. Through 2.9.4 it was one byte — the scanner compared only
+    # the first, so `indent = "-="` had silently meant `-` until 2.7.1.
+    if ((indent != 0) && (strlen(indent) > 4)) { return 1; }
+    if (indent != 0) {
+        var ia = 0;
+        while (ia < strlen(indent)) {
+            var ib = ia + 1;
+            while (ib < strlen(indent)) {
+                if (load8(indent + ia) == load8(indent + ib)) { return 1; }
+                ib = ib + 1;
+            }
+            ia = ia + 1;
+        }
+    }
+    if (_gp_heredoc_opts_bad(mt, start, indent, rule_acc) == 1) { return 1; }
     # `escape` means something only to a pair rule; on a line or heredoc
     # rule it was accepted and ignored (2.6.x audit, fixed 2.7.1).
     if ((esc != 0) && (mt != 2)) { return 1; }
@@ -836,7 +957,11 @@ fn _gp_close_rule(g, rule_acc) {
     if (((fby != 0) || (nfby != 0)) && (mt != 1)) { return 1; }
     if ((fby == 1) || (nfby == 1)) { return 1; }
     if ((mt == 7) && (endp != 0)) { return 1; }           # a heredoc's end is its delimiter
-    if ((mt != 3) && (_gp_nonempty(start) == 0)) { return 1; }   # all but `words` need `start`
+    # All but `words` need `start` — and an inline heredoc with `repeat`,
+    # whose run may begin the opener (Swift `#"…"#`, ADR 0030).
+    var inline_run = 0;
+    if ((mt == 7) && (load64(rule_acc + 104) == 2) && (load64(rule_acc + 120) != 0)) { inline_run = 1; }
+    if ((mt != 3) && (inline_run == 0) && (_gp_nonempty(start) == 0)) { return 1; }
     if (((mt <= 3) || (mt == 7)) && (kind_given == 0)) { return 1; }   # line / pair / words / heredoc need `kind`
     # pair / compose / compose_fenced need an `end`. compose_region's
     # `end_before` may be absent or empty — its region then runs to EOF
@@ -885,7 +1010,20 @@ fn _gp_close_rule(g, rule_acc) {
         return 0;
     }
     if (mt == 7) {
-        vec_push(grammar_heredoc_rules(g), heredoc_rule_new(kind, start, indent));
+        var hr = heredoc_rule_new(kind, start, indent);
+        if (hr == 0) { return 1; }
+        if (_gp_nonempty(start) == 0) { store64(hr + 8, 0); }
+        store64(hr + 24, load64(rule_acc + 112) & 31);
+        if (load64(rule_acc + 104) == 2) {
+            store64(hr + 32, 1);
+            var rpt = load64(rule_acc + 120);
+            if (rpt != 0) { store64(hr + 40, load8(rpt)); }
+            store64(hr + 48, load64(rule_acc + 128));
+            store64(hr + 56, load64(rule_acc + 136));
+            store64(hr + 64, load64(rule_acc + 144));
+            if (_gp_nonempty(load64(rule_acc + 152)) == 1) { store64(hr + 72, load64(rule_acc + 152)); }
+        }
+        vec_push(grammar_heredoc_rules(g), hr);
         return 0;
     }
     if (mt == 6) {
@@ -904,13 +1042,47 @@ fn _gp_close_rule(g, rule_acc) {
 # Accumulator slots: 0 kind, 8 match, 16 start, 24 end / end_before,
 # 32 escape, 40 words / inner, 48 slot-40 tag, 56 kind given,
 # 64 start_after, 72 indent, 80 followed_by, 88 not_followed_by,
-# 96 end_indent (2.9.1).
+# 96 end_indent (2.9.1), 104 – 160 the heredoc options (2.9.5; see the
+# parser).
 fn _gp_new_rule_acc() {
-    var r = alloc(104);
+    var r = alloc(168);
     if (r == 0) { return 0; }
     var i = 0;
-    while (i < 104) { store8(r + i, 0); i = i + 1; }
+    while (i < 168) { store8(r + i, 0); i = i + 1; }
     return r;
+}
+
+# 1 if a rule's heredoc options (ADR 0030) are given where they mean
+# nothing or would do nothing: on another rule type; an unknown `body`,
+# `indent_by` or `delim` value; line options on an inline body or inline
+# keys on a line body; an inline body without `open` and `close`, or
+# with both or neither of `repeat` (one byte) and `tag`; `indent_by`
+# with nothing to indent; `term_rest` without `indent_always`.
+fn _gp_heredoc_opts_bad(mt, start, indent, acc) {
+    if (load64(acc + 160) == 0) { return 0; }
+    if (mt != 7) { return 1; }
+    var body = load64(acc + 104);
+    var fl = load64(acc + 112);
+    if ((body == 3) || ((fl & 32) != 0)) { return 1; }
+    var rpt = load64(acc + 120);
+    var tag = load64(acc + 128);
+    # Any inline-only key given (`repeat`, `tag`, `open`, `close`, `close_end`).
+    var inl = 0;
+    if ((rpt != 0) || (tag != 0)) { inl = 1; }
+    if ((load64(acc + 136) != 0) || (load64(acc + 144) != 0) || (load64(acc + 152) != 0)) { inl = 1; }
+    if (body == 2) {
+        if ((fl != 0) || (indent != 0)) { return 1; }
+        if ((_gp_nonempty(load64(acc + 136)) == 0) || (_gp_nonempty(load64(acc + 144)) == 0)) { return 1; }
+        if ((rpt != 0) && (tag != 0)) { return 1; }
+        if ((rpt == 0) && (tag == 0)) { return 1; }
+        if ((rpt != 0) && (strlen(rpt) != 1)) { return 1; }
+        if ((tag != 0) && (_gp_nonempty(start) == 0)) { return 1; }
+        return 0;
+    }
+    if (inl == 1) { return 1; }
+    if (((fl & 64) != 0) && (indent == 0) && ((fl & HD_F_ALWAYS) == 0)) { return 1; }
+    if (((fl & HD_F_REST) != 0) && ((fl & HD_F_ALWAYS) == 0)) { return 1; }
+    return 0;
 }
 
 # Grammar-level checks once every key is read. Returns 1 if the

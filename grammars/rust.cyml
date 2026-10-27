@@ -15,9 +15,9 @@
 # Known gaps for future ADRs (not triggered by the vidya sample):
 #   - Nested block comments: `/* a /* b */ c */` closes at the first
 #     `*/` (the rule below says why).
-#   - Raw strings with hashes `r#"..."#`, `r##"..."##` (a variable-length
-#     delimiter). `r"..."`, `b"..."`, `br"..."`, `c"..."` and byte chars
-#     `b'x'` are one string token since 2.7.1 (ADR 0027).
+#   - (Not a gap since 2.9.5: raw strings with hashes, `r#"..."#`,
+#     `br##"..."##`, are one string token — ADR 0030. `r"..."`, `b"..."`,
+#     `br"..."`, `c"..."` and byte chars `b'x'` are since 2.7.1, ADR 0027.)
 #   - Numeric literal suffixes (`42u32`, `42_u32`, `3.14_f64`) are
 #     number + ident: a `_` joins a number only before a digit.
 #     Floats and `1_000` are one number since 2.7.0 (ADR 0026);
@@ -89,6 +89,38 @@ punctuation = [
 
 
 # ── Rules ──────────────────────────────────────────────────────────
+
+# Raw strings with hashes — `r#"…"#`, `br##"…"##`, `cr#"…"#` — end at a
+# quote followed by as many `#` as opened them, with no escapes (ADR
+# 0030, 2.9.5). `r"…"` with no hashes is the raw prefix above; `r#type`
+# (a raw identifier) has no quote, so it is not one.
+[[rules]]
+kind = "string"
+match = "heredoc"
+body = "inline"
+start = "r"
+repeat = "#"
+open = "\""
+close = "\""
+
+[[rules]]
+kind = "string"
+match = "heredoc"
+body = "inline"
+start = "br"
+repeat = "#"
+open = "\""
+close = "\""
+
+[[rules]]
+kind = "string"
+match = "heredoc"
+body = "inline"
+start = "cr"
+repeat = "#"
+open = "\""
+close = "\""
+
 
 [[rules]]
 kind = "comment"

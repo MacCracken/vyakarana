@@ -36,13 +36,14 @@ sub-blocks).
 | 0020 | [When `TK_ERROR` is correct and when it is a grammar hole](0020-tk-error-adjudication.md) | Accepted | 2026-07-31 |
 | 0021 | [`Token.start` / `Token.len` stay u32; the 4 GiB stream ceiling is deliberate](0021-token-span-width-ceiling.md) | Accepted | 2026-08-20 |
 | 0022 | [`start_after`: a line rule that only opens at a word boundary](0022-line-rule-start-after.md) | Accepted | 2026-10-20 |
-| 0023 | [`heredoc` rule type for here-documents](0023-heredoc-rule.md)                        | Accepted (search budget superseded by 0028) | 2026-10-20 |
+| 0023 | [`heredoc` rule type for here-documents](0023-heredoc-rule.md)                        | Accepted (search budget superseded by 0028; extended by 0030) | 2026-10-20 |
 | 0024 | [Char-literal escape forms beyond `'\C'` / `'\xHH'`](0024-char-literal-escape-forms.md) | Accepted (amends 0010) | 2026-10-20 |
 | 0025 | [Grammars declare their detection routes; `detect.cyr` stays compiled](0025-detection-declared-by-grammars.md) | Accepted | 2026-10-20 |
 | 0026 | [Number literal shapes: floats, digit separators, datetimes](0026-number-literal-shapes.md) | Accepted | 2026-10-20 |
 | 0027 | [String prefixes, identifier lead bytes, next-byte line rules](0027-prefixes-lead-bytes-next-byte-rules.md) | Accepted | 2026-10-20 |
 | 0028 | [Streaming engine: scanner-reported holds, watches and groups](0028-streaming-holds-watches-groups.md) | Accepted | 2026-10-20 |
 | 0029 | [Compacted grammar blobs, a POSIX generator, a checked size budget](0029-compacted-blobs-posix-generator-size-budget.md) | Accepted (amends 0014) | 2026-10-21 |
+| 0030 | [Heredoc rule: computed closers and Ruby / PHP terminators](0030-heredoc-computed-closers.md) | Accepted (extends 0023) | 2026-10-27 |
 
 ## Conventions
 

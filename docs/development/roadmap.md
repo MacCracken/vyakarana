@@ -42,18 +42,6 @@ a closeout audit at the end. Each entry ships only when the gates are
 green and, where it adds a gate, that gate is shown to fail on the
 release before.
 
-### 2.9.5 — Variable-length delimiters *(patch)*
-
-- One ADR extending the heredoc rule, as ADR 0023 says to, rather than
-  a new mechanism: bracket-counted closers (Rust `r#"…"#`, Swift
-  `#"…"#`, Lua `[==[…]==]`), a captured tag (C++ `R"d(…)d"`), and
-  line-terminated heredocs for Ruby (`<<EOS`, `<<-EOS`, `<<~EOS`) and
-  PHP (`<<<EOT`, `<<<'EOT'`) — neither grammar has a heredoc rule yet.
-- Evidence: a Rust raw string holding quotes surfaces `error` tokens
-  (2 of 5,166 sampled real files at the 2.9.x audit).
-- Streaming: each new terminator gets a hold and a watch (ADR 0028);
-  every-offset and small-feed shapes in `fuzz/chunk_invariance.fcyr`.
-
 ### 2.9.6 — Non-identifier string prefixes *(patch)*
 
 - C# verbatim and interpolated strings — `@"…"` (`""` escapes a quote),

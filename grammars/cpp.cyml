@@ -16,12 +16,11 @@
 # `tests/corpus/concept.cpp` mirrors the lexer+parser theme used
 # elsewhere, exercising namespace declarations, `enum class`,
 # `std::unique_ptr`, lambdas, range-for, char literals (`'+'`,
-# `'\0'`), block comments, raw string is NOT exercised.
+# `'\0'`), block comments, raw string is NOT exercised. Raw string
+# literals `R"delim(…)delim"` are inline heredoc rules since 2.9.5
+# (ADR 0030); the tests in tests/vyakarana.tcyr cover them.
 #
 # Known gaps (not triggered by the stand-in):
-#   - Raw string literals `R"delim(…)delim"`. Not in the
-#     stand-in. C++11+; would need a custom rule shape since the
-#     delimiter is variable-length.
 #   - User-defined literal suffixes (`42_km`, `"x"sv`). The
 #     suffix tokenizes as ident after the number/string —
 #     cosmetic; coverage holds.
@@ -91,6 +90,60 @@ punctuation = [
 
 
 # ── Rules ──────────────────────────────────────────────────────────
+
+# Raw string literals — `R"(…)"`, `R"d(…)d"`, with the `u8R`, `uR`, `UR`
+# and `LR` encodings — end at `)`, the same delimiter, `"`; no escapes
+# (ADR 0030, 2.9.5).
+[[rules]]
+kind = "string"
+match = "heredoc"
+body = "inline"
+start = "R\""
+tag = true
+open = "("
+close = ")"
+close_end = "\""
+
+[[rules]]
+kind = "string"
+match = "heredoc"
+body = "inline"
+start = "u8R\""
+tag = true
+open = "("
+close = ")"
+close_end = "\""
+
+[[rules]]
+kind = "string"
+match = "heredoc"
+body = "inline"
+start = "uR\""
+tag = true
+open = "("
+close = ")"
+close_end = "\""
+
+[[rules]]
+kind = "string"
+match = "heredoc"
+body = "inline"
+start = "UR\""
+tag = true
+open = "("
+close = ")"
+close_end = "\""
+
+[[rules]]
+kind = "string"
+match = "heredoc"
+body = "inline"
+start = "LR\""
+tag = true
+open = "("
+close = ")"
+close_end = "\""
+
 
 [[rules]]
 kind = "comment"

@@ -139,6 +139,12 @@ was removed in 2.0.0 (ADR 0017).
 
 ## Status
 
+**2.9.5** (2026-10-27) — raw literals and more heredocs. Rust
+`r#"…"#`, Swift `#"…"#`, Lua `[==[…]==]` and C++ `R"d(…)d"` are one token
+each, ending where their opener says, and Ruby (`<<~EOS`) and PHP
+(`<<<EOT`) heredoc bodies are one string. A Rust raw string holding
+quotes no longer produces error tokens. 1224/1224 tests.
+
 **2.9.4** (2026-10-27) — heredoc line-index memory: the index that finds
 heredoc terminators takes 16 bytes a line for `<<` and 20 for `<<-`
 (36 before), so a 1 MiB newline flood after one `cat <<EOF` peaks at

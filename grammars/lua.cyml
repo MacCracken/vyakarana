@@ -20,15 +20,9 @@
 #     below, ordered ahead of the `--` line-comment rule so the
 #     longer prefix wins (per [architecture note 003](../docs/architecture/003-pair-rule-ordering.md)).
 #
-# Variable-padded forms `[==[ … ]==]` / `--[==[ … ]==]` are NOT
-# supported — variable-length terminators require a new scanner
-# shape. Documented as a known gap alongside Ruby
-# heredocs, PHP heredocs, and a few other variable-delimiter
-# forms; collectively forces a future ADR if a real corpus
-# surfaces one.
-#
-# Known gaps (not triggered by the stand-in):
-#   - Variable-padded long brackets (see above).
+# Long brackets of level one or more, `[==[ … ]==]` / `--[==[ … ]==]`,
+# are inline heredoc rules (ADR 0030, 2.9.5): the closer repeats the
+# opener's `=` run. Through 2.9.4 they were a documented gap.
 #
 # Explicitly NOT gaps (these were filed under "Known gaps" through
 # 2.3.4, which read as pending work when both already ship):
@@ -80,6 +74,30 @@ punctuation = [
 
 
 # ── Rules ──────────────────────────────────────────────────────────
+
+# Long brackets of level one or more — `[=[…]=]`, `[==[…]==]` and the
+# comments `--[=[…]=]` — end at `]`, as many `=`, `]` (ADR 0030, 2.9.5).
+# Level 0, `[[…]]` / `--[[…]]`, is the pair rules below.
+[[rules]]
+kind = "comment"
+match = "heredoc"
+body = "inline"
+start = "--["
+repeat = "="
+open = "["
+close = "]"
+close_end = "]"
+
+[[rules]]
+kind = "string"
+match = "heredoc"
+body = "inline"
+start = "["
+repeat = "="
+open = "["
+close = "]"
+close_end = "]"
+
 
 # Lua comments. Both forms are expressed as pair rules so they
 # share a single dispatch step (pipeline step 3) — the line-rule

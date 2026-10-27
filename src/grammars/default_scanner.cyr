@@ -13,6 +13,8 @@
 #      (start marker + inner-grammar body; ends BEFORE an
 #       unconsumed lookahead terminator, or at EOF)
 #   1. shebang (#! on line 0, column 0)              → preprocessor
+#   1b. [[rules]] match="heredoc" body="inline"       → kind
+#      (a raw literal through its computed closer, ADR 0030)
 #   2. [[rules]] match="line"                         → kind
 #   3. [[rules]] match="pair"                         → kind
 #   4. defaults.special_vars ($X, X = #?@!*$-)        → operator, 2 bytes
@@ -1219,6 +1221,10 @@ var _ds_cp_hold_marker = 0;
 # lines in 4 KB chunks took 36 s (2.9.1 audit, reviewer B, F3).
 var _ds_cp_hold_lead = 0;
 
+# 1 when `_ds_cp_hold_marker` is `_ds_inl_hold`, scanner scratch the
+# drain must copy before another scan reuses it (ADR 0030).
+var _ds_cp_hold_scratch = 0;
+
 fn _ds_cp_hold(i, mode, marker, lead) {
     if (_ds_depth != 1) { return 0; }
     if ((_ds_cp_hold_from < 0) || (i < _ds_cp_hold_from)) {
@@ -1394,6 +1400,38 @@ fn _ds_hd_parse_delim(src, src_len, p, slot) {
     return rc;
 }
 
+# `delim = "ident"` (ADR 0030): a bare identifier — a letter, `_` or a
+# non-ASCII byte, then identifier bytes — or the bytes between a
+# matching `'`, `"` or `` ` `` on the line. Sets `_ds_hdd_*` as
+# `_ds_hd_parse_delim` does; the delimiter is always contiguous in
+# `src`. 0 parsed, 1 the buffer ends inside it, 2 not a delimiter.
+fn _ds_hd_parse_ident(src, src_len, p) {
+    if (p >= src_len) { return 1; }
+    var b = load8(src + p);
+    if ((b == 39) || (b == 34) || (b == 96)) {
+        var q = p + 1;
+        while ((q < src_len) && (load8(src + q) != b) && (load8(src + q) != 10)) { q = q + 1; }
+        if (q >= src_len) { return 1; }
+        if (load8(src + q) == 10) { return 2; }
+        if (q == p + 1) { return 2; }
+        _ds_hdd_len = q - p - 1;
+        _ds_hdd_end = q + 1;
+        _ds_hdd_ptr = src + p + 1;
+        _ds_hdd_pos = p + 1;
+        return 0;
+    }
+    if ((b >= 48) && (b <= 57)) { return 2; }
+    if (_ds_hd_ident_byte(b) == 0) { return 2; }
+    var e = p + 1;
+    while ((e < src_len) && (_ds_hd_ident_byte(load8(src + e)) == 1)) { e = e + 1; }
+    if (e >= src_len) { return 1; }
+    _ds_hdd_len = e - p;
+    _ds_hdd_end = e;
+    _ds_hdd_ptr = src + p;
+    _ds_hdd_pos = p;
+    return 0;
+}
+
 # Queue buffer for the current nesting depth (entries of 40 bytes:
 # delim ptr, delim len, indent flag, kind, opener offset), allocated
 # once per depth.
@@ -1410,25 +1448,72 @@ fn _ds_hd_queue() {
     return vec_get(_ds_hd_pool, _ds_depth);
 }
 
+# 1 if `b` can be part of an identifier delimiter or key (ADR 0030):
+# ASCII letters, digits, `_`, and any non-ASCII byte (PHP's label class).
+fn _ds_hd_ident_byte(b) {
+    if (b >= 128) { return 1; }
+    if (b == 95) { return 1; }
+    if ((b >= 48) && (b <= 57)) { return 1; }
+    if (((b | 32) >= 97) && ((b | 32) <= 122)) { return 1; }
+    return 0;
+}
+
+# The key of the line [ls, le) a terminator is matched against, by key
+# kind `ind` (ADR 0023, 0030): 0 the whole line, 1 after leading tabs
+# (shell `<<-`), 2 after leading blanks (Ruby `<<~`), each without one
+# trailing CR; 3 the identifier that starts it after leading blanks
+# (PHP's `EOT;`). Returns the key's end, its start in `_ds_hk_cs`.
+var _ds_hk_cs = 0;
+fn _ds_hd_key(src, ls, le, ind) {
+    var cs = ls;
+    if (ind == 1) {
+        while ((cs < le) && (load8(src + cs) == 9)) { cs = cs + 1; }
+    }
+    if (ind >= 2) {
+        while ((cs < le) && ((load8(src + cs) == 9) || (load8(src + cs) == 32))) { cs = cs + 1; }
+    }
+    _ds_hk_cs = cs;
+    if (ind == 3) {
+        var we = cs;
+        while ((we < le) && (_ds_hd_ident_byte(load8(src + we)) == 1)) { we = we + 1; }
+        return we;
+    }
+    var ce = le;
+    if ((ce > cs) && (load8(src + ce - 1) == 13)) { ce = ce - 1; }
+    return ce;
+}
+
 # Offset just past the delimiter on the first line at or after `from`
-# that is exactly `dptr[0..dlen)` — after leading tabs when `ind` is 1,
-# ignoring one trailing CR — or -1 if no such line exists. Linear: for
-# the drain's terminator watch, which only ever searches new lines.
+# whose key (kind `ind`) is exactly `dptr[0..dlen)`, or -1 if no such
+# line exists. Linear: the fallback when the line index cannot be built.
 fn _ds_hd_find_term_linear(src, src_len, from, dptr, dlen, ind) {
     var ls = from;
     var found = (0 - 1);
     while ((ls < src_len) && (found == (0 - 1))) {
-        var p = ls;
-        if (ind == 1) {
-            while ((p < src_len) && (load8(src + p) == 9)) { p = p + 1; }
-        }
-        var le = _ds_scan_to_lf(src, src_len, p);
-        var ce = le;
-        if ((ce > p) && (load8(src + ce - 1) == 13)) { ce = ce - 1; }
-        if ((ce - p == dlen) && (memeq(src + p, dptr, dlen) == 1)) { found = p + dlen; }
+        var le = _ds_scan_to_lf(src, src_len, ls);
+        var ce = _ds_hd_key(src, ls, le, ind);
+        var cs = _ds_hk_cs;
+        if ((ce - cs == dlen) && (memeq(src + cs, dptr, dlen) == 1)) { found = cs + dlen; }
         ls = le + 1;
     }
     return found;
+}
+
+# 1 when the terminator line ending a body at `te` is complete — its
+# line break is in the buffer. Right at `te` for keys 0 – 2; after the
+# rest of the line's code for key 3 (`term_rest`, ADR 0030).
+fn _ds_hd_term_done(src, src_len, te, ind) {
+    if ((te < 0) || (te >= src_len)) { return 0; }
+    if (ind == 3) {
+        if (_ds_scan_to_lf(src, src_len, te) < src_len) { return 1; }
+        return 0;
+    }
+    var tb0 = load8(src + te);
+    if (tb0 == 10) { return 1; }
+    if ((tb0 == 13) && (te + 1 < src_len)) {
+        if (load8(src + te + 1) == 10) { return 1; }
+    }
+    return 0;
 }
 
 # FNV-1a over src[p..p+n).
@@ -1442,31 +1527,28 @@ fn _ds_hdi_hash(src, p, n) {
     return h;
 }
 
-# The line index for the current depth (struct, 160 bytes):
+# The line index for the current depth (struct, 272 bytes):
 #    0 gen          8 src         16 lcap (lines)  24 n (lines)
-#   32 B (buckets, a power of 2)   40 ebcap (hb / hc)   48 last_from
-#   56 ls  u32[lcap] line start         64 last line's end (LF or src_len)
-#   72 tb  u32[tcap] after leading tabs 80 nx  u32[ecap] next line, exact bucket (+1; 0 = end)
-#   88 tnx u32[tcap] next line, tab-stripped bucket
-#   96 hb / 104 thb  u32 bucket heads   112 hc / 120 thc u32 cursors
-#  128 ecap (nx)   136 tcap (tb / tnx)   144 tbcap (thb / thc)
-#  152 ready: bit 0 the exact half, bit 1 the tab-stripped half
+#   32 B (buckets, a power of 2)   48 last_from   56 ls u32[lcap] line start
+#   64 last line's end (LF or src_len)   72 ready: bit k, key kind k built
+#   80 + 48k, one block per key kind k (`_ds_hd_key`):
+#      +0 cs u32 key start (k > 0)   +8 nx u32 next line, same bucket (+1; 0 = end)
+#      +16 heads u32[B]   +24 cursors u32[B]   +32 line cap   +40 bucket cap
 # A line's end is the next line's start less one, so it is not stored,
-# and each half — `<<` lookups use the exact one, `<<-` the other — is
-# built on its first lookup in the scan: 16 bytes a line for `<<`, 20
-# for `<<-`, 32 for both (2.9.4; 36 for either through 2.9.3, 52 in
-# 2.8.0). A 1 MiB newline flood after one `cat <<EOF` peaks at 23 MB
-# (43 through 2.9.3), after `<<-EOF` at 27.
+# and each kind's block is built on its first lookup in the scan: 16
+# bytes a line for exact keys, 20 for the others (2.9.4; 36 for either
+# through 2.9.3, 52 in 2.8.0). A 1 MiB newline flood after one
+# `cat <<EOF` peaks at 23 MB (43 through 2.9.3), after `<<-EOF` at 27.
 fn _ds_hdi_get() {
     if (_ds_hdi_pool == 0) {
         _ds_hdi_pool = vec_new();
         if (_ds_hdi_pool == 0) { return 0; }
     }
     while (vec_len(_ds_hdi_pool) <= _ds_depth) {
-        var x = alloc(160);
+        var x = alloc(272);
         if (x == 0) { return 0; }
         var z = 0;
-        while (z < 160) { store8(x + z, 0); z = z + 1; }
+        while (z < 272) { store8(x + z, 0); z = z + 1; }
         vec_push(_ds_hdi_pool, x);
     }
     return vec_get(_ds_hdi_pool, _ds_depth);
@@ -1478,9 +1560,14 @@ fn _ds_hdi_le(x, k) {
     return load64(x + 64);
 }
 
-# Content [cs, ce) of line k for the exact (ind 0) or tab-stripped key.
-fn _ds_hdi_ce(src, x, k, cs) {
+# Line k's key [cs, end) for key kind `ind`, its start known.
+fn _ds_hdi_kend(src, x, k, cs, ind) {
     var le = _ds_hdi_le(x, k);
+    if (ind == 3) {
+        var we = cs;
+        while ((we < le) && (_ds_hd_ident_byte(load8(src + we)) == 1)) { we = we + 1; }
+        return we;
+    }
     if ((le > cs) && (load8(src + le - 1) == 13)) { le = le - 1; }
     return le;
 }
@@ -1492,9 +1579,9 @@ fn _ds_hdi_grow(cap, n) {
     return cap;
 }
 
-# Index the line starts of src[0..src_len) for this scan; neither half
-# is built yet. 0 on allocation failure (the caller then falls back to
-# the linear search).
+# Index the line starts of src[0..src_len) for this scan; no key kind is
+# built yet. 0 on allocation failure (the caller then falls back to the
+# linear search).
 fn _ds_hdi_build(x, src, src_len) {
     var n = 0;
     var p = 0;
@@ -1527,58 +1614,45 @@ fn _ds_hdi_build(x, src, src_len) {
     store64(x + 32, b);
     store64(x + 48, 0);
     store64(x + 64, le);
-    store64(x + 152, 0);
+    store64(x + 72, 0);
     return 1;
 }
 
-# Build the exact (ind 0) or tab-stripped (ind 1) half of the index if
-# this scan has not yet: bucket chains of line numbers in input order
-# over each line's content, and for ind 1 where each line's tabs end.
-# 0 on allocation failure.
+# Build key kind `ind`'s block unless this scan already has: bucket chains of
+# line numbers in input order over each line's key, and (ind > 0) where
+# each key starts. 0 on allocation failure.
 fn _ds_hdi_half(x, src, ind) {
-    var bit = 1 + ind;
-    if ((load64(x + 152) & bit) != 0) { return 1; }
+    var bit = 1 << ind;
+    if ((load64(x + 72) & bit) != 0) { return 1; }
     var n = load64(x + 24);
     var b = load64(x + 32);
-    # Slots: line-cap, bucket-cap, chain, heads, cursors.
-    var lc = 128;
-    var bc = 40;
-    var nxk = 80;
-    var hk = 96;
-    var ck = 112;
-    if (ind == 1) {
-        lc = 136;
-        bc = 144;
-        nxk = 88;
-        hk = 104;
-        ck = 120;
-    }
-    if (n > load64(x + lc)) {
-        var cap = _ds_hdi_grow(load64(x + lc), n);
+    var blk = x + 80 + ind * 48;
+    if (n > load64(blk + 32)) {
+        var cap = _ds_hdi_grow(load64(blk + 32), n);
         var na = alloc(cap * 4);
         if (na == 0) { return 0; }
-        store64(x + nxk, na);
-        if (ind == 1) {
+        store64(blk + 8, na);
+        if (ind > 0) {
             var ta = alloc(cap * 4);
             if (ta == 0) { return 0; }
-            store64(x + 72, ta);
+            store64(blk, ta);
         }
-        store64(x + lc, cap);
+        store64(blk + 32, cap);
     }
-    if (b > load64(x + bc)) {
+    if (b > load64(blk + 40)) {
         var ha = alloc(b * 4);
         if (ha == 0) { return 0; }
         var ca = alloc(b * 4);
         if (ca == 0) { return 0; }
-        store64(x + hk, ha);
-        store64(x + ck, ca);
-        store64(x + bc, b);
+        store64(blk + 16, ha);
+        store64(blk + 24, ca);
+        store64(blk + 40, b);
     }
-    var heads = load64(x + hk);
-    var curs = load64(x + ck);
-    var nxa = load64(x + nxk);
+    var heads = load64(blk + 16);
+    var curs = load64(blk + 24);
+    var nxa = load64(blk + 8);
+    var csa = load64(blk);
     var lsa = load64(x + 56);
-    var tba = load64(x + 72);
     var zi = 0;
     while (zi < b) {
         store32(heads + zi * 4, 0);
@@ -1588,26 +1662,23 @@ fn _ds_hdi_half(x, src, ind) {
     # Insert last line first, so each bucket chain runs in input order.
     var r = n - 1;
     while (r >= 0) {
-        var cs = load32(lsa + r * 4);
-        if (ind == 1) {
-            var le = _ds_hdi_le(x, r);
-            while ((cs < le) && (load8(src + cs) == 9)) { cs = cs + 1; }
-            store32(tba + r * 4, cs);
-        }
-        var ce = _ds_hdi_ce(src, x, r, cs);
+        var ls = load32(lsa + r * 4);
+        var ce = _ds_hd_key(src, ls, _ds_hdi_le(x, r), ind);
+        var cs = _ds_hk_cs;
+        if (ind > 0) { store32(csa + r * 4, cs); }
         var h = _ds_hdi_hash(src, cs, ce - cs) & (b - 1);
         store32(nxa + r * 4, load32(heads + h * 4));
         store32(heads + h * 4, r + 1);
         r = r - 1;
     }
-    store64(x + 152, load64(x + 152) | bit);
+    store64(x + 72, load64(x + 72) | bit);
     return 1;
 }
 
 # Offset just past the delimiter on the first line at or after `from`
-# whose content is exactly `dptr[0..dlen)` (after leading tabs when
-# `ind` is 1, one trailing CR ignored), or -1. Uses the scan's line
-# index (built on first use); see the note above `_ds_hdi_pool`.
+# whose key (`_ds_hd_key`, kind `ind`) is exactly `dptr[0..dlen)`, or -1.
+# Uses the scan's line index (built on first use); see the note above
+# `_ds_hdi_pool`.
 fn _ds_hd_find_term(src, src_len, from, dptr, dlen, ind) {
     var x = _ds_hdi_get();
     if (x == 0) { return _ds_hd_find_term_linear(src, src_len, from, dptr, dlen, ind); }
@@ -1622,16 +1693,13 @@ fn _ds_hd_find_term(src, src_len, from, dptr, dlen, ind) {
     if (_ds_hdi_half(x, src, ind) == 0) {
         return _ds_hd_find_term_linear(src, src_len, from, dptr, dlen, ind);
     }
+    var blk = x + 80 + ind * 48;
     var b = load64(x + 32);
     var h = _ds_hdi_hash(dptr, 0, dlen) & (b - 1);
-    var heads = load64(x + 96);
-    var curs = load64(x + 112);
-    var nxt = load64(x + 80);
-    if (ind == 1) {
-        heads = load64(x + 104);
-        curs = load64(x + 120);
-        nxt = load64(x + 88);
-    }
+    var heads = load64(blk + 16);
+    var curs = load64(blk + 24);
+    var nxt = load64(blk + 8);
+    var csa = load64(blk);
     var lsa = load64(x + 56);
     var k = load32(curs + h * 4);
     if ((k == 0) || (from < load64(x + 48))) { k = load32(heads + h * 4); }
@@ -1641,8 +1709,8 @@ fn _ds_hd_find_term(src, src_len, from, dptr, dlen, ind) {
     var found = (0 - 1);
     while ((k != 0) && (found < 0)) {
         var cs = load32(lsa + (k - 1) * 4);
-        if (ind == 1) { cs = load32(load64(x + 72) + (k - 1) * 4); }
-        var ce = _ds_hdi_ce(src, x, k - 1, cs);
+        if (ind > 0) { cs = load32(csa + (k - 1) * 4); }
+        var ce = _ds_hdi_kend(src, x, k - 1, cs, ind);
         if ((ce - cs == dlen) && (memeq(src + cs, dptr, dlen) == 1)) { found = cs + dlen; }
         if (found < 0) { k = load32(nxt + (k - 1) * 4); }
     }
@@ -1698,7 +1766,10 @@ fn _ds_heredoc_open(g, src, src_len, i, hdq, hd_n, in_arith) {
     while ((r_i < n) && (decided == 0)) {
         var r = vec_get(rules, r_i);
         var st = heredoc_rule_start(r);
-        var sl = strlen(st);
+        var sl = 0;
+        # Inline rules (ADR 0030) are step 1b's, not openers of a body.
+        if ((st != 0) && (heredoc_rule_body(r) == 0)) { sl = strlen(st); }
+        var hfl = heredoc_rule_flags(r);
         var opens = 0;
         # `undecided`: the buffer ends before the opener can be judged —
         # `<<` at the very end, blanks up to the end, a quoted delimiter
@@ -1712,7 +1783,7 @@ fn _ds_heredoc_open(g, src, src_len, i, hdq, hd_n, in_arith) {
         var f_dlen = 0;
         var f_ind = 0;
         var f_body = 0;
-        if ((i + sl <= src_len) && (memeq(src + i, st, sl) == 1)) {
+        if ((sl > 0) && (i + sl <= src_len) && (memeq(src + i, st, sl) == 1)) {
             if (i + sl == src_len) { undecided = 1; }
             if (i + sl < src_len) {
                 if (load8(src + i + sl) != load8(st + sl - 1)) { opens = 1; }
@@ -1728,22 +1799,43 @@ fn _ds_heredoc_open(g, src, src_len, i, hdq, hd_n, in_arith) {
         if (opens == 1) {
             decided = 1;
             var p = i + sl;
-            var ind = 0;
+            # The terminator's key kind (`_ds_hd_key`): exact, unless a
+            # marker (`-`, Ruby's `~`) or `indent_always` allows an indented
+            # one — after tabs, after blanks, or (`term_rest`) the leading
+            # identifier after blanks (ADR 0030).
+            var marked = 0;
             var im = heredoc_rule_indent(r);
-            if ((im != 0) && (load8(src + p) == load8(im))) { ind = 1; p = p + 1; }
-            while ((p < src_len) && ((load8(src + p) == 32) || (load8(src + p) == 9))) { p = p + 1; }
+            if ((im != 0) && (_ds_byte_in(im, load8(src + p)) == 1)) { marked = 1; p = p + 1; }
+            var ind = 0;
+            if ((marked == 1) || ((hfl & HD_F_ALWAYS) != 0)) {
+                ind = 1;
+                if ((hfl & HD_F_BLANKS) != 0) { ind = 2; }
+                if ((hfl & HD_F_REST) != 0) { ind = 3; }
+            }
+            if ((hfl & HD_F_TOUCH) == 0) {
+                while ((p < src_len) && ((load8(src + p) == 32) || (load8(src + p) == 9))) { p = p + 1; }
+            }
             if (p >= src_len) { undecided = 1; }
+            # A body whose terminator line goes on with code must be the
+            # line's last: nothing could separate it from the next body.
+            var after_rest = 0;
+            if ((res > 0) && (hdq != 0)) {
+                if (load64(hdq + (res - 1) * 40 + 16) == 3) { after_rest = 1; }
+            }
             var ds = (0 - 1);
             var dl = 0;
             var dend = 0;
             var dptr = 0;
             var dcontig = 0;
-            if (p < src_len) {
+            if (after_rest == 1) { undecided = 0; }
+            if ((p < src_len) && (after_rest == 0)) {
                 var dslot = _ds_hd_dscratch();
                 if (dslot != 0) {
                     var qslot = res;
                     if (qslot > DS_HEREDOC_QUEUE) { qslot = DS_HEREDOC_QUEUE; }
-                    var dst = _ds_hd_parse_delim(src, src_len, p, dslot + qslot * 256);
+                    var dst = 0;
+                    if ((hfl & HD_F_IDENT) != 0) { dst = _ds_hd_parse_ident(src, src_len, p); }
+                    if ((hfl & HD_F_IDENT) == 0) { dst = _ds_hd_parse_delim(src, src_len, p, dslot + qslot * 256); }
                     if (dst == 1) { undecided = 1; }
                     if (dst != 2) {
                         dptr = _ds_hdd_ptr;
@@ -1765,14 +1857,7 @@ fn _ds_heredoc_open(g, src, src_len, i, hdq, hd_n, in_arith) {
                 }
                 # Resolved = terminator line present AND its line break
                 # seen; only then can a streaming drain commit past `<<`.
-                var complete = 0;
-                if ((term >= 0) && (term < src_len)) {
-                    var tb0 = load8(src + term);
-                    if (tb0 == 10) { complete = 1; }
-                    if ((tb0 == 13) && (term + 1 < src_len)) {
-                        if (load8(src + term + 1) == 10) { complete = 1; }
-                    }
-                }
+                var complete = _ds_hd_term_done(src, src_len, term, ind);
                 if ((term >= 0) && (res < DS_HEREDOC_QUEUE) && (hdq != 0)) {
                     var e = hdq + res * 40;
                     store64(e,      dptr);
@@ -1822,6 +1907,130 @@ fn _ds_heredoc_open(g, src, src_len, i, hdq, hd_n, in_arith) {
     return res;
 }
 
+# ── Inline heredoc rules (ADR 0030) ─────────
+
+# Step 1b: at src[i], a rule's `start` (if any), a run of its `repeat`
+# byte (1 – 255) or a tag (up to 16 bytes), then `open`. The token runs
+# through the closer — `close`, the same run or tag, `close_end` — or to
+# the end of the input when there is none, as an unterminated pair does.
+# No escapes. A streaming drain is told to hold from an opener the
+# buffer's end cuts short (no watch: the next drain re-scans those few
+# bytes) and from an unterminated literal (a mode-3 watch for its
+# closer, ADR 0028).
+var DS_INL_MAX = 512;
+var _ds_inl_buf = 0;    # the closer being searched for (scratch)
+var _ds_inl_hold = 0;   # the closer of the reported hold
+# Where this scan's last closed depth-1 inline literal starts, -1 for
+# none: the drain must not read it as an open pair from its first bytes
+# (Lua's `--[==[…]==]` begins with the `--` pair's start).
+var _ds_inl_last_start = (0 - 1);
+
+# A C++ d-char: not a blank or control byte, `(`, `)`, `\`, nor the
+# rule's `open` byte.
+fn _ds_inl_tag_byte(b, ob) {
+    if ((b <= 32) || (b == 127)) { return 0; }
+    if ((b == 40) || (b == 41) || (b == 92)) { return 0; }
+    if (b == ob) { return 0; }
+    return 1;
+}
+
+# One inline rule at src[i]: packed (kind << 56) | len, or 0.
+fn _ds_inline_at(r, src, src_len, i) {
+    var p = i;
+    var st = heredoc_rule_start(r);
+    if (st != 0) {
+        var sl = strlen(st);
+        if (i + sl > src_len) {
+            if (memeq(src + i, st, src_len - i) == 1) { _ds_cp_hold(i, 0, 0, 0); }
+            return 0;
+        }
+        if (memeq(src + i, st, sl) == 0) { return 0; }
+        p = i + sl;
+    }
+    var rb = heredoc_rule_repeat(r);
+    var op = heredoc_rule_open(r);
+    var ob = load8(op);
+    var run_s = p;
+    if (rb != 0) {
+        while ((p < src_len) && (load8(src + p) == rb) && (p - run_s <= 255)) { p = p + 1; }
+        if (p - run_s > 255) { return 0; }
+        if (p >= src_len) {
+            if ((st != 0) || (p > run_s)) { _ds_cp_hold(i, 0, 0, 0); }
+            return 0;
+        }
+        if (p == run_s) { return 0; }
+    }
+    if (rb == 0) {
+        while ((p < src_len) && (p - run_s <= 16) && (_ds_inl_tag_byte(load8(src + p), ob) == 1)) { p = p + 1; }
+        if (p - run_s > 16) { return 0; }
+        if (p >= src_len) {
+            _ds_cp_hold(i, 0, 0, 0);
+            return 0;
+        }
+    }
+    var run_n = p - run_s;
+    var ol = strlen(op);
+    if (p + ol > src_len) {
+        if (memeq(src + p, op, src_len - p) == 1) { _ds_cp_hold(i, 0, 0, 0); }
+        return 0;
+    }
+    if (memeq(src + p, op, ol) == 0) { return 0; }
+    p = p + ol;
+    var cpre = heredoc_rule_close(r);
+    var cend = heredoc_rule_close_end(r);
+    var cpn = strlen(cpre);
+    var cen = 0;
+    if (cend != 0) { cen = strlen(cend); }
+    var cn = cpn + run_n + cen;
+    if (cn >= DS_INL_MAX) { return 0; }
+    if (_ds_inl_buf == 0) {
+        _ds_inl_buf = alloc(DS_INL_MAX);
+        if (_ds_inl_buf == 0) { return 0; }
+    }
+    memcpy(_ds_inl_buf, cpre, cpn);
+    memcpy(_ds_inl_buf + cpn, src + run_s, run_n);
+    if (cen > 0) { memcpy(_ds_inl_buf + cpn + run_n, cend, cen); }
+    store8(_ds_inl_buf + cn, 0);
+    var c0 = load8(_ds_inl_buf);
+    var q = p;
+    while (q + cn <= src_len) {
+        if (load8(src + q) == c0) {
+            if (memeq(src + q, _ds_inl_buf, cn) == 1) {
+                if (_ds_depth == 1) { _ds_inl_last_start = i; }
+                return (heredoc_rule_kind(r) << 56) | (q + cn - i);
+            }
+        }
+        q = q + 1;
+    }
+    # Unterminated: the rest of the input. The hold's closer is copied out
+    # of the search scratch, which a later literal in this scan reuses.
+    if (_ds_depth == 1) {
+        if (_ds_inl_hold == 0) { _ds_inl_hold = alloc(DS_INL_MAX); }
+        if (_ds_inl_hold != 0) {
+            if ((_ds_cp_hold_from < 0) || (i < _ds_cp_hold_from)) {
+                memcpy(_ds_inl_hold, _ds_inl_buf, cn + 1);
+                _ds_cp_hold(i, 3, _ds_inl_hold, 0);
+                _ds_cp_hold_scratch = 1;
+            }
+        }
+    }
+    return (heredoc_rule_kind(r) << 56) | (src_len - i);
+}
+
+# Every inline rule at src[i], in order; the first that opens here wins.
+fn _ds_try_inline_rules(g, src, src_len, i) {
+    var rules = grammar_heredoc_rules(g);
+    var n = vec_len(rules);
+    var r_i = 0;
+    var res = 0;
+    while ((r_i < n) && (res == 0)) {
+        var r = vec_get(rules, r_i);
+        if (heredoc_rule_body(r) == 1) { res = _ds_inline_at(r, src, src_len, i); }
+        r_i = r_i + 1;
+    }
+    return res;
+}
+
 # ── Entry point ─────────────────────────────
 
 # Set by the streaming drain (src/tokenize.cyr) when the buffer it is
@@ -1859,7 +2068,23 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
         _ds_grp_active = grp_on;
         _ds_grp_n = 0;
     }
-    var hd_rules = vec_len(grammar_heredoc_rules(g));
+    # Line-body heredoc rules (ADR 0023) and inline ones (ADR 0030, step
+    # 1b) are counted apart: only the first need the queue and the
+    # opener check.
+    var hd_all = grammar_heredoc_rules(g);
+    var hd_rules = 0;
+    var inl_rules = 0;
+    var hd_one = 0;
+    var hk = 0;
+    while (hk < vec_len(hd_all)) {
+        var hr = vec_get(hd_all, hk);
+        if (heredoc_rule_body(hr) == 0) {
+            hd_rules = hd_rules + 1;
+            hd_one = hr;
+        }
+        if (heredoc_rule_body(hr) == 1) { inl_rules = inl_rules + 1; }
+        hk = hk + 1;
+    }
     var hdq = 0;
     # First byte of the (single, in practice) heredoc start marker, so the
     # per-token opener check is one compare; -1 = several rules, always
@@ -1867,7 +2092,7 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
     var hd_b0 = (0 - 1);
     if (hd_rules > 0) {
         hdq = _ds_hd_queue();
-        if (hd_rules == 1) { hd_b0 = load8(heredoc_rule_start(vec_get(grammar_heredoc_rules(g), 0))); }
+        if (hd_rules == 1) { hd_b0 = load8(heredoc_rule_start(hd_one)); }
     }
     var hd_n = 0;
     # Arithmetic state for the opener check (grammars with heredoc rules
@@ -1927,13 +2152,7 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
                     # the empty line): no token — a zero-length one broke
                     # the coverage contract (2.9.1 audit, reviewer B, F6).
                     if (te > cur) { tokenbuf_push(tb, load64(e + 24), cur, te - cur); }
-                    var tdone = 0;
-                    if (te < src_len) {
-                        if (load8(src + te) == 10) { tdone = 1; }
-                        if ((load8(src + te) == 13) && (te + 1 < src_len)) {
-                            if (load8(src + te + 1) == 10) { tdone = 1; }
-                        }
-                    }
+                    var tdone = _ds_hd_term_done(src, src_len, te, load64(e + 16));
                     if (tdone == 0) {
                         h_hold = 1;
                         h_fast = 1;
@@ -2020,6 +2239,17 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
         if ((len == 0) && (not_file_start == 0)) {
             len = _ds_try_shebang(g, src, src_len, i);
             if (len > 0) { kind = TK_PREPROCESSOR; }
+        }
+
+        # 1b. Inline heredoc rules (ADR 0030): raw literals whose closer
+        # the opener computes — `r#"…"#`, `#"…"#`, `[==[…]==]`, `R"d(…)d"`.
+        # Before line rules, so Lua's `--[==[` is not a `--` comment.
+        if ((len == 0) && (inl_rules > 0)) {
+            var packed_i = _ds_try_inline_rules(g, src, src_len, i);
+            if (packed_i != 0) {
+                kind = packed_i >> 56;
+                len = packed_i & 0x00FFFFFFFFFFFFFF;
+            }
         }
 
         # 2. Line rules

@@ -4,6 +4,89 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.9.5] — 2026-10-27
+
+**Variable-length delimiters** (roadmap 2.9.5), the third of the 2.9.x arc
+— [ADR 0030](docs/adr/0030-heredoc-computed-closers.md), which extends the
+heredoc rule rather than adding a rule type. Token output changes only in
+rust, swift, lua, cpp, ruby and php, inside raw literals and heredocs. Of
+1,942 sampled files of those grammars (rust 600, swift 400, lua 340, C++
+600, ruby 2; this host has no PHP sources), 46 change and 11 of them go
+from exit 1 to 0 — files with error tokens 28 → 17 — and none gains an
+error token. Of 2.9.4's 7,527-file sample (32 grammars, 2,000 extra shell
+scripts), 9 change, all rust or lua. 1224/1224 tests (60 new), fuzz 5/5
+with twelve new every-offset shapes (also under `--poison=ab` and
+`--bounds`), lint+fmt exit 0, `cyrius distlib --check` clean. `vyk`
+355,136 → 373,176 bytes; the shipped DCE build 265,024 → 278,968, 28,232
+under the budget — of its `.text` growth (+15,128), 1,822 bytes are the
+new grammar rules, the rest code: step 1b, the identifier delimiter, the
+key kinds, and the loader's new keys and validation.
+
+### Added
+
+- **Raw literals whose closer the opener computes** — the heredoc rule's
+  new `body = "inline"`: after `start`, a run of a `repeat` byte (1 – 255)
+  or a `tag` (up to 16 bytes), then `open`; the token runs through `close`
+  + the same run or tag + `close_end`, with no escapes, or to the end of
+  the input when there is none. Step 1b of the scanner, before line rules.
+  rust `r#"…"#`, `br##"…"##`, `cr#"…"#`; swift `#"…"#`, `##"…"##`,
+  `#"""…"""#`; lua `[=[…]=]` and the comment `--[==[…]==]`; cpp
+  `R"d(…)d"` and `u8R` / `uR` / `UR` / `LR`. The zero-run forms (`r"…"`,
+  `[[…]]`) keep their raw prefixes and pair rules. A Rust raw string
+  holding quotes no longer surfaces `error` tokens (the 2.9.x audit's
+  evidence): all 11 files above that go from exit 1 to 0 are rust.
+- **Ruby and PHP heredocs**, through new line-body options: `indent` may
+  list several markers (`-~`), `indent_by = "blanks"`, `indent_always`,
+  `term_rest` (the terminator line may go on with code: PHP's `EOT;`),
+  `delim = "ident"` (an identifier or a quoted word — `<<~EOS.strip` is
+  `EOS`, then `.strip`) and `blanks = false` (Ruby's `x << y` and `class
+  << self` stay operators). ruby: `<<EOS`, `<<-EOS`, `<<~EOS`; php:
+  `<<<EOT`, `<<<"EOT"`, `<<<'EOT'`. The body plus its terminator is one
+  string, as shell's has been since 2.6.0.
+
+### Changed
+
+- **A heredoc `indent` of several bytes is several markers**, not an
+  error; a repeated marker is what the loader rejects now (one 2.7.1 test
+  changed with it). The other new keys are rejected where they would mean
+  or do nothing — on another rule type, line options on an inline body,
+  `indent_by` with nothing to indent, `term_rest` without `indent_always`.
+- **The terminator lookup has four key kinds** — exact, after tabs, after
+  blanks, and the leading identifier after blanks — each with its own
+  block of the line index, built on its first lookup like 2.9.4's halves;
+  the drain's terminator watch (mode 1) compares lines with the same
+  helper.
+- **Streaming (ADR 0028):** an inline opener the buffer's end cuts short
+  holds from its first byte with no watch; an unterminated literal holds
+  with a mode-3 watch for its closer, copied into the stream (the
+  scanner's copy is scratch another stream's scan may overwrite); the
+  drain never reads a closed inline literal as an open pair from its
+  first bytes. 1 MiB inputs at 64-byte chunks (harness `cutfirst`, min of
+  3), 2.9.4 → 2.9.5: a rust `r##"…"##` 692 → 23 ms, a cpp `R"tag(…)tag"`
+  929 → 23, a lua `--[==[…]==]` 1,391 → 28, a ruby `<<~` body 128 → 27, a
+  php heredoc 158 → 47; an unterminated rust raw string 24 → 14. Shell's
+  heredoc stress inputs keep their times (ratios 1.000 – 1.027).
+
+### Tests
+
+- A `2.9.5 computed closers and Ruby / PHP heredocs` group, 60
+  assertions. Against 2.9.4's sources 55 of them fail, beside the three
+  record checks the larger heredoc record trips.
+- Three of them check that a body or literal commits **before finish**
+  once its terminator arrives — a ruby `<<~` body, a php `EOT;` body, and
+  a rust raw string with a lua stream's scan in between; finish rescans,
+  so a watch that never fires shows only there. Each fails on the mutant
+  it is for (the watch comparing exact lines; the watch reading the
+  scanner's scratch closer).
+- `fuzz/chunk_invariance.fcyr` gains twelve every-offset shapes, four of
+  them openers longer than the drain's marker window: with the
+  cut-opener hold disabled those fail (cpp 10, rust 7, swift 6 splits and
+  chunk sizes), which the short shapes did not.
+- Sweeps: `coverage-sweep.sh` over the 1,942 files, 0 fails;
+  `stream-sweep.sh` over the 81 files with candidate openers, 243 runs, 0
+  fails, and its fixed set (every corpus at every offset, the heredoc
+  shapes, the stress inputs), 164 runs, 0 fails.
+
 ## [2.9.4] — 2026-10-27
 
 **Heredoc line-index memory** (roadmap 2.9.4), the second of the 2.9.x

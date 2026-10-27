@@ -31,9 +31,9 @@
 # only pair rule).
 #
 # Known gaps (not triggered by the stand-in):
-#   - Heredocs (`<<~END … END`). Variable-length terminator.
-#     Same scanner-shape gap as PHP heredocs and Lua `[==[…]==]`
-#     — track collectively.
+#   - (Not a gap since 2.9.5: heredocs — `<<EOS`, `<<-EOS`, `<<~EOS` —
+#     are one string per body, ADR 0030. `<<~` indentation is not
+#     removed; the body is one string, as ADR 0003 has it.)
 #   - Regex literals `/.../` are context-sensitive (vs. division)
 #     in Ruby. Today `/` is the slash operator; a regex inside
 #     a method call like `=~ /foo/` tokenizes as op + ident +
@@ -115,6 +115,21 @@ punctuation = [
 
 
 # ── Rules ──────────────────────────────────────────────────────────
+
+# Heredocs (ADR 0023, 0030; 2.9.5): `<<EOS` (its terminator in column 0),
+# `<<-EOS` and `<<~EOS` (indented by blanks); the delimiter an identifier
+# or quoted, right after the `<<` — `x << y` and `class << self` stay
+# operators. The body plus its terminator line is one string; the rest
+# of the opener line (`<<~EOS.strip`, `foo(<<A, <<B)`) is code.
+[[rules]]
+kind = "string"
+match = "heredoc"
+start = "<<"
+indent = "-~"
+indent_by = "blanks"
+delim = "ident"
+blanks = false
+
 
 # `=begin` / `=end` block comments. Caveat: Ruby requires them
 # at column 0 (see grammar header). The pair rule matches them

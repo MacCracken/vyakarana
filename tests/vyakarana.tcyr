@@ -169,7 +169,7 @@ fn _t_sub_spec(code) {
     if (code == 67) { return "sss--"; }   # C  ComposeRule
     if (code == 70) { return "ss--s"; }   # F  ComposeFencedRule
     if (code == 82) { return "sss"; }     # R  ComposeRegionRule
-    if (code == 72) { return "iss"; }     # H  HeredocRule
+    if (code == 72) { return "issiiiisss"; }   # H  HeredocRule (ADR 0030)
     return 0;
 }
 
@@ -4133,10 +4133,12 @@ fn main() {
     assert_eq(_t_len_at(gp7_sh, 12), 8, "shell <<\"E\"OF ends at EOF (quote removal)");
     assert_eq(_t_len_at(gp7_sh, 30), 4, "shell <<'' ends at an empty line");
     assert_eq(_t_len_at(gp7_sh, 44), 5, "shell <<! ends at a line `!`");
-    # Grammar validation: a two-byte heredoc indent, an escape on a line
+    # Grammar validation: a repeated heredoc indent marker, an escape on a line
     # rule, a followed_by on a pair rule, a non-identifier prefix.
-    var gp7_b1 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"string\"\nmatch = \"heredoc\"\nstart = \"<<\"\nindent = \"-=\"\n";
-    assert_eq(_gp_parse(gp7_b1, strlen(gp7_b1)), 0, "a two-byte heredoc indent rejects the grammar");
+    # (Several indent bytes are several markers since 2.9.5, ADR 0030 —
+    # Ruby's `-~`; a repeated one is the mistake left to reject.)
+    var gp7_b1 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"string\"\nmatch = \"heredoc\"\nstart = \"<<\"\nindent = \"--\"\n";
+    assert_eq(_gp_parse(gp7_b1, strlen(gp7_b1)), 0, "a repeated heredoc indent marker rejects the grammar");
     var gp7_b2 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"comment\"\nmatch = \"line\"\nstart = \"#\"\nescape = \"\\\\\"\n";
     assert_eq(_gp_parse(gp7_b2, strlen(gp7_b2)), 0, "an escape on a line rule rejects the grammar");
     var gp7_b3 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"string\"\nmatch = \"pair\"\nstart = \"'\"\nend = \"'\"\nfollowed_by = \"a\"\n";
@@ -4506,6 +4508,123 @@ fn main() {
     assert_eq(_gp_parse(ld3_g1, strlen(ld3_g1)), 0, "number_tuple_index without number_float rejects the grammar");
     var ld3_g2 = "[grammar]\nname = \"x\"\n[defaults]\nnumber_decimal = true\nnumber_float = true\nnumber_tuple_index = true\n";
     assert(_gp_parse(ld3_g2, strlen(ld3_g2)) != 0, "  ... and with number_float it loads");
+
+    test_group("2.9.5 computed closers and Ruby / PHP heredocs (ADR 0030)");
+    # Inline literals: the closer repeats the opener's run or tag, no escapes.
+    var cc_rs = _t_tokenize("let a = r#\"say \"hi\" \\ \"#; let b = br##\"x\"#y\"##; let t = r#type; let c = r\"z\";\n", "rust");
+    assert_eq(_t_kind_at(cc_rs, 8), TK_STRING, "rust r#\"…\"# holds quotes and a backslash");
+    assert_eq(_t_len_at(cc_rs, 8), 16, "  ... its length");
+    assert_eq(_t_kind_at(cc_rs, 34), TK_STRING, "rust br##\"…\"## ends at \"## only");
+    assert_eq(_t_len_at(cc_rs, 34), 12, "  ... its length");
+    assert_eq(_t_kind_at(cc_rs, 56), TK_IDENT, "rust r#type (no quote) is no raw string");
+    assert_eq(_t_kind_at(cc_rs, 72), TK_STRING, "rust r\"z\" keeps its raw prefix");
+    assert_eq(_t_len_at(cc_rs, 72), 4, "  ... its length");
+    var cc_sw = _t_tokenize("let a = #\"a \"b\" \\(x)\"#\nlet m = #\"\"\"\nline \"q\"\n\"\"\"#\nlet h = ##\"x\"#y\"##\n#if X\n", "swift");
+    assert_eq(_t_kind_at(cc_sw, 8), TK_STRING, "swift #\"…\"#");
+    assert_eq(_t_len_at(cc_sw, 8), 14, "  ... its length");
+    assert_eq(_t_kind_at(cc_sw, 31), TK_STRING, "swift multi-line #\"\"\"…\"\"\"#");
+    assert_eq(_t_len_at(cc_sw, 31), 18, "  ... its length");
+    assert_eq(_t_kind_at(cc_sw, 58), TK_STRING, "swift ##\"…\"## ends at \"## only");
+    assert_eq(_t_len_at(cc_sw, 58), 10, "  ... its length");
+    assert_eq(_t_kind_at(cc_sw, 69), TK_OPERATOR, "swift #if is no raw string");
+    var cc_lu = _t_tokenize("local s = [==[a ]] ]=] b]==]\n--[=[ c\n]] ]=]\nlocal t = [[x]] -- d\nx = a[b]\n", "lua");
+    assert_eq(_t_kind_at(cc_lu, 10), TK_STRING, "lua [==[…]==] passes ]] and ]=]");
+    assert_eq(_t_len_at(cc_lu, 10), 18, "  ... its length");
+    assert_eq(_t_kind_at(cc_lu, 29), TK_COMMENT, "lua --[=[…]=] comment");
+    assert_eq(_t_len_at(cc_lu, 29), 14, "  ... its length");
+    assert_eq(_t_kind_at(cc_lu, 54), TK_STRING, "lua [[x]] keeps its pair rule");
+    assert_eq(_t_len_at(cc_lu, 54), 5, "  ... its length");
+    assert_eq(_t_kind_at(cc_lu, 70), TK_PUNCTUATION, "lua a[b]: the [ is punctuation");
+    var cc_cp = _t_tokenize("auto a = R\"(x \"y\" \\n)\";\nauto b = R\"d(a )\" b)d\";\nauto c = u8R\"(z)\";\nauto R = 1;\n", "cpp");
+    assert_eq(_t_kind_at(cc_cp, 9), TK_STRING, "cpp R\"(…)\" holds quotes and a backslash");
+    assert_eq(_t_len_at(cc_cp, 9), 13, "  ... its length");
+    assert_eq(_t_kind_at(cc_cp, 33), TK_STRING, "cpp R\"d(…)d\" ends at )d\" only");
+    assert_eq(_t_len_at(cc_cp, 33), 13, "  ... its length");
+    assert_eq(_t_kind_at(cc_cp, 57), TK_STRING, "cpp u8R\"(…)\"");
+    assert_eq(_t_len_at(cc_cp, 57), 8, "  ... its length");
+    assert_eq(_t_kind_at(cc_cp, 72), TK_IDENT, "cpp `auto R = 1`: R is an identifier");
+    # Ruby and PHP heredocs: the body plus terminator is one string.
+    var cc_rb = _t_tokenize("a = <<~EOS.strip\n  it\'s # not\n  EOS\nb = x << y\nclass << self\nend\nputs(<<-A, <<B)\n  one\n  A\ntwo\nB\nc = d <<e\n", "ruby");
+    assert_eq(_t_kind_at(cc_rb, 17), TK_STRING, "ruby <<~EOS body, terminator indented");
+    assert_eq(_t_len_at(cc_rb, 17), 18, "  ... its length");
+    assert_eq(_t_kind_at(cc_rb, 10), TK_PUNCTUATION, "ruby <<~EOS.strip: .strip is code");
+    assert_eq(_t_kind_at(cc_rb, 42), TK_OPERATOR, "ruby x << y stays an operator");
+    assert_eq(_t_kind_at(cc_rb, 53), TK_OPERATOR, "ruby class << self stays an operator");
+    assert_eq(_t_kind_at(cc_rb, 81), TK_STRING, "ruby <<-A body (two on one line)");
+    assert_eq(_t_len_at(cc_rb, 81), 9, "  ... its length");
+    assert_eq(_t_kind_at(cc_rb, 91), TK_STRING, "ruby <<B body, terminator in column 0");
+    assert_eq(_t_len_at(cc_rb, 91), 5, "  ... its length");
+    assert_eq(_t_kind_at(cc_rb, 103), TK_OPERATOR, "ruby d <<e with no terminator is code");
+    var cc_ph = _t_tokenize("<?php\n$a = <<<EOT\n  it\'s $x\n  EOT;\n$b = <<<\'N\'\nraw\nN . \"z\";\n$c = 1 << 2;\n", "php");
+    assert_eq(_t_kind_at(cc_ph, 18), TK_STRING, "php <<<EOT body ends after EOT");
+    assert_eq(_t_len_at(cc_ph, 18), 15, "  ... its length");
+    assert_eq(_t_kind_at(cc_ph, 33), TK_PUNCTUATION, "php `EOT;`: the ; is code");
+    assert_eq(_t_kind_at(cc_ph, 47), TK_STRING, "php <<<\'N\' nowdoc");
+    assert_eq(_t_len_at(cc_ph, 47), 5, "  ... its length");
+    assert_eq(_t_kind_at(cc_ph, 67), TK_OPERATOR, "php 1 << 2 stays an operator");
+    # The terminator watch (mode 1) reads the new key kinds: a Ruby `<<~`
+    # body and a PHP `EOT;` body commit once their terminator line has
+    # arrived — before finish, which would rescan and hide a dead watch.
+    var cc_wr_s = tokenize_stream_new("ruby");
+    var cc_wr_tb = tokenbuf_new();
+    tokenize_stream_feed(cc_wr_s, "a = <<~EOS\n  b\n", 15);
+    tokenize_stream_drain(cc_wr_s, cc_wr_tb);
+    tokenize_stream_feed(cc_wr_s, "  EOS\nc = 1\n", 12);
+    tokenize_stream_drain(cc_wr_s, cc_wr_tb);
+    assert_eq(_t_len_at(cc_wr_tb, 11), 9, "ruby: a <<~ body commits when its indented terminator arrives");
+    tokenize_stream_free(cc_wr_s);
+    var cc_wp_s = tokenize_stream_new("php");
+    var cc_wp_tb = tokenbuf_new();
+    tokenize_stream_feed(cc_wp_s, "<?php\n$a = <<<EOT\n  b\n", 22);
+    tokenize_stream_drain(cc_wp_s, cc_wp_tb);
+    tokenize_stream_feed(cc_wp_s, "  EOT;\nc;\n", 10);
+    tokenize_stream_drain(cc_wp_s, cc_wp_tb);
+    assert_eq(_t_len_at(cc_wp_tb, 18), 9, "php: a heredoc commits when its `EOT;` line arrives");
+    tokenize_stream_free(cc_wp_s);
+    # An unterminated literal's closer is watched from the stream's own
+    # copy: another stream's scan reuses the scanner's (lua builds `]==]`
+    # while rust waits for `"#`).
+    var cc_ia = tokenize_stream_new("rust");
+    var cc_ib = tokenize_stream_new("lua");
+    var cc_iatb = tokenbuf_new();
+    var cc_ibtb = tokenbuf_new();
+    tokenize_stream_feed(cc_ia, "x = r#\"open ", 12);
+    tokenize_stream_drain(cc_ia, cc_iatb);
+    tokenize_stream_feed(cc_ib, "y = [==[open ", 13);
+    tokenize_stream_drain(cc_ib, cc_ibtb);
+    tokenize_stream_feed(cc_ia, "still\"# + z;\n", 13);
+    tokenize_stream_drain(cc_ia, cc_iatb);
+    assert_eq(_t_len_at(cc_iatb, 4), 15, "rust: a raw string commits when its closer arrives, another stream between");
+    tokenize_stream_free(cc_ia);
+    tokenize_stream_free(cc_ib);
+    # Validation: options that mean nothing where given, or would do
+    # nothing, reject the grammar.
+    var cc_g0 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"string\"\nmatch = \"heredoc\"\nbody = \"inline\"\nstart = \"r\"\nrepeat = \"#\"\nclose = \"\\\"\"\n";
+    assert_eq(_gp_parse(cc_g0, strlen(cc_g0)), 0, "an inline heredoc without `open` rejects the grammar");
+    var cc_g1 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"string\"\nmatch = \"heredoc\"\nbody = \"inline\"\nstart = \"r\"\nrepeat = \"#\"\ntag = true\nopen = \"(\"\nclose = \")\"\n";
+    assert_eq(_gp_parse(cc_g1, strlen(cc_g1)), 0, "an inline heredoc with both `repeat` and `tag` rejects the grammar");
+    var cc_g2 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"string\"\nmatch = \"heredoc\"\nbody = \"inline\"\nstart = \"r\"\nrepeat = \"##\"\nopen = \"\\\"\"\nclose = \"\\\"\"\n";
+    assert_eq(_gp_parse(cc_g2, strlen(cc_g2)), 0, "a two-byte `repeat` rejects the grammar");
+    var cc_g3 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"string\"\nmatch = \"heredoc\"\nbody = \"inline\"\nstart = \"r\"\nrepeat = \"#\"\nopen = \"\\\"\"\nclose = \"\\\"\"\nindent = \"-\"\n";
+    assert_eq(_gp_parse(cc_g3, strlen(cc_g3)), 0, "an inline heredoc with `indent` rejects the grammar");
+    var cc_g4 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"string\"\nmatch = \"heredoc\"\nbody = \"inline\"\ntag = true\nopen = \"(\"\nclose = \")\"\n";
+    assert_eq(_gp_parse(cc_g4, strlen(cc_g4)), 0, "a `tag` heredoc without `start` rejects the grammar");
+    var cc_g5 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"string\"\nmatch = \"heredoc\"\nstart = \"<<\"\nrepeat = \"#\"\n";
+    assert_eq(_gp_parse(cc_g5, strlen(cc_g5)), 0, "`repeat` on a line heredoc rejects the grammar");
+    var cc_g6 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"string\"\nmatch = \"heredoc\"\nstart = \"<<\"\nbody = \"lines\"\n";
+    assert_eq(_gp_parse(cc_g6, strlen(cc_g6)), 0, "an unknown `body` rejects the grammar");
+    var cc_g7 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"string\"\nmatch = \"heredoc\"\nstart = \"<<\"\nindent_by = \"blanks\"\n";
+    assert_eq(_gp_parse(cc_g7, strlen(cc_g7)), 0, "`indent_by` with nothing to indent rejects the grammar");
+    var cc_g8 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"string\"\nmatch = \"heredoc\"\nstart = \"<<<\"\nterm_rest = true\nindent = \"-\"\n";
+    assert_eq(_gp_parse(cc_g8, strlen(cc_g8)), 0, "`term_rest` without `indent_always` rejects the grammar");
+    var cc_g9 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"string\"\nmatch = \"heredoc\"\nstart = \"<<\"\ndelim = \"words\"\n";
+    assert_eq(_gp_parse(cc_g9, strlen(cc_g9)), 0, "an unknown `delim` rejects the grammar");
+    var cc_gp = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"string\"\nmatch = \"pair\"\nstart = \"\\\"\"\nend = \"\\\"\"\nblanks = false\n";
+    assert_eq(_gp_parse(cc_gp, strlen(cc_gp)), 0, "a heredoc option on a pair rule rejects the grammar");
+    var cc_ok0 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"string\"\nmatch = \"heredoc\"\nbody = \"inline\"\nrepeat = \"#\"\nopen = \"\\\"\"\nclose = \"\\\"\"\n";
+    assert(_gp_parse(cc_ok0, strlen(cc_ok0)) != 0, "an inline heredoc with `repeat` and no `start` loads");
+    var cc_ok1 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"string\"\nmatch = \"heredoc\"\nstart = \"<<<\"\nindent_by = \"blanks\"\nindent_always = true\nterm_rest = true\ndelim = \"ident\"\nblanks = false\nindent = \"-~\"\n";
+    assert(_gp_parse(cc_ok1, strlen(cc_ok1)) != 0, "a line heredoc with every option loads");
 
     return assert_summary();
 }

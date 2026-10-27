@@ -1,6 +1,6 @@
 # 0023 — `heredoc` rule type for here-documents
 
-- **Status:** Accepted — terminator search budget superseded by [ADR 0028](0028-streaming-holds-watches-groups.md) (2.8.0)
+- **Status:** Accepted — terminator search budget superseded by [ADR 0028](0028-streaming-holds-watches-groups.md) (2.8.0); extended by [ADR 0030](0030-heredoc-computed-closers.md) (2.9.5)
 - **Date:** 2026-10-20
 - **Deciders:** 2.6.0 shell-correctness work (proposed) / user (accepted
   via the pinned 2.6.0 roadmap entry)
@@ -111,7 +111,10 @@ has no heredocs) — the same standing as the backtick rule.
 - Ruby (`<<~EOS`, `<<-EOS`), PHP (`<<<EOT`, nowdoc), Perl, Crystal —
   same shape with different start markers and indentation rules; extend
   the rule's options (indentation by spaces, a terminator followed by
-  more code) rather than adding a second mechanism.
+  more code) rather than adding a second mechanism. *(Amended 2.9.5:
+  done for Ruby and PHP with exactly those options — ADR 0030, which
+  also gives the rule an inline body form for raw strings. Perl and
+  Crystal remain.)*
 - The 2.8.0 streaming-engine rework, which may subsume the hold and
   watch. *(Amended 2.9.2: it kept them — ADR 0028 made the scanner
   report compose holds and finished groups the same way, gave the

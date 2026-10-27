@@ -22,9 +22,9 @@
 # 2-byte operator.
 #
 # Known gaps (not triggered by the stand-in):
-#   - Heredocs / nowdocs (`<<<EOT … EOT;`). Variable-length
-#     terminator. Same scanner-shape gap as Lua's `[==[…]==]`
-#     and Ruby's heredocs — track collectively.
+#   - (Not a gap since 2.9.5: heredocs and nowdocs, `<<<EOT … EOT;`,
+#     are one string per body, ADR 0030; the `<<<` itself tokenizes as
+#     `<<` `<`, as before.)
 #   - `1_000_000` (PHP 7.4) and floats are one number since 2.7.0
 #     (ADR 0026).
 #   - String interpolation (`"$x"` and `"{$x}"`) stays inside
@@ -98,6 +98,19 @@ punctuation = [
 
 
 # ── Rules ──────────────────────────────────────────────────────────
+
+# Heredocs and nowdocs (ADR 0023, 0030; 2.9.5): `<<<EOT`, `<<<"EOT"`,
+# `<<<'EOT'`. Since PHP 7.3 the terminator may be indented and followed
+# by code (`EOT;`, `EOT)`): the string ends after it.
+[[rules]]
+kind = "string"
+match = "heredoc"
+start = "<<<"
+indent_by = "blanks"
+indent_always = true
+term_rest = true
+delim = "ident"
+
 
 # PHP supports both `//` and `#` line comments. `#` is also a
 # comment in PHP (since forever) but is the immediate prefix in

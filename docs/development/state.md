@@ -8,14 +8,14 @@
 > 2.6.2 it carried a "What X changed" block for every release back to
 > 1.13.0 — trimmed in 2.7.0; the CHANGELOG has all of it.)
 >
-> **Last refresh:** 2026-10-27, at 2.9.4. Read this first, then run the
+> **Last refresh:** 2026-10-27, at 2.9.5. Read this first, then run the
 > gates (CLAUDE.md §Gates) — do not take the "green" below on trust.
 
 ---
 
 ## Current status
 
-- **Version:** `2.9.4` — `VERSION`, `src/version_str.cyr`,
+- **Version:** `2.9.5` — `VERSION`, `src/version_str.cyr`,
   `dist/vyakarana.cyr`, the CHANGELOG header and `docs/man/vyk.1`
   agree.
 - **Toolchain pin:** `cyrius = "6.7.18"` in `cyrius.cyml`, the single
@@ -37,21 +37,21 @@
   of four stdlib leaves (alloc, string, vec, io). The embedded grammars
   are compacted — comments and blanks outside strings dropped — by a
   POSIX sh + awk generator (ADR 0029); `grammars/` is the readable copy.
-- **Size:** the shipped (`CYRIUS_DCE=1`) `vyk` is 265,024 bytes against a
+- **Size:** the shipped (`CYRIUS_DCE=1`) `vyk` is 278,968 bytes against a
   307,200-byte budget that `scripts/check-size.sh` enforces in CI and at
-  release (ADR 0029); the default build is 355,136.
-- **Next release:** 2.9.5, variable-length delimiters — the third of
-  the 2.9.x arc, which runs to incremental retokenization at 2.9.11 and
-  a closeout audit at 2.9.12 ([roadmap](./roadmap.md)). The last audit's report:
+  release (ADR 0029); the default build is 373,176.
+- **Next release:** 2.9.6, non-identifier string prefixes — the fourth
+  of the 2.9.x arc, which runs to incremental retokenization at 2.9.11
+  and a closeout audit at 2.9.12 ([roadmap](./roadmap.md)). The last audit's report:
   [2.9.x](../audit/2026-10-21-2.9.x-closeout-audit.md).
 
-## Gates (green at 2.9.4, 2026-10-27)
+## Gates (green at 2.9.5, 2026-10-27)
 
-- `cyrius build` OK, 0 warnings · `cyrius test` **1164/1164** · smoke
+- `cyrius build` OK, 0 warnings · `cyrius test` **1224/1224** · smoke
   OK (it runs `scripts/check-detect.sh`) · `scripts/lint-fmt.sh`
   exit 0 (a lint warning fails it; covers `src/` and
   `scripts/audit/`) · `scripts/check-size.sh` OK · `cyrius fuzz`
-  **5/5** (56 every-offset shapes), also clean under `--poison=ab` and
+  **5/5** (68 every-offset shapes), also clean under `--poison=ab` and
   `--bounds` · `cyrius distlib --check` clean.
 - The audit sweeps are in `scripts/audit/` — real-file coverage,
   poison A/B, streaming invariance, mutation fuzz over vidya — with
@@ -75,7 +75,10 @@
   ADR 0022), pair, words, compose, compose_fenced (with `end_indent`,
   and tags resolved by name, extension or interpreter — ADR 0016),
   compose_region (`end_before` optional: run to EOF, ADR 0019),
-  heredoc (ADR 0023); line rules may also require or forbid a next
+  heredoc (ADR 0023; since ADR 0030 also an inline body for raw
+  literals — a closer computed from a `repeat` run or a `tag` — and the
+  line options `indent_by`, `indent_always`, `term_rest`, `delim`,
+  `blanks`); line rules may also require or forbid a next
   byte (`followed_by` / `not_followed_by`, ADR 0027). `[defaults]`
   includes `number_float`, `number_separator`, `number_datetime`,
   `number_tuple_index` (ADR 0026), `string_prefixes` / `raw_string_prefixes` and
@@ -124,13 +127,10 @@ Each names the 2.9.x arc release that takes it on ([roadmap](./roadmap.md)).
   (ADR 0027): C#'s `@"…"` / `$"…"` need a non-identifier prefix
   (2.9.6), and Julia string macros other than Base's `raw` / `r` / `b`
   / `v` are not declared. Until then they are prefix + string.
-- **Variable-length delimiters beyond shell heredocs** — Rust
-  `r#"…"#`, C++ `R"d(…)d"`, Lua `[==[ … ]==]`, Swift `#"…"#`, and Ruby
-  and PHP heredocs (neither grammar has a heredoc rule) — 2.9.5, by
-  extending the heredoc rule (ADR 0023). Not error-free: a `r#"…"#`
-  whose body holds quotes and backslashes surfaces `error` tokens after
-  the first inner quote (2 of 5,166 sampled real files at the 2.9.x
-  audit).
+- **Raw literals and heredocs, what is not read** (ADR 0030): Swift's
+  `\#"` escape inside `#"…"#` (`#"\#"#"#` closes at the first `"#`);
+  Ruby `<<~` indentation removal and heredoc interpolation (the body is
+  one string, ADR 0003); Perl and Crystal heredocs. Not scheduled.
 - **Nested block comments** close at the first `*/` (rust, swift),
   `-}` (haskell), `*)` (ocaml) or `=#` (julia): a pair rule does not
   count depth, so the rest of the outer comment tokenizes as code. Not

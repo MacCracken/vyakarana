@@ -118,3 +118,4 @@ Two related changes ride along without new keys:
   a non-identifier prefix would need the scanner to try it before the
   operator step.
 - Rust `r#"…"#` and C++ raw strings with the heredoc-rule extension.
+  *(Amended 2.9.5: done — ADR 0030's inline heredoc bodies.)*

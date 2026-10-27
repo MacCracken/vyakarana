@@ -25,9 +25,9 @@
 #   - String interpolation `\(expr)` stays inside the string-pair
 #     span per [ADR 0003](../docs/adr/0003-string-expansion-not-retokenized.md).
 #     Theme can post-process.
-#   - Raw strings `#"…"#`, `##"…"##` (variable-length delimiter).
-#     Same scanner-shape gap as Lua's `[==[…]==]`, Ruby's
-#     heredocs, PHP's heredocs — track collectively.
+#   - Extended delimiters `#"…"#`, `##"…"##`, `#"""…"""#` are one
+#     string since 2.9.5 (ADR 0030), but their `\#"` escape is not
+#     read: `#"\#"#"#` closes at the first `"#`.
 #   - Nestable block comments (Swift's `/* */` is technically
 #     nestable per the spec; the pair rule closes at the first
 #     `*/`, so after a nested comment the rest of the outer one
@@ -98,6 +98,26 @@ punctuation = [
 
 
 # ── Rules ──────────────────────────────────────────────────────────
+
+# Extended string delimiters — `#"…"#`, `##"…"##`, multi-line
+# `#"""…"""#` — end at a quote followed by as many `#` as opened them
+# (ADR 0030, 2.9.5). The `"""` form first, so it wins at its opener.
+[[rules]]
+kind = "string"
+match = "heredoc"
+body = "inline"
+repeat = "#"
+open = "\"\"\""
+close = "\"\"\""
+
+[[rules]]
+kind = "string"
+match = "heredoc"
+body = "inline"
+repeat = "#"
+open = "\""
+close = "\""
+
 
 [[rules]]
 kind = "comment"
