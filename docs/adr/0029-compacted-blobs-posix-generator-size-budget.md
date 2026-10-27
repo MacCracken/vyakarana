@@ -1,6 +1,6 @@
 # 0029 — Compacted grammar blobs, a POSIX generator, a checked size budget
 
-- **Status:** Accepted (amends [ADR 0014](0014-embedded-grammar-blobs.md))
+- **Status:** Accepted (amends [ADR 0014](0014-embedded-grammar-blobs.md)); the size budget's hard limit removed in 2.9.8 (amendment below)
 - **Date:** 2026-10-21
 - **Deciders:** 2.9.0 size-and-tooling work (proposed) / user (accepted
   via the pinned 2.9.0 roadmap entry)
@@ -109,3 +109,15 @@ The roadmap named two replacements: cyrius's `[embed]` manifest section
 - A grammar needs a string that spans lines, or a value that is not a
   string, array or bool: the compactor's lexical rules (and the loader's)
   change together, and the record comparison will say whether they did.
+
+## Amendment 2.9.8 — reported, not limited
+
+The user (2026-10-27): "there shouldn't be hard limits to the binary."
+`scripts/check-size.sh` keeps building (or reading) the shipped
+`CYRIUS_DCE=1` binary and prints its size — CI's and `release.yml`'s
+"Binary size" steps — but no longer fails above 307,200 bytes; it fails
+only when the build fails or the binary cannot be read. Point 6 and the
+"one more gate" consequence above describe 2.9.0 – 2.9.7. Each release's
+CHANGELOG entry still says what it costs; DEFLATE-encoded blobs (point
+5) remain the lever if size matters again. At 2.9.7 the DCE build was
+288,808 bytes.

@@ -268,10 +268,10 @@ rendering is owl's job.
   they are identified; no "tokenize to a Vec, then return" path.
 - **Binary size:** target under 300KB for `vyk` once the ten bundled
   grammars are embedded. Grammars are compact CYML; embedding all
-  ten should be under 100KB of data. (Since 2.9.0 the shipped
-  `CYRIUS_DCE=1` build is held to 300 KiB in CI, and the grammars
-  embed compacted — ADR 0029; `docs/development/performance.md` has
-  the current sizes.)
+  ten should be under 100KB of data. (From 2.9.0 to 2.9.7 the shipped
+  `CYRIUS_DCE=1` build was held to 300 KiB in CI; since 2.9.8 its size
+  is reported, not limited. The grammars embed compacted — ADR 0029;
+  `docs/development/performance.md` has the current sizes.)
 
 ---
 

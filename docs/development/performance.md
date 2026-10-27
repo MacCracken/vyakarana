@@ -24,7 +24,7 @@ controlled benchmark host — variance ~±10% between runs.
 | Artifact                    | Size (bytes) | Size (KB) | Notes                                         |
 |-----------------------------|-------------:|----------:|-----------------------------------------------|
 | `build/vyk` (CLI binary)    |      354,792 |     346.5 | Includes 46 compacted grammars (55,574 bytes of blob data) |
-| `build/vyk`, `CYRIUS_DCE=1` |      260,584 |     254.5 | Same tree, dead fns compacted out — **what releases ship**; budget 300 KiB (307,200 bytes, `scripts/check-size.sh`) |
+| `build/vyk`, `CYRIUS_DCE=1` |      260,584 |     254.5 | Same tree, dead fns compacted out — **what releases ship**; `scripts/check-size.sh` reports it (a 300 KiB limit from 2.9.0 to 2.9.7; none since, ADR 0029) |
 | `dist/vyakarana.cyr`        |      363,651 |     355.1 | Single-file bundle for `cyrius deps` (7,075 lines by `wc -l`) |
 
 **`2.9.1` (2026-10-21):** 2.9.0 → 2.9.1 +12,456 (DCE +8,360, 46,616

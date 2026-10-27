@@ -1,23 +1,23 @@
 #!/bin/sh
-# check-size.sh — the shipped binary's size budget (ADR 0029).
+# check-size.sh — report the shipped binary's size (ADR 0029).
 #
 # Releases ship the dead-code-eliminated build (CYRIUS_DCE=1,
-# .github/workflows/release.yml). This checks that binary against the
-# design spec's 300 KB target. From 1.13.0 to 2.8.0 the target was
-# "soft" and nothing measured it; the shipped binary drifted to
-# 408,680 bytes, mostly grammar comments embedded verbatim.
+# .github/workflows/release.yml). This builds or reads that binary and
+# prints its size, so CI logs and release notes carry it. It is a report,
+# not a limit: from 2.9.0 to 2.9.7 it failed above 307,200 bytes (the
+# design spec's 300 KB target); since 2.9.8 there is no hard limit on the
+# binary (ADR 0029, amended). It still fails when the DCE build fails or
+# the binary cannot be read.
 #
 # Usage: sh scripts/check-size.sh [path/to/vyk]
 #   With no argument, builds src/main.cyr with CYRIUS_DCE=1 into a
 #   temporary file (src/grammar_blobs.cyr must exist — run
-#   scripts/embed-grammars.sh first). With a path, checks that binary
+#   scripts/embed-grammars.sh first). With a path, measures that binary
 #   as built (release.yml passes its DCE build).
 set -eu
 
 CALLER=$(pwd)
 cd "$(dirname "$0")/.."
-
-BUDGET=307200   # 300 KiB
 
 BIN="${1:-}"
 if [ -z "$BIN" ]; then
@@ -43,8 +43,4 @@ n=$(wc -c < "$BIN" | tr -d ' ')
 case "$n" in
     ''|*[!0-9]*) echo "check-size: cannot measure $BIN" >&2; exit 1 ;;
 esac
-if [ "$n" -gt "$BUDGET" ]; then
-    echo "check-size: FAIL — $n bytes, over the $BUDGET-byte budget by $((n - BUDGET))" >&2
-    exit 1
-fi
-echo "check-size: OK — $n bytes, $((BUDGET - n)) under the $BUDGET-byte budget"
+echo "check-size: $n bytes (the shipped CYRIUS_DCE=1 build; reported, not limited)"

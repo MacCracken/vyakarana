@@ -27,7 +27,7 @@ cyrius build src/main.cyr build/vyk
 sh scripts/lint-fmt.sh                 # lint + fmt --check, src/ + scripts/audit/
 cyrius test tests/vyakarana.tcyr
 sh scripts/smoke.sh build/vyk
-sh scripts/check-size.sh               # shipped (DCE) binary <= 300 KiB
+sh scripts/check-size.sh               # shipped (DCE) binary's size, reported
 cyrius build scripts/audit/harness.cyr build/vyk-audit \
     && for f in scripts/audit/*.sh scripts/bench-paired.sh; do sh -n "$f"; done
 cyrius fuzz                            # the fuzz/*.fcyr harnesses

@@ -42,8 +42,9 @@ sub-blocks).
 | 0026 | [Number literal shapes: floats, digit separators, datetimes](0026-number-literal-shapes.md) | Accepted | 2026-10-20 |
 | 0027 | [String prefixes, identifier lead bytes, next-byte line rules](0027-prefixes-lead-bytes-next-byte-rules.md) | Accepted | 2026-10-20 |
 | 0028 | [Streaming engine: scanner-reported holds, watches and groups](0028-streaming-holds-watches-groups.md) | Accepted | 2026-10-20 |
-| 0029 | [Compacted grammar blobs, a POSIX generator, a checked size budget](0029-compacted-blobs-posix-generator-size-budget.md) | Accepted (amends 0014) | 2026-10-21 |
+| 0029 | [Compacted grammar blobs, a POSIX generator, a checked size budget](0029-compacted-blobs-posix-generator-size-budget.md) | Accepted (amends 0014; size limit removed in 2.9.8) | 2026-10-21 |
 | 0030 | [Heredoc rule: computed closers and Ruby / PHP terminators](0030-heredoc-computed-closers.md) | Accepted (extends 0023) | 2026-10-27 |
+| 0031 | [`detect_language_registered`: routing by the registry's declarations](0031-detect-language-registered.md) | Accepted | 2026-10-27 |
 
 ## Conventions
 

@@ -298,3 +298,4 @@ behaviour:
 - [ADR 0028 — Streaming engine: scanner-reported holds, watches and groups](../adr/0028-streaming-holds-watches-groups.md)
 - [ADR 0029 — Compacted grammar blobs, a POSIX generator, a checked size budget](../adr/0029-compacted-blobs-posix-generator-size-budget.md)
 - [ADR 0030 — Heredoc rule: computed closers and Ruby / PHP terminators](../adr/0030-heredoc-computed-closers.md)
+- [ADR 0031 — `detect_language_registered`: routing by the registry's declarations](../adr/0031-detect-language-registered.md)

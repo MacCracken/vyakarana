@@ -4749,6 +4749,94 @@ fn main() {
     var ns_g5 = "[grammar]\nname = \"x\"\n[defaults]\nident_start = \"a-z\"\nident_cont = \"a-z\"\nnumber_decimal = true\nnumber_float = true\nnumber_lead_dot = true\nnumber_trail_dot = true\nnumber_suffixes = [\"u\", \"ul\"]\n";
     assert(_gp_parse(ns_g5, strlen(ns_g5)) != 0, "the three keys together load");
 
+
+    test_group("2.9.8 detect_language_registered (ADR 0031)");
+    # Every bundled declaration routes through the registry as the compiled
+    # functions route it: extensions in a dotted directory (`.s` / `.S`
+    # alike: the first registered, asm_x86_64, as the compiled path says),
+    # filenames in the four forms, interpreters in the three.
+    var rg8_names = vec_new();
+    list_languages_into(rg8_names);
+    var rg8_buf = alloc(256);
+    var rg8_bad = 0;
+    var rg8_n = 0;
+    var rg8_gi = 0;
+    while (rg8_gi < vec_len(rg8_names)) {
+        var rg8_g = registry_find_by_name(vec_get(rg8_names, rg8_gi));
+        var rg8_ev = grammar_extensions(rg8_g);
+        var rg8_i = 0;
+        while (rg8_i < vec_len(rg8_ev)) {
+            var rg8_p = _t_cat3(rg8_buf, "src.d/x", vec_get(rg8_ev, rg8_i), "");
+            if (_t_route_ok(rg8_p, detect_language_registered(rg8_p, 0, 0), detect_language(rg8_p)) == 0) { rg8_bad = rg8_bad + 1; }
+            rg8_n = rg8_n + 1;
+            rg8_i = rg8_i + 1;
+        }
+        var rg8_fv = grammar_filenames(rg8_g);
+        rg8_i = 0;
+        while (rg8_i < vec_len(rg8_fv)) {
+            var rg8_f = vec_get(rg8_fv, rg8_i);
+            if (_t_route_ok(rg8_f, detect_language_registered(rg8_f, 0, 0), detect_language(rg8_f)) == 0) { rg8_bad = rg8_bad + 1; }
+            var rg8_fp = _t_cat3(rg8_buf, "ci/", rg8_f, "");
+            if (_t_route_ok(rg8_fp, detect_language_registered(rg8_fp, 0, 0), detect_language(rg8_fp)) == 0) { rg8_bad = rg8_bad + 1; }
+            rg8_fp = _t_cat3(rg8_buf, "ci/app.", rg8_f, "");
+            if (_t_route_ok(rg8_fp, detect_language_registered(rg8_fp, 0, 0), detect_language(rg8_fp)) == 0) { rg8_bad = rg8_bad + 1; }
+            rg8_fp = _t_cat3(rg8_buf, "ci/", rg8_f, ".dev");
+            if (_t_route_ok(rg8_fp, detect_language_registered(rg8_fp, 0, 0), detect_language(rg8_fp)) == 0) { rg8_bad = rg8_bad + 1; }
+            rg8_n = rg8_n + 4;
+            rg8_i = rg8_i + 1;
+        }
+        var rg8_sv = grammar_shebangs(rg8_g);
+        rg8_i = 0;
+        while (rg8_i < vec_len(rg8_sv)) {
+            var rg8_s = vec_get(rg8_sv, rg8_i);
+            var rg8_c = _t_cat3(rg8_buf, "#!/usr/bin/env ", rg8_s, "\n");
+            if (_t_route_ok(rg8_c, detect_language_registered(0, rg8_c, strlen(rg8_c)), detect_language_from_content(rg8_c, strlen(rg8_c))) == 0) { rg8_bad = rg8_bad + 1; }
+            rg8_c = _t_cat3(rg8_buf, "#!/usr/local/bin/", rg8_s, " -x\n");
+            if (_t_route_ok(rg8_c, detect_language_registered(0, rg8_c, strlen(rg8_c)), detect_language_from_content(rg8_c, strlen(rg8_c))) == 0) { rg8_bad = rg8_bad + 1; }
+            rg8_c = _t_cat3(rg8_buf, "#!/bin/", rg8_s, "5\n");
+            if (_t_route_ok(rg8_c, detect_language_registered(0, rg8_c, strlen(rg8_c)), detect_language_from_content(rg8_c, strlen(rg8_c))) == 0) { rg8_bad = rg8_bad + 1; }
+            rg8_n = rg8_n + 3;
+            rg8_i = rg8_i + 1;
+        }
+        rg8_gi = rg8_gi + 1;
+    }
+    assert_eq(rg8_bad, 0, "every bundled declaration routes as the compiled functions route it");
+    assert(rg8_n >= 134, "  ... checked every extension, filename form and interpreter form (78 + 4 x 5 + 3 x 12 at 2.9.8)");
+    assert_streq(detect_language_registered("x/Makefile.py", 0, 0), "python", "an extension still beats a filename prefix");
+    assert_eq(detect_language_registered("a.asm", 0, 0), 0, ".asm is declared by no grammar");
+    assert_eq(detect_language_registered(0, 0, 0), 0, "no path, no content: 0");
+    assert_eq(detect_language_registered("", 0, 0), 0, "an empty path: 0");
+    assert_eq(detect_language_registered("bin/tool", 0, 0), 0, "an extensionless path without content: 0");
+    var rg8_py = "#!/usr/bin/env -S python3 -u\nprint(1)\n";
+    assert_streq(detect_language_registered("bin/tool", rg8_py, strlen(rg8_py)), "python", "  ... with a shebang, its interpreter (env options skipped)");
+    var rg8_bom = "\xEF\xBB\xBF#!/bin/sh\n";
+    assert_eq(detect_language_registered(0, rg8_bom, strlen(rg8_bom)), 0, "a BOM before #! is no shebang, as for the compiled sniff");
+    # Declarations are prefixes (ADR 0025); the compiled sniff bounds `sh`
+    # to three bytes. The one designed difference, held here.
+    var rg8_sc = "#!/usr/bin/shellcheck\n";
+    assert_streq(detect_language_registered(0, rg8_sc, strlen(rg8_sc)), "shell", "registered: shellcheck starts with the declared sh");
+    assert_eq(detect_language_from_content(rg8_sc, strlen(rg8_sc)), 0, "  ... the compiled sniff does not route it");
+    # A consumer's own grammars route by what they declare; ties go to the
+    # first registered, the longest extension wins.
+    var rg8_s1 = "[grammar]\nname = \"zz_one\"\nextensions = [\".zz\"]\nfilenames = [\"Zzfile\"]\nshebangs = [\"zzsh\"]\n";
+    var rg8_s2 = "[grammar]\nname = \"zz_two\"\nextensions = [\".zz\", \".b.zz\"]\nfilenames = [\"Zzfile\"]\n";
+    var rg8_s3 = "[grammar]\nname = \"zz_rs\"\nextensions = [\".rs\"]\n";
+    var rg8_g1 = _gp_parse(rg8_s1, strlen(rg8_s1));
+    var rg8_g2 = _gp_parse(rg8_s2, strlen(rg8_s2));
+    var rg8_g3 = _gp_parse(rg8_s3, strlen(rg8_s3));
+    assert((rg8_g1 != 0) && (rg8_g2 != 0) && (rg8_g3 != 0), "three consumer grammars load");
+    registry_add(rg8_g1);
+    registry_add(rg8_g2);
+    registry_add(rg8_g3);
+    assert_streq(detect_language_registered("src/a.zz", 0, 0), "zz_one", "a consumer extension routes; the tie goes to the first registered");
+    assert_streq(detect_language_registered("src/a.b.zz", 0, 0), "zz_two", "  ... the longest declared extension wins");
+    assert_streq(detect_language_registered("ci/Zzfile", 0, 0), "zz_one", "a consumer filename routes");
+    assert_streq(detect_language_registered("Zzfile.dev", 0, 0), "zz_one", "  ... as `<name>.<x>` too");
+    var rg8_zs = "#!/usr/bin/env zzsh2\n";
+    assert_streq(detect_language_registered(0, rg8_zs, strlen(rg8_zs)), "zz_one", "a consumer shebang routes (versioned)");
+    assert_streq(detect_language_registered("main.rs", 0, 0), "rust", "a later grammar's .rs does not displace rust (first registered)");
+    assert_eq(detect_language("src/a.zz"), 0, "the compiled detect_language is unchanged: it knows no consumer grammar");
+
     return assert_summary();
 }
 

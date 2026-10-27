@@ -69,10 +69,10 @@ jobs:
       - name: Smoke test
         run: sh scripts/smoke.sh build/vyk
 
-      # The shipped (CYRIUS_DCE=1) binary against its 300 KiB budget
-      # (ADR 0029). Builds its own DCE binary; build/vyk above is the
-      # default build.
-      - name: Size budget
+      # The shipped (CYRIUS_DCE=1) binary's size, reported — no hard limit
+      # since 2.9.8 (ADR 0029, amended). Builds its own DCE binary;
+      # build/vyk above is the default build.
+      - name: Binary size
         run: sh scripts/check-size.sh
 
       # The audit tools (scripts/audit/, 2.9.0) are not gates, but they

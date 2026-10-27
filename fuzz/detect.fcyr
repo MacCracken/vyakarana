@@ -1,6 +1,7 @@
-# vyakarana — fuzz harness for detect_language*
+# vyakarana — fuzz harness for detect_language* (detect_language_registered
+# since 2.9.8)
 #
-# Exercises the three detection entries against varied inputs.
+# Exercises the four detection entries against varied inputs.
 # Asserts:
 #
 #   1. Each entry returns either 0 or a cstr pointer the caller
@@ -156,6 +157,32 @@ fn fuzz_main(data, n) {
         if (_detect_check_lang(detect_language_combined("script", rb, strlen(rb)),
                                 "combined/extensionless+random") != 0) { return 1; }
         ri = ri + 1;
+    }
+
+    # 4. Registered API (2.9.8, ADR 0031) — the same edge paths and
+    # random content, through the registry's declarations.
+    if (_detect_check_lang(detect_language_registered(0, 0, 0), "registered/none") != 0) { return 1; }
+    if (_detect_check_lang(detect_language_registered("", "", 0), "registered/empty") != 0) { return 1; }
+    if (_detect_check_lang(detect_language_registered(".s", 0, 0), "registered/dotS") != 0) { return 1; }
+    if (_detect_check_lang(detect_language_registered("///foo.sh", 0, 0), "registered/slashes") != 0) { return 1; }
+    if (_detect_check_lang(detect_language_registered("Dockerfile.bak", 0, 0), "registered/df-bak") != 0) { return 1; }
+    if (_detect_check_lang(detect_language_registered(lp, 0, 0), "registered/long-random") != 0) { return 1; }
+    if (_detect_check_lang(detect_language_registered("foo", pyish, strlen(pyish)), "registered/shebang") != 0) { return 1; }
+    store8(cbuf,     35);    # '#'
+    store8(cbuf + 1, 33);    # '!'
+    store8(cbuf + 2, 0);
+    if (_detect_check_lang(detect_language_registered(0, cbuf, 2), "registered/bare-#!") != 0) { return 1; }
+    var gi = 0;
+    while (gi < 16) {
+        _detect_fill(rb, 256);
+        if (_detect_check_lang(detect_language_registered("script", rb, strlen(rb)),
+                                "registered/extensionless+random") != 0) { return 1; }
+        _detect_fill(rb, 64);
+        store8(rb, 35);
+        store8(rb + 1, 33);
+        if (_detect_check_lang(detect_language_registered(0, rb, strlen(rb)),
+                                "registered/#!+random") != 0) { return 1; }
+        gi = gi + 1;
     }
 
     return 0;

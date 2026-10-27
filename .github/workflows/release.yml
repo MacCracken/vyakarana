@@ -104,8 +104,8 @@ jobs:
           mkdir -p build
           cyrius build src/main.cyr build/vyk
 
-      # The binary being packaged, against its budget (ADR 0029).
-      - name: Size budget
+      # The binary being packaged: its size, reported (ADR 0029).
+      - name: Binary size
         run: sh scripts/check-size.sh build/vyk
 
       - name: Package release artifact

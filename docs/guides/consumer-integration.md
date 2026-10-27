@@ -25,7 +25,7 @@ project's `cyrius.cyml`:
 ```toml
 [deps.vyakarana]
 git     = "https://github.com/MacCracken/vyakarana.git"
-tag     = "2.9.7"
+tag     = "2.9.8"
 modules = ["dist/vyakarana.cyr"]
 ```
 
@@ -96,11 +96,14 @@ fn has_grammar(name) -> i64                # 1 if known, 0 otherwise
 fn list_languages_into(out_vec) -> i64     # populates a vec of cstr names
 fn bootstrap_grammars()                    # explicit load (see Lazy loading)
 
-# Language detection (1.11.2+). All three return a language
+# Language detection (1.11.2+). All four return a language
 # name (cstr) suitable for tokenize_stream_new, or 0 if no match.
 fn detect_language(path) -> cstr                    # extension + basename suffix match
 fn detect_language_from_content(src, src_len) -> cstr   # BOM/shebang/signature sniff
 fn detect_language_combined(path, src, src_len) -> cstr # path first, content fallback + asm flavour vote
+# 2.9.8+: routes by the REGISTRY's declared extensions / filenames /
+# shebangs, so grammars you registered route too; src may be 0.
+fn detect_language_registered(path, src, src_len) -> cstr
 
 # LSP semantic-tokens bridge (1.11.0+). Maps LSP's standard
 # token-type taxonomy onto vyakarana's 10 TK_* kinds.
@@ -113,6 +116,34 @@ order do not change across the 2.x line — see
 [docs/architecture/overview.md](../architecture/overview.md)
 "Frozen public contracts." The header of `src/tokenize.cyr` is
 the authoritative list of the stream and registry symbols.
+
+### Routing your own grammars
+
+A grammar you load and register — `registry_add(grammar_load(path))`,
+as owl's user overlay and cyim's loader do — declares its routes in its
+`[grammar]` table: `extensions = [".foo"]`, `filenames = ["Foofile"]`,
+`shebangs = ["foo"]` (ADR 0025). `detect_language_registered(path, src,
+src_len)` routes by those declarations across the whole registry, so you
+need no routing table of your own ([ADR 0031](../adr/0031-detect-language-registered.md)):
+
+- the longest declared extension the path ends with, case-sensitive;
+- else a declared filename (`Foofile`, `ci/app.Foofile`, `Foofile.dev`);
+- else, when `src` is given, the `#!` line's interpreter (after `env`
+  and its options), prefix-matched against declared shebangs.
+
+Ties go to the **first registered** grammar, as name lookup does — so
+register yours before calling `bootstrap_grammars()` (or set
+`_grammars_bootstrapped` and load the bundled ones after yours) if they
+should win a route a bundled grammar also declares. The function
+bootstraps the bundled grammars itself, as `has_grammar` does.
+
+The compiled three stay pure and know only the bundled grammars; they
+also carry what declarations cannot say — the `.s` / `.S` content vote
+and the `<?xml` signature sniff (`detect_language_combined`). For the
+bundled grammars the two paths agree on every declared route; the one
+designed difference is a declared shebang being a plain prefix
+(`#!/usr/bin/shellcheck` routes to shell), where the compiled sniff
+bounds `sh` to three bytes.
 
 ### Tokenbuf accessors
 

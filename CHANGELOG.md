@@ -4,6 +4,66 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.9.8] — 2026-10-27
+
+**Detection for consumers** (roadmap 2.9.8), the sixth of the 2.9.x arc —
+[ADR 0031](docs/adr/0031-detect-language-registered.md) — and the binary's
+size is now reported, not limited. Token output is unchanged: byte-identical
+to 2.9.7 over 2.9.4's 7,527-file sample and the corpora; `vyk` routes as
+before. 1334/1334 tests (19 new), fuzz 5/5 (also under `--poison=ab` and
+`--bounds`), lint+fmt exit 0, `cyrius distlib --check` clean. `vyk` 383,016
+→ 383,024 bytes; the shipped DCE build 288,808 → 288,816 — `vyk` never calls
+the new function, so DCE drops it; a consumer that does carries it.
+
+### Added
+
+- **`detect_language_registered(path, src, src_len)`** — public, additive.
+  Routes by what the registry's grammars declare (`extensions`,
+  `filenames`, `shebangs`, ADR 0025), so a consumer's own grammars —
+  registered with `grammar_load` + `registry_add`, as owl's overlay and
+  cyim's loader do — route too, with no routing table of the consumer's:
+  the longest declared extension, else a declared filename (the compiled
+  check's own rules), else, given `src`, the `#!` interpreter after `env`
+  and its options, prefix-matched. Ties go to the first registered grammar,
+  as name lookup does. It bootstraps the bundled grammars first, as
+  `has_grammar` does. The compiled three are unchanged and stay pure; they
+  keep the `.s` content vote and the `<?xml` sniff, which declare nothing.
+  For the bundled grammars both paths agree on all 134 declared route forms;
+  the one designed difference is a declared shebang being a plain prefix
+  (`#!/usr/bin/shellcheck` → shell), where the compiled sniff bounds `sh` to
+  three bytes. The consumer guide has a "Routing your own grammars"
+  section.
+
+### Changed
+
+- **No hard limit on the binary's size** (ADR 0029, amended; the user's
+  call). `scripts/check-size.sh` still builds — or reads — the shipped
+  `CYRIUS_DCE=1` binary and prints its size, in CI's and `release.yml`'s
+  "Binary size" steps (renamed from "Size budget"), but no longer fails above
+  307,200 bytes; it fails only when the build fails or the binary cannot be
+  read. CLAUDE.md, CONTRIBUTING, state.md, distribution.md, performance.md
+  and the design spec say so.
+- **`_detect_shebang`'s interpreter parsing is a helper**, `_detect_interp`,
+  shared with the registered path so both read a `#!` line alike. Its
+  answers are unchanged: 0 differences between 2.9.7's `vyk` and 2.9.8's over
+  3,000 generated scripts (`env` options, versions, blanks, CR, no
+  interpreter), and `scripts/check-detect.sh` still sees every compiled
+  route.
+
+### Tests
+
+- A `2.9.8 detect_language_registered` group, 19 assertions: every bundled
+  declaration in its four filename and three interpreter forms routes as
+  the compiled functions route it; the empty, extensionless and BOM cases;
+  the `shellcheck` difference, held; and three consumer grammars — a
+  consumer extension, filename and versioned shebang route, a tie goes to
+  the first registered, the longest extension wins, a late `.rs` does not
+  displace rust, and the compiled `detect_language` still knows none of
+  them. (The group needs the new function, so it cannot build against
+  2.9.7.)
+- `fuzz/detect.fcyr` drives the new entry with the edge paths and random
+  and `#!`-led content: every answer 0 or a registered name.
+
 ## [2.9.7] — 2026-10-27
 
 **Number shapes** (roadmap 2.9.7), the fifth of the 2.9.x arc — an ADR 0026

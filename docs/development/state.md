@@ -8,14 +8,14 @@
 > 2.6.2 it carried a "What X changed" block for every release back to
 > 1.13.0 — trimmed in 2.7.0; the CHANGELOG has all of it.)
 >
-> **Last refresh:** 2026-10-27, at 2.9.7. Read this first, then run the
+> **Last refresh:** 2026-10-27, at 2.9.8. Read this first, then run the
 > gates (CLAUDE.md §Gates) — do not take the "green" below on trust.
 
 ---
 
 ## Current status
 
-- **Version:** `2.9.7` — `VERSION`, `src/version_str.cyr`,
+- **Version:** `2.9.8` — `VERSION`, `src/version_str.cyr`,
   `dist/vyakarana.cyr`, the CHANGELOG header and `docs/man/vyk.1`
   agree.
 - **Toolchain pin:** `cyrius = "6.7.18"` in `cyrius.cyml`, the single
@@ -41,20 +41,21 @@
   of four stdlib leaves (alloc, string, vec, io). The embedded grammars
   are compacted — comments and blanks outside strings dropped — by a
   POSIX sh + awk generator (ADR 0029); `grammars/` is the readable copy.
-- **Size:** the shipped (`CYRIUS_DCE=1`) `vyk` is 288,808 bytes against a
-  307,200-byte budget that `scripts/check-size.sh` enforces in CI and at
-  release (ADR 0029); the default build is 383,016.
-- **Next release:** 2.9.8, detection for consumers — the sixth of the
-  2.9.x arc, which runs to incremental retokenization at 2.9.11 and a
-  closeout audit at 2.9.12 ([roadmap](./roadmap.md)). The last audit's report:
+- **Size:** the shipped (`CYRIUS_DCE=1`) `vyk` is 288,816 bytes, the
+  default build 383,024. `scripts/check-size.sh` reports the shipped
+  build's size in CI and at release; since 2.9.8 there is no hard limit
+  (ADR 0029, amended).
+- **Next release:** 2.9.9, new grammars — the seventh of the 2.9.x arc,
+  which runs to incremental retokenization at 2.9.11 and a closeout
+  audit at 2.9.12 ([roadmap](./roadmap.md)). The last audit's report:
   [2.9.x](../audit/2026-10-21-2.9.x-closeout-audit.md).
 
-## Gates (green at 2.9.7, 2026-10-27)
+## Gates (green at 2.9.8, 2026-10-27)
 
-- `cyrius build` OK, 0 warnings · `cyrius test` **1315/1315** · smoke
+- `cyrius build` OK, 0 warnings · `cyrius test` **1334/1334** · smoke
   OK (it runs `scripts/check-detect.sh`) · `scripts/lint-fmt.sh`
   exit 0 (a lint warning fails it; covers `src/` and
-  `scripts/audit/`) · `scripts/check-size.sh` OK · `cyrius fuzz`
+  `scripts/audit/`) · `scripts/check-size.sh` reports · `cyrius fuzz`
   **5/5** (79 every-offset shapes), also clean under `--poison=ab` and
   `--bounds` · `cyrius distlib --check` clean.
 - The audit sweeps are in `scripts/audit/` — real-file coverage,
@@ -72,7 +73,8 @@
   (`tokenize_stream_new` / `_feed` / `_drain` / `_finish` / `_free`)
   and pull adapter, `has_grammar`, `list_languages_into`,
   `bootstrap_grammars`, detection (`detect_language`,
-  `detect_language_from_content`, `detect_language_combined`), and
+  `detect_language_from_content`, `detect_language_combined`, and
+  `detect_language_registered` since 2.9.8 — ADR 0031), and
   `grammar_load` for a consumer's own `.cyml`. The header of
   `src/tokenize.cyr` is the authoritative list.
 - **Grammar format:** CYML. Rule types line (with `start_after`,
@@ -175,8 +177,9 @@ its corpus tokenizes with zero `error` tokens.
   the 2.9.1 bundle through a path dependency. Taking a newer tag is
   their call — it changes what they render (2.5.2's fixes, 2.6.x's
   shell, 2.7.0's numbers, 2.9.1's markdown fences), not their API.
-  cyim routes the 46 languages itself (`src/lang.cyr`) — 2.9.8's
-  `detect_language_registered` is meant to let it stop.
+  cyim routes the 46 languages itself (`src/lang.cyr`);
+  `detect_language_registered` (2.9.8, ADR 0031) lets it stop — when it
+  does is cyim's call.
 - `vidya` is also the corpus supplier
   (`content/lexing_and_parsing/`).
 - `cyrius` is the toolchain: a compiler bug gets filed upstream, not

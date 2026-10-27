@@ -139,6 +139,11 @@ was removed in 2.0.0 (ADR 0017).
 
 ## Status
 
+**2.9.8** (2026-10-27) — `detect_language_registered` routes by what the
+registered grammars declare, so a consumer's own grammars route without a
+table of its own; the binary's size is reported, no longer limited. Token
+output is unchanged. 1334/1334 tests.
+
 **2.9.7** (2026-10-27) — number shapes: `.5` and `1.` are floats where
 the language has them, and type suffixes are part of the literal
 (`10UL`, `1.5f`, `1u32`, `2j`, `10n`), while ranges (`0..10`) and method

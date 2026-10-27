@@ -42,15 +42,6 @@ a closeout audit at the end. Each entry ships only when the gates are
 green and, where it adds a gate, that gate is shown to fail on the
 release before.
 
-### 2.9.8 — Detection for consumers *(patch)*
-
-- `detect_language_registered(path)` — an additive public function that
-  walks the registry's declared `extensions` / `filenames` / `shebangs`
-  (ADR 0025), so a consumer that registers its own grammars can route
-  them, and one that routes vyakarana's itself can stop: cyim keeps 46
-  languages' routing in `src/lang.cyr` and a second name table in
-  `src/highlight.cyr`. Public API — an ADR first (CLAUDE.md §Do not).
-
 ### 2.9.9 — New grammars *(patch)*
 
 - NASM (it would retake `.asm`, which 2.6.2 stopped claiming, with ADR

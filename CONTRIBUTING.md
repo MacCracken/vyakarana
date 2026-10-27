@@ -99,7 +99,7 @@ cyrius build src/main.cyr build/vyk
 sh scripts/lint-fmt.sh                  # lint + fmt --check, src/ + scripts/audit/
 cyrius test tests/vyakarana.tcyr
 sh scripts/smoke.sh build/vyk
-sh scripts/check-size.sh                # the shipped (DCE) binary <= 300 KiB
+sh scripts/check-size.sh                # the shipped (DCE) binary's size, reported
 cyrius build scripts/audit/harness.cyr build/vyk-audit \
     && for f in scripts/audit/*.sh scripts/bench-paired.sh; do sh -n "$f"; done
 cyrius fuzz                             # the harnesses in fuzz/*.fcyr
@@ -113,9 +113,9 @@ harness in `scripts/audit/`, and skips only
 generated on purpose.
 
 `check-size.sh` builds the `CYRIUS_DCE=1` binary that releases
-ship and fails above 307,200 bytes (ADR 0029). A grammar or a
-feature that needs more is a decision for an ADR, not a quiet
-bump of the number.
+ship and prints its size. There is no hard limit on it (ADR 0029,
+amended 2.9.8) — but say in the CHANGELOG what a change costs, as
+each release's entry does.
 
 The audit-tools line builds the harness and syntax-checks the
 scripts that audits run by hand (`scripts/audit/` — see its README),
