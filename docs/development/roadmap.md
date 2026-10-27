@@ -42,18 +42,6 @@ a closeout audit at the end. Each entry ships only when the gates are
 green and, where it adds a gate, that gate is shown to fail on the
 release before.
 
-### 2.9.11 — Incremental retokenization *(patch)*
-
-- An edit API for live editors (`retokenize_range` or an edit-feed
-  form): re-tokenize from the first token an edit can affect to the
-  first point where the old and new token streams agree again. cyim
-  tokenizes whole buffers today, and notes that the streaming fixes
-  since 2.4.0 reach it only through this.
-- Contract: the result equals tokenizing the edited text from scratch.
-  A new gate holds it — every edit at every offset of the corpora —
-  shown to fail on a deliberately broken resync. Additive public API —
-  an ADR first; breaking would be 3.0.0.
-
 ### 2.9.12 — Closeout audit *(patch)*
 
 - The CLAUDE.md hardening step over the arc, with the sweeps from

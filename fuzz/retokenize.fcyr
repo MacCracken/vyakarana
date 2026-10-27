@@ -1,0 +1,296 @@
+# vyakarana — incremental retokenization harness (2.9.11, ADR 0033)
+#
+# The contract of `tokenize_doc_edit`: its tokens equal tokenizing the
+# edited text from scratch. For every corpus, at every offset, an edit —
+# inserting a marker that changes how the text reads (a quote, a comment
+# opener, a fence, a heredoc line …), deleting bytes, or replacing them
+# with a marker — goes through a document whose checkpoints are close
+# together, so most edits restart and resynchronise. Each result is
+# compared, token by token, with one feed of the edited text; then the
+# inverse edit must give back the original tokens. The changed range
+# the document reports must also hold: before it, the old tokens; after
+# it, the old tokens moved by the edit.
+
+include "src/token.cyr"
+include "src/grammar.cyr"
+include "src/tokenize.cyr"
+include "src/tokenize_doc.cyr"
+
+var _RT_CAP = 1048576;
+var _rt_edits = 0;
+var _rt_files = 0;
+var _rt_printed = 0;
+
+var _RT_NM = 28;
+fn _rt_marker(i) {
+    var k = i % _RT_NM;
+    if (k == 0) { return "\""; }
+    if (k == 1) { return "'"; }
+    if (k == 2) { return "\n"; }
+    if (k == 3) { return "/*"; }
+    if (k == 4) { return "*/"; }
+    if (k == 5) { return "#"; }
+    if (k == 6) { return "//"; }
+    if (k == 7) { return "<"; }
+    if (k == 8) { return "```"; }
+    if (k == 9) { return "--"; }
+    if (k == 10) { return "x"; }
+    if (k == 11) { return " "; }
+    if (k == 12) { return "{"; }
+    if (k == 13) { return "}"; }
+    if (k == 14) { return "\\"; }
+    if (k == 15) { return "`"; }
+    if (k == 16) { return "<!--"; }
+    if (k == 17) { return "-->"; }
+    if (k == 18) { return "\"\"\""; }
+    if (k == 19) { return "<<EOF\n"; }
+    if (k == 20) { return "\nEOF\n"; }
+    if (k == 21) { return "\n[["; }
+    if (k == 22) { return "---"; }
+    if (k == 23) { return "</style>"; }
+    if (k == 24) { return "<style>"; }
+    if (k == 25) { return "0.5"; }
+    if (k == 26) { return "r#\""; }
+    return "\n```py\n";
+}
+
+# Tokenize src/n from scratch into `tb` — what one feed of a stream
+# gives (the drain's only scan, every token committed).
+fn _rt_scratch(src, n, tb) {
+    _tokenbuf_reset(tb);
+    tokenize_with_grammar(_rt_g, src, n, tb);
+    return 0;
+}
+
+# 1 if record i of `a` is record j of `b` moved by `delta`.
+fn _rt_rec(a, i, b, j, delta) {
+    var x = load64(a) + i * TOKEN_SIZE;
+    var y = load64(b) + j * TOKEN_SIZE;
+    if (load8(x) != load8(y)) { return 0; }
+    if (load32(x + 8) != load32(y + 8)) { return 0; }
+    if (load32(x + 4) != load32(y + 4) + delta) { return 0; }
+    return 1;
+}
+
+# Index of the first token where `a` and `b` differ, or -1.
+fn _rt_diff(a, b) {
+    var na = tokenbuf_count(a);
+    var nb = tokenbuf_count(b);
+    var i = 0;
+    while ((i < na) && (i < nb)) {
+        if (_rt_rec(a, i, b, i, 0) == 0) { return i; }
+        i = i + 1;
+    }
+    if (na != nb) { return i; }
+    return (0 - 1);
+}
+
+# The document's changed range against the tokens it replaced (`old`):
+# before it the old tokens, after it the old tokens moved by the edit.
+fn _rt_range_ok(d, old, delta) {
+    var nt = tokenize_doc_tokens(d);
+    var first = tokenize_doc_changed_first(d);
+    var co = tokenize_doc_changed_old(d);
+    var cn = tokenize_doc_changed_new(d);
+    if (first + cn + (tokenbuf_count(old) - first - co) != tokenbuf_count(nt)) { return 0; }
+    var i = 0;
+    while (i < first) {
+        if (_rt_rec(nt, i, old, i, 0) == 0) { return 0; }
+        i = i + 1;
+    }
+    var j = first + co;
+    while (j < tokenbuf_count(old)) {
+        if (_rt_rec(nt, j - co + cn, old, j, delta) == 0) { return 0; }
+        j = j + 1;
+    }
+    return 1;
+}
+
+fn _rt_fail(path, what, at, m, idx) {
+    if (_rt_printed < 30) {
+        eprint("FAIL: ", 6);
+        eprint(path, strlen(path));
+        eprint(" ", 1);
+        eprint(what, strlen(what));
+        eprint(" at=", 4);
+        fmt_int_fd(2, at);
+        eprint(" edit=", 6);
+        fmt_int_fd(2, m);
+        eprint(" token=", 7);
+        fmt_int_fd(2, idx);
+        eprint("\n", 1);
+    }
+    _rt_printed = _rt_printed + 1;
+    return 1;
+}
+
+var _rt_g = 0;
+var _rt_ed = 0;
+var _rt_orig = 0;
+var _rt_ref = 0;
+
+# Edit `src`/`n` (the text `d` holds) at offsets `from`, `from + stride`
+# … up to `to`; `base` is the text's offset in its file, which picks each
+# edit. Returns the failures.
+fn _rt_pass(path, d, src, n, to, stride, base) {
+    var fails = 0;
+    _rt_scratch(src, n, _rt_orig);
+    tokenize_doc_set(d, src, n);
+    if (_rt_diff(tokenize_doc_tokens(d), _rt_orig) >= 0) {
+        fails = fails + _rt_fail(path, "set", base, 0, _rt_diff(tokenize_doc_tokens(d), _rt_orig));
+    }
+    var at = 0;
+    while (at <= to) {
+        # Insert a marker, delete 1-3 bytes, or replace 1-2 with a marker.
+        var e = (base + at) / stride;
+        var kind = e % 3;
+        var mi = e / 3;
+        var m = _rt_marker(mi);
+        var rem = 0;
+        var ins = strlen(m);
+        if (kind == 1) {
+            ins = 0;
+            rem = 1 + (mi % 3);
+        }
+        if (kind == 2) { rem = 1 + (mi % 2); }
+        if (rem > n - at) { rem = n - at; }
+        memcpy(_rt_ed, src, at);
+        if (ins > 0) { memcpy(_rt_ed + at, m, ins); }
+        memcpy(_rt_ed + at + ins, src + at + rem, n - at - rem);
+        var n2 = n - rem + ins;
+        store8(_rt_ed + n2, 0);
+        _rt_edits = _rt_edits + 1;
+        tokenize_doc_edit(d, _rt_ed, n2, at, rem, ins);
+        _rt_scratch(_rt_ed, n2, _rt_ref);
+        var df = _rt_diff(tokenize_doc_tokens(d), _rt_ref);
+        if (df >= 0) { fails = fails + _rt_fail(path, "edit", base + at, e, df); }
+        if (df < 0) {
+            if (_rt_range_ok(d, _rt_orig, ins - rem) == 0) {
+                fails = fails + _rt_fail(path, "changed range", base + at, e, 0);
+            }
+        }
+        # And back: the original tokens again.
+        tokenize_doc_edit(d, src, n, at, ins, rem);
+        var db = _rt_diff(tokenize_doc_tokens(d), _rt_orig);
+        if (db >= 0) { fails = fails + _rt_fail(path, "undo", base + at, e, db); }
+        at = at + stride;
+    }
+    return fails;
+}
+
+# One corpus: every offset, in windows of RT_WIN bytes each a document of
+# its own with checkpoints every RT_STEP bytes; then every RT_STRIDE-th
+# offset of the whole file, at the default spacing and at RT_STEP.
+var RT_WIN = 1024;
+var RT_STEP = 48;
+var RT_STRIDE = 61;
+
+fn _rt_file(path, lang) {
+    _rt_files = _rt_files + 1;
+    var src = alloc(_RT_CAP);
+    var n = file_read_all(path, src, _RT_CAP - 1);
+    if (n <= 0) { return _rt_fail(path, "cannot read", 0, 0, 0); }
+    store8(src + n, 0);
+    var d = tokenize_doc_new(lang);
+    if (d == 0) { return _rt_fail(path, "no grammar", 0, 0, 0); }
+    _rt_g = load64(load64(d) + 24);
+    var fails = 0;
+    var w = 0;
+    var wbuf = alloc(RT_WIN + 1);
+    while (w < n) {
+        var wl = RT_WIN;
+        if (wl > n - w) { wl = n - w; }
+        memcpy(wbuf, src + w, wl);
+        store8(wbuf + wl, 0);
+        _tokenize_doc_interval(d, RT_STEP);
+        # A window's last offset belongs to the next window, but for the last.
+        var last = wl - 1;
+        if (w + wl == n) { last = wl; }
+        fails = fails + _rt_pass(path, d, wbuf, wl, last, 1, w);
+        w = w + wl;
+    }
+    _tokenize_doc_interval(d, VYK_DOC_INTERVAL);
+    fails = fails + _rt_pass(path, d, src, n, n, RT_STRIDE, 0);
+    _tokenize_doc_interval(d, RT_STEP);
+    fails = fails + _rt_pass(path, d, src, n, n, RT_STRIDE, 7);
+    tokenize_doc_free(d);
+    return fails;
+}
+
+fn _rt_main() {
+    bootstrap_grammars();
+    _rt_ed = alloc(_RT_CAP + 64);
+    _rt_orig = tokenbuf_new();
+    _rt_ref = tokenbuf_new();
+    var f = 0;
+    f = f + _rt_file("tests/corpus/asm_aarch64.s", "asm_aarch64");
+    f = f + _rt_file("tests/corpus/asm_x86_64.s", "asm_x86_64");
+    f = f + _rt_file("tests/corpus/c.c", "c");
+    f = f + _rt_file("tests/corpus/concept.cpp", "cpp");
+    f = f + _rt_file("tests/corpus/concept.cr", "crystal");
+    f = f + _rt_file("tests/corpus/concept.cs", "csharp");
+    f = f + _rt_file("tests/corpus/concept.css", "css");
+    f = f + _rt_file("tests/corpus/cyrius.cyr", "cyrius");
+    f = f + _rt_file("tests/corpus/Dockerfile", "dockerfile");
+    f = f + _rt_file("tests/corpus/concept.ex", "elixir");
+    f = f + _rt_file("tests/corpus/go.go", "go");
+    f = f + _rt_file("tests/corpus/concept.graphql", "graphql");
+    f = f + _rt_file("tests/corpus/concept.hs", "haskell");
+    f = f + _rt_file("tests/corpus/concept.ini", "ini");
+    f = f + _rt_file("tests/corpus/concept.java", "java");
+    f = f + _rt_file("tests/corpus/concept.js", "javascript");
+    f = f + _rt_file("tests/corpus/concept.json", "json");
+    f = f + _rt_file("tests/corpus/concept.jl", "julia");
+    f = f + _rt_file("tests/corpus/concept.kt", "kotlin");
+    f = f + _rt_file("tests/corpus/concept.ll", "llvm_ir");
+    f = f + _rt_file("tests/corpus/concept.lua", "lua");
+    f = f + _rt_file("tests/corpus/Makefile", "makefile");
+    f = f + _rt_file("tests/corpus/concept.nix", "nix");
+    f = f + _rt_file("tests/corpus/concept.ml", "ocaml");
+    f = f + _rt_file("tests/corpus/openqasm.qasm", "openqasm");
+    f = f + _rt_file("tests/corpus/concept.php", "php");
+    f = f + _rt_file("tests/corpus/concept.ps1", "powershell");
+    f = f + _rt_file("tests/corpus/concept.proto", "protobuf");
+    f = f + _rt_file("tests/corpus/python.py", "python");
+    f = f + _rt_file("tests/corpus/concept.rb", "ruby");
+    f = f + _rt_file("tests/corpus/rust.rs", "rust");
+    f = f + _rt_file("tests/corpus/concept.scss", "scss");
+    f = f + _rt_file("tests/corpus/shell.sh", "shell");
+    f = f + _rt_file("tests/corpus/shell_modules.sh", "shell");
+    f = f + _rt_file("tests/corpus/concept.sql", "sql");
+    f = f + _rt_file("tests/corpus/concept.swift", "swift");
+    f = f + _rt_file("tests/corpus/concept.tf", "terraform");
+    f = f + _rt_file("tests/corpus/concept.toml", "toml");
+    f = f + _rt_file("tests/corpus/typescript.ts", "typescript");
+    f = f + _rt_file("tests/corpus/concept.xml", "xml");
+    f = f + _rt_file("tests/corpus/concept.yaml", "yaml");
+    f = f + _rt_file("tests/corpus/zig.zig", "zig");
+    f = f + _rt_file("tests/corpus/concept.md", "markdown");
+    f = f + _rt_file("tests/corpus/README.md", "markdown");
+    f = f + _rt_file("tests/corpus/concept.html", "html");
+    f = f + _rt_file("tests/corpus/concept.vue", "vue");
+    f = f + _rt_file("tests/corpus/concept.svelte", "svelte");
+    f = f + _rt_file("tests/corpus/dependencies.cyml", "cyml");
+    f = f + _rt_file("tests/corpus/phase_d.cyml", "cyml");
+    f = f + _rt_file("tests/corpus/concept.asm", "nasm");
+    f = f + _rt_file("tests/corpus/concept.mdx", "mdx");
+    f = f + _rt_file("tests/corpus/concept.lean", "lean");
+    return f;
+}
+
+fn _harness_main() {
+    var f = _rt_main();
+    if (f != 0) {
+        eprint("retokenize fuzz: FAIL\n", 22);
+        return 1;
+    }
+    print("retokenize fuzz: OK (", 21);
+    fmt_int(_rt_files);
+    print(" corpora, ", 10);
+    fmt_int(_rt_edits);
+    print(" edits and their undos)\n", 24);
+    return 0;
+}
+
+var _ec = _harness_main();
+syscall(60, _ec);

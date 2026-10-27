@@ -135,6 +135,9 @@
 #   registry      has_grammar
 #                 list_languages_into
 #                 bootstrap_grammars
+#   documents     tokenize_doc_new / _set / _edit / _tokens / _free,
+#                 tokenize_doc_changed_first / _old / _new
+#                 (2.9.11, src/tokenize_doc.cyr, ADR 0033)
 #
 # Removed in 2.0.0 (no compat shim):
 #   tokenize_source
@@ -1889,6 +1892,106 @@ fn tokenize_stream_finish(s, out_tb) {
     if (load64(s + 32) == 1) { return 0; }
     store64(s + 32, 1);
     return tokenize_stream_drain(s, out_tb);
+}
+
+# ── Stream state, saved and compared (2.9.11, ADR 0033) ──
+# A document (src/tokenize_doc.cyr) restarts a stream from a state it
+# saved and stops when a later state equals a saved one. The state is
+# the fields +72 … +272 (STREAM_STATE_SIZE bytes, copied as laid out),
+# the live buffer — input bytes, from abs_offset for buf_len bytes — and
+# whether abs_offset is past 0. The stream's own buffers (+88 scratch,
+# +192 copy) are not state; a state that keeps a string in +192 (a
+# rewritten heredoc delimiter, an inline literal's closer) is not saved.
+var STREAM_STATE_SIZE = 208;
+
+# A freshly made stream's fields, keeping its buffers and grammar.
+fn _stream_reset(s) {
+    store64(s + 8, 0);
+    store64(s + 32, 0);
+    store64(s + 40, 0);
+    store64(s + 48, 0);
+    store64(s + 64, 0);
+    var off = 72;
+    while (off <= 272) {
+        if ((off != 88) && (off != 192)) { store64(s + off, 0); }
+        off = off + 8;
+    }
+    store64(s + 72, (0 - 1));
+    store64(s + 96, (0 - 1));
+    store64(s + 216, (0 - 1));
+    _tokenbuf_reset(load64(s + 56));
+    return 0;
+}
+
+# 1 if the state can be saved: nothing in it lives in the +192 buffer.
+fn _stream_state_ok(s) {
+    var wm = load64(s + 104);
+    if ((wm == 1) && (load64(s + 112) < 0)) { return 0; }
+    if ((wm == 3) && (load64(s + 192) != 0) && (load64(s + 112) == load64(s + 192))) { return 0; }
+    return 1;
+}
+
+fn _stream_state_save(s, dst) {
+    var off = 72;
+    while (off <= 272) {
+        store64(dst + off - 72, load64(s + off));
+        off = off + 8;
+    }
+    return 0;
+}
+
+fn _stream_state_load(s, src) {
+    var off = 72;
+    while (off <= 272) {
+        if ((off != 88) && (off != 192)) { store64(s + off, load64(src + off - 72)); }
+        off = off + 8;
+    }
+    return 0;
+}
+
+# 1 if `s`'s fields equal a saved state's, in every field a drain reads:
+# the look-behind always; the pending pair, the watch, the run watch and
+# the region only while each is on (a field left over from an earlier
+# one is never read); a region's committed-body count only as zero or
+# not. The caller compares where the buffer sits.
+fn _stream_state_same(s, st) {
+    if (load64(s + 96) != load64(st + 24)) { return 0; }
+    if (load64(s + 216) != load64(st + 144)) { return 0; }
+    var pend = load64(s + 72);
+    if (pend != load64(st)) { return 0; }
+    if (pend >= 0) {
+        if (load64(s + 80) != load64(st + 8)) { return 0; }
+        if (load64(s + 168) != load64(st + 96)) { return 0; }
+    }
+    var wm = load64(s + 104);
+    if (wm != load64(st + 32)) { return 0; }
+    if (wm != 0) {
+        var off = 112;
+        while (off <= 208) {
+            if ((off <= 144) || (off == 176) || (off == 184) || (off == 200) || (off == 208)) {
+                if (load64(s + off) != load64(st + off - 72)) { return 0; }
+            }
+            off = off + 8;
+        }
+    }
+    var rc = load64(s + 152);
+    if (rc != load64(st + 80)) { return 0; }
+    if ((rc != 0) && (load64(s + 160) != load64(st + 88))) { return 0; }
+    var rk = load64(s + 224);
+    if (rk != load64(st + 152)) { return 0; }
+    if (rk != 0) {
+        var ro = 232;
+        while (ro <= 264) {
+            if (load64(s + ro) != load64(st + ro - 72)) { return 0; }
+            ro = ro + 8;
+        }
+        var ra = 0;
+        if (load64(s + 272) > 0) { ra = 1; }
+        var rb = 0;
+        if (load64(st + 200) > 0) { rb = 1; }
+        if (ra != rb) { return 0; }
+    }
+    return 1;
 }
 
 # ── Pull adapter (2.0.2+) ────────────────────

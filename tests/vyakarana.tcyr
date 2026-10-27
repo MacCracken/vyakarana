@@ -16,6 +16,7 @@ include "lib/assert.cyr"
 include "src/token.cyr"
 include "src/grammar.cyr"
 include "src/tokenize.cyr"
+include "src/tokenize_doc.cyr"
 include "src/theme.cyr"
 include "src/lsp.cyr"
 include "src/detect.cyr"
@@ -150,6 +151,32 @@ fn _t_rg_stream(lang, head, unit, reps, tail) {
     tokenize_stream_free(s);
     _t_rg_same = _t_same_tokens(tb, _t_tokenize(src, lang));
     return tb;
+}
+
+# Edit document `d` (2.9.11): `src` is the whole edited text, in which
+# [at, at + inserted) replaced [at, at + removed). 1 if the document's
+# tokens then equal tokenizing `src` from scratch.
+fn _t_doc_edit(d, lang, src, at, removed, inserted) {
+    tokenize_doc_edit(d, src, strlen(src), at, removed, inserted);
+    return _t_same_tokens(tokenize_doc_tokens(d), _t_tokenize(src, lang));
+}
+
+# A text of `reps` copies of `unit` between `head` and `tail` (2.9.11).
+fn _t_rep(head, unit, reps, tail) {
+    var hl = strlen(head);
+    var ul = strlen(unit);
+    var tl = strlen(tail);
+    var n = hl + ul * reps + tl;
+    var b = alloc(n + 1);
+    memcpy(b, head, hl);
+    var k = 0;
+    while (k < reps) {
+        memcpy(b + hl + k * ul, unit, ul);
+        k = k + 1;
+    }
+    memcpy(b + hl + reps * ul, tail, tl);
+    store8(b + n, 0);
+    return b;
 }
 
 # Path-detect, mapping 0 to "(none)" — same reason as `_t_detect`
@@ -5037,6 +5064,109 @@ fn main() {
     var rr_d1 = _t_tokenize(rr_deep, "zz_rgx");
     assert_eq(_t_kind_at(rr_d1, 32), TK_STRING, "  ... one feed: the 32nd level's body is one string");
     assert_eq(_t_same_tokens(rr_dtb, rr_d1), 1, "  ... streamed: the same tokens");
+
+
+    test_group("2.9.11 incremental retokenization (ADR 0033)");
+    assert_eq(tokenize_doc_new("no_such_grammar"), 0, "tokenize_doc_new: an unknown grammar gives 0");
+    var td_d = tokenize_doc_new("rust");
+    assert_neq(td_d, 0, "tokenize_doc_new: rust");
+    var td_s0 = "fn main() { let x = 1; }\n";
+    assert_eq(tokenize_doc_set(td_d, td_s0, strlen(td_s0)), tokenbuf_count(_t_tokenize(td_s0, "rust")), "tokenize_doc_set: the token count of one feed");
+    assert_eq(_t_same_tokens(tokenize_doc_tokens(td_d), _t_tokenize(td_s0, "rust")), 1, "  ... and its tokens");
+    assert_eq(_t_doc_edit(td_d, "rust", "fn main() { let xy = 1; }\n", 17, 0, 1), 1, "an identifier grows: the tokens of the edited text");
+    assert_eq(_t_kind_at(tokenize_doc_tokens(td_d), 16), TK_IDENT, "  ... `xy` one identifier");
+    assert_eq(_t_len_at(tokenize_doc_tokens(td_d), 16), 2, "  ... its length");
+    assert_eq(tokenize_doc_changed_old(td_d), 1, "  ... the change: one token replaced");
+    assert_eq(tokenize_doc_changed_new(td_d), 1, "  ... by one");
+    assert_eq(tokenbuf_start(tokenize_doc_tokens(td_d), tokenize_doc_changed_first(td_d)), 16, "  ... at the identifier");
+    assert_eq(_t_doc_edit(td_d, "rust", "fn main() { let xy = \"1; }\n", 21, 0, 1), 1, "a quote opens a string to the end");
+    assert_eq(_t_doc_edit(td_d, "rust", "fn main() { let xy = 1; }\n", 21, 1, 0), 1, "  ... and closes again when deleted");
+    assert_eq(_t_doc_edit(td_d, "rust", "", 0, 26, 0), 1, "everything deleted: no tokens");
+    assert_eq(tokenbuf_count(tokenize_doc_tokens(td_d)), 0, "  ... none");
+    assert_eq(_t_doc_edit(td_d, "rust", "x", 0, 0, 1), 1, "an empty text gains one byte");
+    assert_eq(_t_doc_edit(td_d, "rust", "let a = 'b';\n", 0, 1, 13), 1, "the whole text replaced");
+    # A description the lengths cannot match tokenizes the text whole.
+    tokenize_doc_edit(td_d, "let a = 2;\n", 11, 9, 5, 0);
+    assert_eq(_t_same_tokens(tokenize_doc_tokens(td_d), _t_tokenize("let a = 2;\n", "rust")), 1, "an edit that does not fit the lengths: the text tokenized whole");
+    tokenize_doc_free(td_d);
+    # A large text: an edit re-scans about one checkpoint's worth either
+    # side of it, not the text.
+    var td_big = _t_rep("// big\n", "fn f(a: u32) -> u32 { let s = \"x\"; a * 2 + 1 } // c\n", 4000, "");
+    var td_bn = strlen(td_big);
+    var td_b = tokenize_doc_new("rust");
+    tokenize_doc_set(td_b, td_big, td_bn);
+    var td_mid = 7 + 52 * 2000 + 10;
+    store8(td_big + td_mid, 103);
+    assert_eq(_t_doc_edit(td_b, "rust", td_big, td_mid, 1, 1), 1, "a 220 KB text, one byte replaced mid-way: the tokens of the edited text");
+    assert(_tokenize_doc_fed(td_b) < 3 * VYK_DOC_INTERVAL, "  ... re-scanning under three checkpoints' worth");
+    assert(tokenize_doc_changed_old(td_b) + tokenize_doc_changed_new(td_b) <= 2, "  ... changing one token");
+    store8(td_big + td_mid, 42);
+    assert_eq(_t_doc_edit(td_b, "rust", td_big, td_mid, 1, 1), 1, "  ... `*` there: an operator, the tokens of the edited text");
+    # An edit whose effect runs to the end, then its undo.
+    var td_open = alloc(td_bn + 3);
+    memcpy(td_open, td_big, td_mid);
+    memcpy(td_open + td_mid, "/*", 2);
+    memcpy(td_open + td_mid + 2, td_big + td_mid, td_bn - td_mid);
+    store8(td_open + td_bn + 2, 0);
+    assert_eq(_t_doc_edit(td_b, "rust", td_open, td_mid, 0, 2), 1, "`/*` mid-way: a comment to the end, the tokens of the edited text");
+    assert_eq(_t_doc_edit(td_b, "rust", td_big, td_mid, 2, 0), 1, "  ... deleted again: the tokens of the text before");
+    tokenize_doc_free(td_b);
+    # Tokens BEFORE an edit can change: a terminator line appended makes a
+    # heredoc of the code after its opener.
+    var td_h = tokenize_doc_new("shell");
+    _tokenize_doc_interval(td_h, 16);
+    var td_h0 = "echo a\ncat <<EOF\nit's # x\nline two\n";
+    tokenize_doc_set(td_h, td_h0, strlen(td_h0));
+    assert_eq(_t_doc_edit(td_h, "shell", "echo a\ncat <<EOF\nit's # x\nline two\nEOF\n", 36, 0, 4), 1, "shell: a terminator appended makes the lines after the opener a heredoc");
+    assert_eq(_t_kind_at(tokenize_doc_tokens(td_h), 17), TK_STRING, "  ... one string from the line after the opener");
+    assert(tokenbuf_start(tokenize_doc_tokens(td_h), tokenize_doc_changed_first(td_h)) <= 17, "  ... the change starts before the edit");
+    tokenize_doc_free(td_h);
+    # Compose regions: a fence closed and reopened, a <style> body edited.
+    var td_m = tokenize_doc_new("markdown");
+    _tokenize_doc_interval(td_m, 8);
+    var td_m0 = "# T\n\n```python\nx = 'a'  # c\ny = 2\n";
+    tokenize_doc_set(td_m, td_m0, strlen(td_m0));
+    assert_eq(_t_doc_edit(td_m, "markdown", "# T\n\n```python\nx = 'a'  # c\ny = 2\n```\nafter `z`\n", 36, 0, 14), 1, "markdown: a closer appended to an open fence");
+    assert_eq(_t_doc_edit(td_m, "markdown", "# T\n\n```python\nx = 'a'  # c\ny = 2\n``\nafter `z`\n", 36, 3, 2), 1, "  ... broken to two backticks: open again");
+    tokenize_doc_free(td_m);
+    var td_w = tokenize_doc_new("html");
+    _tokenize_doc_interval(td_w, 8);
+    var td_w0 = "<p>a</p><style>a { color: red; }</style><p>b</p>";
+    tokenize_doc_set(td_w, td_w0, strlen(td_w0));
+    assert_eq(_t_doc_edit(td_w, "html", "<p>a</p><style>a { color: red; }</stye><p>b</p>", 35, 1, 1), 1, "html: </style> broken: the body runs to the end");
+    assert_eq(_t_doc_edit(td_w, "html", "<p>a</p><style>a { color: red; }</style><p>b</p>", 35, 1, 1), 1, "  ... and mended");
+    tokenize_doc_free(td_w);
+    # Typed a byte at a time from nothing.
+    var td_t = tokenize_doc_new("python");
+    _tokenize_doc_interval(td_t, 7);
+    var td_tx = "def f(x):\n    return f\"{x}\" + '''doc\n''' # c\n";
+    var td_tn = strlen(td_tx);
+    var td_tb = alloc(td_tn + 1);
+    tokenize_doc_set(td_t, "", 0);
+    var td_i = 0;
+    var td_ok = 1;
+    while (td_i < td_tn) {
+        memcpy(td_tb, td_tx, td_i + 1);
+        store8(td_tb + td_i + 1, 0);
+        if (_t_doc_edit(td_t, "python", td_tb, td_i, 0, 1) == 0) { td_ok = 0; }
+        td_i = td_i + 1;
+    }
+    assert_eq(td_ok, 1, "python typed a byte at a time: the tokens of each prefix");
+    tokenize_doc_free(td_t);
+    # A resync compares the byte before the commit point: `#` reads as a
+    # comment after a blank and as a preprocessor line after `!`, the rest
+    # of the stream's state the same either way.
+    var td_lg = "[grammar]\nname = \"zz_tdlb\"\n[defaults]\nwhitespace = true\nident_start = \"a-z\"\nident_cont = \"a-z\"\noperators = [\"!\"]\n[[rules]]\nkind = \"comment\"\nmatch = \"line\"\nstart = \"#\"\nstart_after = \" \"\n[[rules]]\nkind = \"preprocessor\"\nmatch = \"line\"\nstart = \"#\"\n";
+    var td_lgr = _gp_parse(td_lg, strlen(td_lg));
+    assert_neq(td_lgr, 0, "a grammar whose `#` reads by the byte before it loads");
+    registry_add(td_lgr);
+    var td_l = tokenize_doc_new("zz_tdlb");
+    _tokenize_doc_interval(td_l, 4);
+    tokenize_doc_set(td_l, "x #abcdefgh\nz\n", 14);
+    assert_eq(_t_kind_at(tokenize_doc_tokens(td_l), 2), TK_COMMENT, "  ... `x #…`: a comment");
+    assert_eq(_t_doc_edit(td_l, "zz_tdlb", "x!#abcdefgh\nz\n", 1, 1, 1), 1, "  ... the blank made `!`: the tokens of the edited text");
+    assert_eq(_t_kind_at(tokenize_doc_tokens(td_l), 2), TK_PREPROCESSOR, "  ... a preprocessor line");
+    tokenize_doc_free(td_l);
 
     return assert_summary();
 }

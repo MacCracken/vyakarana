@@ -22,6 +22,7 @@ busybox as well as bash and gawk.
 | `coverage-sweep.sh` | `vyk FILE` over real files: every NDJSON line a token of a known kind, tokens tiling the file (the coverage invariant), exit 1 if and only if an error token, no crash, no timeout; files over the CLI's 1 MiB cap are counted, not failed (`stream-sweep.sh` takes them through the library) | real files | 4,500 files (2.6.x list): 0 fails; 5,166 sampled per grammar (2.9.x list): 0 fails, 4 over the cap |
 | `poison-ab.sh` | two `CYRIUS_POISON` builds (fill 0xA5 / 0x5A) print the same bytes and exit for every file — no output depends on unwritten memory; exit 86 is a redzone overwrite | real files | 5,166 files, 0 diffs, 0 overwrites |
 | `stream-sweep.sh` | chunked feeds equal one feed (ADR 0017 / 0028). No FILE: the every-offset split over all 49 corpora, the heredoc shapes under every offset and every pair of offsets, and seventeen generated stress inputs under a time limit. With FILEs: `chunks`, `rand` and `cutfirst` per file | corpora + `shapes/`, or real files | fixed set 164 runs, 0 fails, about 6 m; 2,384 real files 6,702 runs, 0 fails |
+| `edit-sweep.sh` | incremental retokenization (ADR 0033): at every offset of a whole file, an edit — a marker inserted, bytes deleted or replaced — through a `tokenize_doc` document, held to one feed of the edited text, and its undo to the original's. No FILE: every corpus at every offset, at the default checkpoint spacing and at 48 bytes. With FILEs: every 97th offset (`-s`) | corpora, or real files | added 2.9.11: 104 corpus runs (529,156 edits), 0 fails; 1,243 real files of 64 KB or less at `-s 97`, 0 fails |
 | `mutate-fuzz.sh` | mutants of real code (bytes overwritten; quote, comment, heredoc and compose markers inserted; ranges deleted or duplicated) tile their bytes and match one feed under random chunking | vidya's `content/` by default | 976 files, 97,600 mutants (`-i 100`), 0 fails (vidya `f753c5a`) |
 
 `scripts/bench-paired.sh` (one level up) is the latency protocol —
@@ -72,7 +73,7 @@ a FAIL line.
 ## The harness
 
 `harness.cyr` (built as `build/vyk-audit`) runs one file through one
-mode — `every`, `pairs`, `chunks`, `rand`, `cutfirst`, `mutate` — and
+mode — `every`, `pairs`, `chunks`, `rand`, `cutfirst`, `mutate`, `edits` — and
 is the tool for minimising a failure: rerun the failing file or the
 mutant `mutate-fuzz.sh` wrote under `build/audit/mutants/` with `every`
 to find the offset, then cut it down. Its header documents every mode.

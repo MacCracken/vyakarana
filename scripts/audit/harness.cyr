@@ -21,6 +21,12 @@
 #                           must tile its bytes and match one feed under
 #                           random chunking and a random two-feed split.
 #                           A failing mutant is written to OUT-<iter>.
+#     edits STRIDE INTERVAL every STRIDE-th offset, an edit — a marker
+#                           inserted, 1-3 bytes deleted, 1-2 replaced by a
+#                           marker — through a document (src/tokenize_doc.cyr)
+#                           with checkpoints every INTERVAL bytes; it must
+#                           equal one feed of the edited text, and its undo
+#                           the original's (2.9.11, ADR 0033)
 # Every run's tokens must tile the input (the coverage invariant) and
 # equal a single feed of the same bytes, token by token (kind, start,
 # len). Prints up to 50 FAIL lines, then one `summary` line.
@@ -29,6 +35,7 @@
 include "src/token.cyr"
 include "src/grammar.cyr"
 include "src/tokenize.cyr"
+include "src/tokenize_doc.cyr"
 include "src/detect.cyr"
 
 var H_CAP = 33554432;       # input cap, 32 MiB
@@ -397,8 +404,93 @@ fn _h_mutate(lang, src, n, seed, iters, prefix, ref, got) {
 fn _usage() {
     _ps("usage: vyk-audit LANG FILE MODE [ARGS...]\n");
     _ps("  MODE: every | pairs | chunks MAX | rand SEED ITERS MAXC |\n");
-    _ps("        cutfirst K C | mutate SEED ITERS [OUT]\n");
+    _ps("        cutfirst K C | mutate SEED ITERS [OUT] | edits STRIDE INTERVAL\n");
     return 2;
+}
+
+# ── Edits (2.9.11) ──────────────────────────
+# The markers an edit inserts: bytes that change how a text reads.
+fn _h_marker(i) {
+    var k = i % 28;
+    if (k == 0) { return "\""; }
+    if (k == 1) { return "'"; }
+    if (k == 2) { return "\n"; }
+    if (k == 3) { return "/*"; }
+    if (k == 4) { return "*/"; }
+    if (k == 5) { return "#"; }
+    if (k == 6) { return "//"; }
+    if (k == 7) { return "<"; }
+    if (k == 8) { return "```"; }
+    if (k == 9) { return "--"; }
+    if (k == 10) { return "x"; }
+    if (k == 11) { return " "; }
+    if (k == 12) { return "{"; }
+    if (k == 13) { return "}"; }
+    if (k == 14) { return "\\"; }
+    if (k == 15) { return "`"; }
+    if (k == 16) { return "<!--"; }
+    if (k == 17) { return "-->"; }
+    if (k == 18) { return "\"\"\""; }
+    if (k == 19) { return "<<EOF\n"; }
+    if (k == 20) { return "\nEOF\n"; }
+    if (k == 21) { return "\n[["; }
+    if (k == 22) { return "---"; }
+    if (k == 23) { return "</style>"; }
+    if (k == 24) { return "<style>"; }
+    if (k == 25) { return "0.5"; }
+    if (k == 26) { return "r#\""; }
+    return "\n```py\n";
+}
+
+# One feed through a reused stream (the per-offset runs above make a
+# stream each; at a megabyte, every offset, that would not fit).
+fn _h_whole(s, src, n, tb) {
+    _tokenbuf_reset(tb);
+    _stream_reset(s);
+    if (n > 0) { tokenize_stream_feed(s, src, n); }
+    tokenize_stream_finish(s, tb);
+    return 0;
+}
+
+fn _h_edits(lang, src, n, stride, interval, ref, got) {
+    var fails = 0;
+    var s = tokenize_stream_new(lang);
+    var d = tokenize_doc_new(lang);
+    var ed = alloc(n + 64);
+    if ((s == 0) || (d == 0) || (ed == 0)) { return 1; }
+    if (stride < 1) { stride = 1; }
+    _tokenize_doc_interval(d, interval);
+    tokenize_doc_set(d, src, n);
+    fails = fails + _check("set", 0, ref, tokenize_doc_tokens(d), n);
+    var at = 0;
+    while (at <= n) {
+        var e = at / stride;
+        var kind = e % 3;
+        var mi = e / 3;
+        var m = _h_marker(mi);
+        var rem = 0;
+        var ins = strlen(m);
+        if (kind == 1) {
+            ins = 0;
+            rem = 1 + (mi % 3);
+        }
+        if (kind == 2) { rem = 1 + (mi % 2); }
+        if (rem > n - at) { rem = n - at; }
+        memcpy(ed, src, at);
+        if (ins > 0) { memcpy(ed + at, m, ins); }
+        memcpy(ed + at + ins, src + at + rem, n - at - rem);
+        var n2 = n - rem + ins;
+        store8(ed + n2, 0);
+        tokenize_doc_edit(d, ed, n2, at, rem, ins);
+        _h_whole(s, ed, n2, got);
+        fails = fails + _check("edit", at, got, tokenize_doc_tokens(d), n2);
+        tokenize_doc_edit(d, src, n, at, ins, rem);
+        fails = fails + _check("undo", at, ref, tokenize_doc_tokens(d), n);
+        at = at + stride;
+    }
+    tokenize_doc_free(d);
+    tokenize_stream_free(s);
+    return fails;
 }
 
 fn _main() {
@@ -518,6 +610,13 @@ fn _main() {
         _ps("cutfirst max_live_buf=");
         fmt_int(maxlive);
         _ps("\n");
+    }
+    if (streq(mode, "edits") == 1) {
+        known = 1;
+        var es = _atoi(p1);
+        var ei = _atoi(p2);
+        if (ei < 1) { ei = VYK_DOC_INTERVAL; }
+        fails = fails + _h_edits(lang, src, n, es, ei, ref, got);
     }
     if (streq(mode, "mutate") == 1) {
         known = 1;

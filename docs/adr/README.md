@@ -46,6 +46,7 @@ sub-blocks).
 | 0030 | [Heredoc rule: computed closers and Ruby / PHP terminators](0030-heredoc-computed-closers.md) | Accepted (extends 0023) | 2026-10-27 |
 | 0031 | [`detect_language_registered`: routing by the registry's declarations](0031-detect-language-registered.md) | Accepted | 2026-10-27 |
 | 0032 | [Unclosed compose bodies run to the end; open regions stream](0032-resumable-compose-regions.md) | Accepted (extends 0028; amends 0013, 0016) | 2026-10-27 |
+| 0033 | [Incremental retokenization: documents that restart their stream](0033-incremental-retokenization.md) | Accepted | 2026-10-27 |
 
 ## Conventions
 

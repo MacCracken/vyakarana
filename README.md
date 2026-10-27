@@ -139,6 +139,12 @@ was removed in 2.0.0 (ADR 0017).
 
 ## Status
 
+**2.9.11** (2026-10-27) — documents for editors: `tokenize_doc_edit`
+re-tokenizes only what an edit can change — about 4 KB either side of a
+keystroke, under 2 ms in a 937 KB C file that takes 226 ms whole — and
+its tokens always equal tokenizing the edited text from scratch.
+1462/1462 tests.
+
 **2.9.10** (2026-10-27) — a long fence, `<style>`, `<script>` or cyml body
 still open in a stream yields its tokens as they settle, instead of only
 once it closes; the stream holds the inner grammar's few bytes, not the

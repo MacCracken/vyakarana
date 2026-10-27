@@ -106,6 +106,12 @@ path can never silently drift away from the M1 reference.
   region's body streams with its inner grammar). The 1.x
   `tokenize_source(src, lang)` synchronous entry was removed. The
   file's header is the authoritative list of public symbols.
+- **`src/tokenize_doc.cyr`** — documents (2.9.11): a text's tokens
+  kept with stream checkpoints every 4 KB, so an edit re-tokenizes
+  from the last checkpoint before it to the first state after it that
+  matches the old one; the result always equals tokenizing the edited
+  text from scratch
+  ([ADR 0033](../adr/0033-incremental-retokenization.md)).
 - **`src/detect.cyr`** — `detect_language` (path),
   `detect_language_from_content` (shebang / signature sniff) and
   `detect_language_combined`, which the CLI uses
@@ -160,9 +166,10 @@ user's explicit ACK.
    no pointers. See [ADR 0002](../adr/0002-token-storage-layout.md).
 3. **Public entry shape (2.0+).** The streaming primitive —
    `tokenize_stream_new` / `_feed` / `_drain` / `_finish` /
-   `_free` — is the consumer contract, with the pull adapter and
-   registry calls listed in `src/tokenize.cyr`'s header. Names and
-   arg order stable across the 2.x line. The 1.x `tokenize_source`
+   `_free` — is the consumer contract, with the pull adapter,
+   registry and (2.9.11) document calls listed in
+   `src/tokenize.cyr`'s header. Names and arg order stable across the
+   2.x line. The 1.x `tokenize_source`
    is gone (ADR 0017). Implementation internals (per-token-resume,
    rolling buffer) can change without breaking consumers.
 4. **`vyk` CLI surface.** `--version`, `--help`, `--list-kinds`,
@@ -305,3 +312,4 @@ behaviour:
 - [ADR 0030 — Heredoc rule: computed closers and Ruby / PHP terminators](../adr/0030-heredoc-computed-closers.md)
 - [ADR 0031 — `detect_language_registered`: routing by the registry's declarations](../adr/0031-detect-language-registered.md)
 - [ADR 0032 — Unclosed compose bodies run to the end; open regions stream](../adr/0032-resumable-compose-regions.md)
+- [ADR 0033 — Incremental retokenization: documents that restart their stream](../adr/0033-incremental-retokenization.md)

@@ -25,7 +25,7 @@ project's `cyrius.cyml`:
 ```toml
 [deps.vyakarana]
 git     = "https://github.com/MacCracken/vyakarana.git"
-tag     = "2.9.10"
+tag     = "2.9.11"
 modules = ["dist/vyakarana.cyr"]
 ```
 
@@ -92,6 +92,19 @@ fn tokenize_stream_start(s)             -> i64            # current token's star
 fn tokenize_stream_len(s)               -> i64            # current token's len
 fn tokenize_stream_discard_consumed(s)  -> i64            # 2.1.4+; tokens dropped
 
+# Documents (2.9.11+): incremental retokenization for editors.
+# Keeps a text's tokens; an edit re-tokenizes only what it can
+# affect, and the result is always the edited text's tokens from
+# scratch. See "Editing" below and ADR 0033.
+fn tokenize_doc_new(lang)               -> doc            # 0 if grammar unknown
+fn tokenize_doc_set(d, src, n)          -> i64            # token count, or VYK_ERR_OVERFLOW
+fn tokenize_doc_edit(d, src, n, at, removed, inserted) -> i64   # same
+fn tokenize_doc_tokens(d)               -> tokenbuf       # the document's tokens
+fn tokenize_doc_changed_first(d)        -> i64            # first changed token index
+fn tokenize_doc_changed_old(d)          -> i64            # old tokens it replaced
+fn tokenize_doc_changed_new(d)          -> i64            # new tokens in their place
+fn tokenize_doc_free(d)
+
 fn has_grammar(name) -> i64                # 1 if known, 0 otherwise
 fn list_languages_into(out_vec) -> i64     # populates a vec of cstr names
 fn bootstrap_grammars()                    # explicit load (see Lazy loading)
@@ -115,7 +128,7 @@ These are the **stable** entry points. Their names and arg
 order do not change across the 2.x line — see
 [docs/architecture/overview.md](../architecture/overview.md)
 "Frozen public contracts." The header of `src/tokenize.cyr` is
-the authoritative list of the stream and registry symbols.
+the authoritative list of the stream, registry and document symbols.
 
 ### Routing your own grammars
 
@@ -261,6 +274,39 @@ copies each chunk into the stream's own rolling buffer to scan it
 ([ADR 0017](../adr/0017-streaming-api.md)), but no token points
 there: slice your own bytes to render, and don't free `src` until
 you're done reading the tokens.
+
+## Editing
+
+A live editor keeps one document per buffer. Give it the whole
+text once; after each change, give it the whole edited text and
+where the change was. It re-tokenizes from the last checkpoint
+(every `VYK_DOC_INTERVAL`, 4096 bytes) before the edit to the
+first one after it whose state matches, and keeps the rest:
+
+```cyrius
+var d = tokenize_doc_new("rust");
+tokenize_doc_set(d, text, len);
+# ... the user replaced `removed` bytes at `at` with `inserted` new
+# ones; `text` / `len` now hold the edited buffer:
+tokenize_doc_edit(d, text, len, at, removed, inserted);
+var tb = tokenize_doc_tokens(d);           # all tokens, edited text
+var first = tokenize_doc_changed_first(d); # repaint tokens
+var nnew = tokenize_doc_changed_new(d);    #   [first, first + nnew)
+tokenize_doc_free(d);
+```
+
+- The tokens always equal tokenizing the edited text from scratch
+  — including tokens before the edit that it changed (a heredoc
+  terminator typed far below its opener).
+- Bytes outside the edit must be unchanged; only the lengths are
+  checked. A description the lengths cannot match tokenizes the
+  whole text.
+- The text must be contiguous for the call, and the document does
+  not keep it.
+- A one-byte edit costs about one interval re-scanned either side
+  (under 2 ms on a 937 KB C file, against 226 ms for the whole
+  file); an edit that changes the rest of the text, such as an
+  opened comment, re-scans the rest.
 
 ## Lazy loading
 

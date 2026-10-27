@@ -1,0 +1,363 @@
+# vyakarana — incremental retokenization (2.9.11, ADR 0033)
+#
+# An editor changes a few bytes of a text and wants its tokens again
+# without tokenizing all of it. A document keeps the tokens of the text
+# it was last given and, every VYK_DOC_INTERVAL bytes, a checkpoint: the
+# state of the stream that tokenized it, just after that many bytes had
+# been fed and drained.
+#
+# An edit restarts that stream at the last checkpoint at or before the
+# edit. Everything the stream had committed there is settled for any
+# bytes that follow — the edited text's too — and its state is exactly
+# the state it had then. It feeds the edited text on, draining at the old
+# checkpoints' offsets moved by the edit. At the first of those past the
+# edit where the stream's state equals the old checkpoint's (same fields,
+# the buffer at the same place), it stops: the same state with the same
+# bytes ahead makes the same tokens, so the old tokens from there on are
+# kept, moved by the edit. So the tokens are always those of tokenizing
+# the edited text from scratch: a stream fed in chunks equals one feed
+# (ADR 0028), and the stream that resumed is that stream.
+#
+# Public (additive; ADR 0033):
+#   tokenize_doc_new(lang)              -> a document, or 0 for an unknown
+#                                          grammar
+#   tokenize_doc_set(d, src, n)         -> token count: all of `src`
+#   tokenize_doc_edit(d, src, n, at, removed, inserted)
+#                                       -> token count. `src` is the whole
+#                                          edited text: its [at, at +
+#                                          inserted) replaced the last
+#                                          text's [at, at + removed), every
+#                                          other byte as it was. A
+#                                          description the lengths cannot
+#                                          match tokenizes all of `src`.
+#   tokenize_doc_tokens(d)              -> the document's tokenbuf, valid
+#                                          until its next set / edit / free
+#   tokenize_doc_changed_first(d)       -> what the last set / edit changed:
+#   tokenize_doc_changed_old(d)            from token index `first`, `old`
+#   tokenize_doc_changed_new(d)            tokens became `new` ones
+#   tokenize_doc_free(d)
+# Set and edit return VYK_ERR_OVERFLOW when a feed is refused (the
+# stream's caps); the document is then empty until the next set.
+#
+# Document layout (opaque):
+#    0  stream       the tokenizing stream, reused
+#    8  tokens       tokenbuf: the text's tokens
+#   16  emit         tokenbuf: an edit's re-scanned tokens (scratch)
+#   24  ck           checkpoint array (TD_CK_SIZE-byte records)
+#   32  ck_n         records in use
+#   40  ck_cap       records allocated
+#   48  ck2 / 56 ck2_n / 64 ck2_cap — the array an edit builds, swapped in
+#   72  text_len     bytes in the last text given
+#   80  interval     checkpoint spacing in bytes
+#   88  changed_first, 96 changed_old, 104 changed_new
+#  112  valid        1 after a set / edit that completed
+#  120  fed          bytes the last set / edit fed its stream
+#  128 bytes total.
+#
+# Checkpoint record: 0 fed (F), 8 commit point (C, the stream's
+# abs_offset), 16 tokens committed by then, 24 the stream state
+# (STREAM_STATE_SIZE bytes, src/tokenize.cyr).
+
+include "src/token.cyr"
+include "src/tokenize.cyr"
+
+var VYK_DOC_INTERVAL = 4096;
+var TD_CK_SIZE = 232;
+
+fn tokenize_doc_new(lang) {
+    var s = tokenize_stream_new(lang);
+    if (s == 0) { return 0; }
+    var d = alloc(128);
+    if (d == 0) { return 0; }
+    var tk = tokenbuf_new();
+    var em = tokenbuf_new();
+    if ((tk == 0) || (em == 0)) { return 0; }
+    var k = 0;
+    while (k < 128) {
+        store64(d + k, 0);
+        k = k + 8;
+    }
+    store64(d, s);
+    store64(d + 8, tk);
+    store64(d + 16, em);
+    store64(d + 80, VYK_DOC_INTERVAL);
+    return d;
+}
+
+fn tokenize_doc_tokens(d) {
+    if (d == 0) { return 0; }
+    return load64(d + 8);
+}
+
+fn tokenize_doc_changed_first(d) { return load64(d + 88); }
+fn tokenize_doc_changed_old(d) { return load64(d + 96); }
+fn tokenize_doc_changed_new(d) { return load64(d + 104); }
+
+# Checkpoint spacing (internal: the tests and fuzz use small ones).
+fn _tokenize_doc_interval(d, k) {
+    if (k > 0) { store64(d + 80, k); }
+    return 0;
+}
+
+# Bytes the last set / edit fed its stream (internal: measurement).
+fn _tokenize_doc_fed(d) { return load64(d + 120); }
+
+fn tokenize_doc_free(d) {
+    if (d == 0) { return 0; }
+    tokenize_stream_free(load64(d));
+    var k = 0;
+    while (k < 128) {
+        store64(d + k, 0);
+        k = k + 8;
+    }
+    return 0;
+}
+
+# Record `i` of the array at +`base` (24: ck, 48: ck2).
+fn _td_ck(d, base, i) {
+    return load64(d + base) + i * TD_CK_SIZE;
+}
+
+# A new record at the end of the array at +`base`; 0 if it cannot grow.
+fn _td_ck_new(d, base) {
+    var n = load64(d + base + 8);
+    var cap = load64(d + base + 16);
+    if (n >= cap) {
+        var nc = cap * 2;
+        if (nc < 16) { nc = 16; }
+        var nb = alloc(nc * TD_CK_SIZE);
+        if (nb == 0) { return 0; }
+        _tb_move(nb, load64(d + base), n * TD_CK_SIZE);
+        store64(d + base, nb);
+        store64(d + base + 16, nc);
+    }
+    store64(d + base + 8, n + 1);
+    return load64(d + base) + n * TD_CK_SIZE;
+}
+
+# Save the stream's state as a checkpoint, if it can be saved: a missing
+# checkpoint only means a later edit restarts further back.
+fn _td_ck_add(d, base, f, ntok) {
+    var s = load64(d);
+    if (_stream_state_ok(s) == 0) { return 0; }
+    var c = _td_ck_new(d, base);
+    if (c == 0) { return 0; }
+    store64(c, f);
+    store64(c + 8, load64(s + 48));
+    store64(c + 16, ntok);
+    _stream_state_save(s, c + 24);
+    return 0;
+}
+
+fn _td_fail(d) {
+    _tokenbuf_reset(load64(d + 8));
+    store64(d + 32, 0);
+    store64(d + 112, 0);
+    return VYK_ERR_OVERFLOW;
+}
+
+fn tokenize_doc_set(d, src, n) {
+    if (d == 0) { return VYK_ERR_OVERFLOW; }
+    var s = load64(d);
+    var tk = load64(d + 8);
+    var before = tokenbuf_count(tk);
+    if ((src == 0) || (n < 0)) { n = 0; }
+    _stream_reset(s);
+    _tokenbuf_reset(tk);
+    store64(d + 32, 0);
+    store64(d + 112, 0);
+    _td_ck_add(d, 24, 0, 0);
+    var step = load64(d + 80);
+    var f = 0;
+    var bad = 0;
+    while ((f < n) && (bad == 0)) {
+        var take = step;
+        if (take > n - f) { take = n - f; }
+        if (tokenize_stream_feed(s, src + f, take) != VYK_OK) { bad = 1; }
+        if (bad == 0) {
+            tokenize_stream_drain(s, tk);
+            f = f + take;
+            if (f < n) { _td_ck_add(d, 24, f, tokenbuf_count(tk)); }
+        }
+    }
+    if (bad == 1) { return _td_fail(d); }
+    tokenize_stream_finish(s, tk);
+    store64(d + 72, n);
+    store64(d + 88, 0);
+    store64(d + 96, before);
+    store64(d + 104, tokenbuf_count(tk));
+    store64(d + 112, 1);
+    store64(d + 120, n);
+    return tokenbuf_count(tk);
+}
+
+# The last checkpoint fed no further than `at` (record 0, fed 0, always is).
+fn _td_restart(d, at) {
+    var lo = 0;
+    var hi = load64(d + 32) - 1;
+    while (lo < hi) {
+        var mid = (lo + hi + 1) / 2;
+        if (load64(_td_ck(d, 24, mid)) <= at) { lo = mid; }
+        if (load64(_td_ck(d, 24, mid)) > at) { hi = mid - 1; }
+    }
+    return lo;
+}
+
+fn _td_same_tok(a, i, b, j, delta) {
+    if (tokenbuf_kind(a, i) != tokenbuf_kind(b, j)) { return 0; }
+    if (tokenbuf_len(a, i) != tokenbuf_len(b, j)) { return 0; }
+    if (tokenbuf_start(a, i) != tokenbuf_start(b, j) + delta) { return 0; }
+    return 1;
+}
+
+fn tokenize_doc_edit(d, src, n, at, removed, inserted) {
+    if (d == 0) { return VYK_ERR_OVERFLOW; }
+    var old_n = load64(d + 72);
+    var fits = load64(d + 112);
+    if ((src == 0) || (at < 0) || (removed < 0) || (inserted < 0)) { fits = 0; }
+    if ((fits == 1) && ((at > old_n) || (removed > old_n - at))) { fits = 0; }
+    if ((fits == 1) && (n != old_n - removed + inserted)) { fits = 0; }
+    if (load64(d + 32) == 0) { fits = 0; }
+    if (fits == 0) { return tokenize_doc_set(d, src, n); }
+    var s = load64(d);
+    var tk = load64(d + 8);
+    var em = load64(d + 16);
+    var delta = inserted - removed;
+    var eo = at + removed;
+    var en = at + inserted;
+    var nck = load64(d + 32);
+    var r = _td_restart(d, at);
+    var rc = _td_ck(d, 24, r);
+    var f = load64(rc);
+    var c0 = load64(rc + 8);
+    var ntok_r = load64(rc + 16);
+    # The stream as it was at checkpoint r: its fields, and its buffer —
+    # bytes before the edit, the same in the edited text.
+    _stream_reset(s);
+    _stream_state_load(s, rc + 24);
+    store64(s + 48, c0);
+    var bad = 0;
+    if (f > c0) {
+        if (tokenize_stream_feed(s, src + c0, f - c0) != VYK_OK) { bad = 1; }
+    }
+    var fed = f - c0;
+    _tokenbuf_reset(em);
+    store64(d + 56, 0);
+    var i = 0;
+    while (i <= r) {
+        var cp = _td_ck_new(d, 48);
+        if (cp == 0) { bad = 1; }
+        if (cp != 0) { _tb_move(cp, _td_ck(d, 24, i), TD_CK_SIZE); }
+        i = i + 1;
+    }
+    # The first old checkpoint at or past the edit's end.
+    var k = r + 1;
+    while ((k < nck) && (load64(_td_ck(d, 24, k)) < eo)) { k = k + 1; }
+    var step = load64(d + 80);
+    var synced = (0 - 1);
+    var going = 1;
+    if (bad == 1) { going = 0; }
+    while (going == 1) {
+        if (f >= n) { going = 0; }
+        if (going == 1) {
+            # Every `step` bytes, and at each old checkpoint past the edit,
+            # moved by it (all of those lie past the edit's end).
+            var target = f + step;
+            while ((k < nck) && (load64(_td_ck(d, 24, k)) + delta <= f)) { k = k + 1; }
+            if ((k < nck) && (load64(_td_ck(d, 24, k)) + delta < target)) {
+                target = load64(_td_ck(d, 24, k)) + delta;
+            }
+            if (target > n) { target = n; }
+            if (tokenize_stream_feed(s, src + f, target - f) != VYK_OK) {
+                bad = 1;
+                going = 0;
+            }
+            if (bad == 0) {
+                fed = fed + (target - f);
+                tokenize_stream_drain(s, em);
+                f = target;
+                if (f < n) {
+                    if ((k < nck) && (f == load64(_td_ck(d, 24, k)) + delta)) {
+                        var ok = _td_ck(d, 24, k);
+                        var cn = load64(s + 48);
+                        var co = load64(ok + 8);
+                        # Past the edit, the buffer where the old one was, and
+                        # the same state: the old tokens from here are right.
+                        var past = 0;
+                        if ((co >= eo) && (cn == co + delta)) { past = 1; }
+                        if ((co == 0) && (cn != 0)) { past = 0; }
+                        if ((co != 0) && (cn == 0)) { past = 0; }
+                        if (past == 1) {
+                            if (_stream_state_same(s, ok + 24) == 1) {
+                                synced = k;
+                                going = 0;
+                            }
+                        }
+                        if (synced < 0) { k = k + 1; }
+                    }
+                    if (synced < 0) { _td_ck_add(d, 48, f, ntok_r + tokenbuf_count(em)); }
+                }
+            }
+        }
+    }
+    if (bad == 1) { return _td_fail(d); }
+    if (synced < 0) { tokenize_stream_finish(s, em); }
+    var old_end = tokenbuf_count(tk);
+    if (synced >= 0) {
+        old_end = load64(_td_ck(d, 24, synced) + 16);
+        var shift = ntok_r + tokenbuf_count(em) - old_end;
+        var j = synced;
+        while (j < nck) {
+            var cq = _td_ck_new(d, 48);
+            if (cq == 0) { return _td_fail(d); }
+            _tb_move(cq, _td_ck(d, 24, j), TD_CK_SIZE);
+            store64(cq, load64(cq) + delta);
+            store64(cq + 8, load64(cq + 8) + delta);
+            store64(cq + 16, load64(cq + 16) + shift);
+            j = j + 1;
+        }
+    }
+    # What changed: the re-scanned tokens less the ends that match the old
+    # ones — before the edit as they were, after it moved by it.
+    var ne = tokenbuf_count(em);
+    var no = old_end - ntok_r;
+    var p = 0;
+    var pgo = 1;
+    while ((pgo == 1) && (p < ne) && (p < no)) {
+        pgo = 0;
+        if (tokenbuf_start(em, p) + tokenbuf_len(em, p) <= at) {
+            if (_td_same_tok(em, p, tk, ntok_r + p, 0) == 1) {
+                pgo = 1;
+                p = p + 1;
+            }
+        }
+    }
+    var q = 0;
+    var qgo = 1;
+    while ((qgo == 1) && (q < ne - p) && (q < no - p)) {
+        qgo = 0;
+        var oi = old_end - 1 - q;
+        if (tokenbuf_start(tk, oi) >= eo) {
+            if (_td_same_tok(em, ne - 1 - q, tk, oi, delta) == 1) {
+                qgo = 1;
+                q = q + 1;
+            }
+        }
+    }
+    if (_tokenbuf_splice(tk, ntok_r, no, em, delta) == 0) { return _td_fail(d); }
+    # Swap in the rebuilt checkpoints.
+    var t0 = load64(d + 24);
+    var t2 = load64(d + 40);
+    store64(d + 24, load64(d + 48));
+    store64(d + 32, load64(d + 56));
+    store64(d + 40, load64(d + 64));
+    store64(d + 48, t0);
+    store64(d + 56, 0);
+    store64(d + 64, t2);
+    store64(d + 72, n);
+    store64(d + 88, ntok_r + p);
+    store64(d + 96, no - p - q);
+    store64(d + 104, ne - p - q);
+    store64(d + 120, fed);
+    return tokenbuf_count(tk);
+}

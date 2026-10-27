@@ -545,6 +545,25 @@ fn _ds_find_fenced_close(src, src_len, body_start, endp, elen, ind) {
     return 0 - 1;
 }
 
+# A buffer of at least `n` bytes for a fence's tag, reused across scans
+# (2.9.11). Each fence used to allocate its own, and the bump allocator
+# never frees: a document re-scans the fences near every edit. The tag
+# is only looked up, never kept. 0 on allocation failure.
+var _ds_tag_buf = 0;
+var _ds_tag_cap = 0;
+
+fn _ds_tag_scratch(n) {
+    if (n > _ds_tag_cap) {
+        var c = 64;
+        while (c < n) { c = c * 2; }
+        var b = alloc(c);
+        if (b == 0) { return 0; }
+        _ds_tag_buf = b;
+        _ds_tag_cap = c;
+    }
+    return _ds_tag_buf;
+}
+
 # Try each [[rules]] match="compose_fenced" at the cursor. Same
 # shape as compose, but the inner grammar is captured per-fence
 # from the bytes between `start` and the next newline (the
@@ -627,7 +646,7 @@ fn _ds_try_compose_fenced_rules(g, src, src_len, i, tb) {
                     var tag_len = tag_end - tag_start;
                     var inner_g = 0;
                     if (tag_len > 0) {
-                        var tag_buf = alloc(tag_len + 1);
+                        var tag_buf = _ds_tag_scratch(tag_len + 1);
                         var tk = 0;
                         if (tag_buf == 0) { tk = tag_len; }   # OOM: no lookup (2.5.2)
                         while (tk < tag_len) {

@@ -8,14 +8,14 @@
 > 2.6.2 it carried a "What X changed" block for every release back to
 > 1.13.0 — trimmed in 2.7.0; the CHANGELOG has all of it.)
 >
-> **Last refresh:** 2026-10-27, at 2.9.10. Read this first, then run the
+> **Last refresh:** 2026-10-27, at 2.9.11. Read this first, then run the
 > gates (CLAUDE.md §Gates) — do not take the "green" below on trust.
 
 ---
 
 ## Current status
 
-- **Version:** `2.9.10` — `VERSION`, `src/version_str.cyr`,
+- **Version:** `2.9.11` — `VERSION`, `src/version_str.cyr`,
   `dist/vyakarana.cyr`, the CHANGELOG header and `docs/man/vyk.1`
   agree.
 - **Toolchain pin:** `cyrius = "6.7.18"` in `cyrius.cyml`, the single
@@ -41,25 +41,26 @@
   of four stdlib leaves (alloc, string, vec, io). The embedded grammars
   are compacted — comments and blanks outside strings dropped — by a
   POSIX sh + awk generator (ADR 0029); `grammars/` is the readable copy.
-- **Size:** the shipped (`CYRIUS_DCE=1`) `vyk` is 305,568 bytes, the
-  default build 399,776. `scripts/check-size.sh` reports the shipped
+- **Size:** the shipped (`CYRIUS_DCE=1`) `vyk` is 305,592 bytes, the
+  default build 403,896. `scripts/check-size.sh` reports the shipped
   build's size in CI and at release; since 2.9.8 there is no hard limit
   (ADR 0029, amended).
-- **Next release:** 2.9.11, incremental retokenization — the ninth of
-  the 2.9.x arc, which ends with a closeout audit at 2.9.12
+- **Next release:** 2.9.12, the closeout audit that ends the 2.9.x arc
   ([roadmap](./roadmap.md)). The last audit's report:
   [2.9.x](../audit/2026-10-21-2.9.x-closeout-audit.md).
 
-## Gates (green at 2.9.10, 2026-10-27)
+## Gates (green at 2.9.11, 2026-10-27)
 
-- `cyrius build` OK, 0 warnings · `cyrius test` **1427/1427** · smoke
+- `cyrius build` OK, 0 warnings · `cyrius test` **1462/1462** · smoke
   OK (it runs `scripts/check-detect.sh`) · `scripts/lint-fmt.sh`
   exit 0 (a lint warning fails it; covers `src/` and
   `scripts/audit/`) · `scripts/check-size.sh` reports · `cyrius fuzz`
-  **5/5** (87 every-offset shapes), also clean under `--poison=ab` and
+  **6/6** (87 every-offset shapes; `fuzz/retokenize.fcyr` edits every
+  offset of every corpus, about a minute), also clean under `--poison=ab` and
   `--bounds` · `cyrius distlib --check` clean.
 - The audit sweeps are in `scripts/audit/` — real-file coverage,
-  poison A/B, streaming invariance, mutation fuzz over vidya — with
+  poison A/B, streaming invariance, mutation fuzz over vidya, and
+  whole-file edits (`edit-sweep.sh`, 2.9.11) — with
   2.9.1's clean numbers in its README. Not gates (minutes, real files);
   CI builds the harness and syntax-checks the scripts. A sweep over
   nothing, or a missing path, exits 2.
@@ -74,8 +75,9 @@
   and pull adapter, `has_grammar`, `list_languages_into`,
   `bootstrap_grammars`, detection (`detect_language`,
   `detect_language_from_content`, `detect_language_combined`, and
-  `detect_language_registered` since 2.9.8 — ADR 0031), and
-  `grammar_load` for a consumer's own `.cyml`. The header of
+  `detect_language_registered` since 2.9.8 — ADR 0031), documents for
+  incremental retokenization (`tokenize_doc_*` since 2.9.11 — ADR 0033),
+  and `grammar_load` for a consumer's own `.cyml`. The header of
   `src/tokenize.cyr` is the authoritative list.
 - **Grammar format:** CYML. Rule types line (with `start_after`,
   ADR 0022), pair, words, compose, compose_fenced (with `end_indent`,
@@ -112,6 +114,12 @@
   commit whole, the marker window, watches that wait on new bytes
   (ADR 0028). A compose region still open at the buffer's end, with an
   inner grammar, is read as that grammar's own stream (ADR 0032).
+- **Incremental retokenization:** a document's tokens after
+  `tokenize_doc_edit` equal tokenizing the edited text from scratch
+  (ADR 0033), gated by `fuzz/retokenize.fcyr`. An edit restarts at the
+  last checkpoint (every `VYK_DOC_INTERVAL`, 4096 bytes) before it and
+  stops at the first checkpoint past it whose stream state matches; the
+  caller's description of the edit is trusted beyond its lengths.
 - **Streaming bounds:** `VYK_STREAM_CAP` 16 MiB live buffer;
   `VYK_COMPOSE_HOLD_MAX` 8 MiB for a held compose opener — a body that
   is one token (an untagged fence, an inner grammar not loaded), a
@@ -163,8 +171,9 @@ Each names the 2.9.x arc release that takes it on ([roadmap](./roadmap.md)).
   a region open inside a streamed body (a fence still open in a cyml
   body), an untagged fence and a region whose inner grammar is not
   loaded are held whole until they close. Not scheduled.
-- **No incremental retokenization:** an edit means tokenizing the
-  buffer again (or streaming it); an edit API is 2.9.11.
+- **Edits** (ADR 0033): moving the tokens after an edit is linear in
+  their number (an insert at the start of a 937 KB C file, 4.9 ms), and
+  the edited text must be passed contiguous. Not scheduled.
 - **Out of scope:** Python INDENT / DEDENT and anything structural —
   vyakarana yields spans.
 
@@ -189,8 +198,9 @@ its corpus tokenizes with zero `error` tokens.
   their call — it changes what they render (2.5.2's fixes, 2.6.x's
   shell, 2.7.0's numbers, 2.9.1's markdown fences), not their API.
   cyim routes 46 languages itself (`src/lang.cyr`);
-  `detect_language_registered` (2.9.8, ADR 0031) lets it stop — when it
-  does is cyim's call.
+  `detect_language_registered` (2.9.8, ADR 0031) lets it stop, and it
+  tokenizes whole buffers on each change, which `tokenize_doc_edit`
+  (2.9.11, ADR 0033) replaces — when it takes either is cyim's call.
 - `vidya` is also the corpus supplier
   (`content/lexing_and_parsing/`).
 - `cyrius` is the toolchain: a compiler bug gets filed upstream, not

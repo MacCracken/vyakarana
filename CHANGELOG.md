@@ -4,6 +4,94 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.9.11] — 2026-10-27
+
+**Incremental retokenization** (roadmap 2.9.11), the ninth of the 2.9.x
+arc. A **document** keeps a text's tokens; after an edit,
+`tokenize_doc_edit` re-tokenizes only what the edit can change, and its
+tokens always equal tokenizing the edited text from scratch (ADR 0033).
+A one-byte edit costs 0.7 – 1.6 ms on average in 164 KB – 937 KB files
+that take 25 – 226 ms to tokenize whole. Token output of every existing
+path is unchanged: byte-identical to 2.9.10 over 2.9.4's 7,527-file
+sample and the 5,000 compose-grammar files. 1462/1462 tests (35 new),
+fuzz 6/6 (the new `fuzz/retokenize.fcyr`: 273,306 edits; also under
+`--poison=ab` and `--bounds`), lint+fmt exit 0, `cyrius distlib --check`
+clean. `vyk` 399,776 → 403,896 bytes; the shipped DCE build 305,568 →
+305,592; `dist/vyakarana.cyr` 428,050 → 447,235 (the new module).
+
+### Added
+
+- **Documents** (`src/tokenize_doc.cyr`, in the bundle; ADR 0033), eight
+  additive public functions:
+  - `tokenize_doc_new(lang)`, `tokenize_doc_set(d, src, n)` and
+    `tokenize_doc_free(d)`;
+  - `tokenize_doc_edit(d, src, n, at, removed, inserted)`: `src` is the
+    whole edited text, in which `[at, at + inserted)` replaced the last
+    text's `[at, at + removed)`. A description the lengths cannot match
+    tokenizes the text whole;
+  - `tokenize_doc_tokens(d)`, the document's tokenbuf;
+  - `tokenize_doc_changed_first` / `_old` / `_new`: from which token, how
+    many old tokens became how many new ones, for an editor to repaint.
+
+  A set streams the text in 4 KB chunks (`VYK_DOC_INTERVAL`) and saves
+  the stream's state after each, 232 bytes a checkpoint. An edit
+  restores the last checkpoint at or before it, feeds the edited text on,
+  and stops at the first old checkpoint past the edit whose state the
+  stream matches exactly, keeping the old tokens from there moved by the
+  edit. Tokens before an edit can change, and do: a terminator line typed
+  below a shell `<<EOF` makes a heredoc body of the code above it.
+- Measured, one-byte edits at 200 random offsets, each undone (average /
+  worst): a 164 KB Rust file, 0.72 / 1.4 ms (25 ms whole); a 774 KB
+  markdown file, 0.78 / 14 ms (99 ms whole; the worst edit's effect ran
+  622 KB); a 937 KB C file with 610,187 tokens, 1.6 / 2.5 ms (226 ms
+  whole). An insert at the very start moves every token after it: 4.9 ms
+  in the C file. A document's memory does not grow with the edits made
+  to it (the 774 KB file peaks at 49.5 MB after 4,000 and after 8,000
+  edits and undos).
+- `scripts/audit/edit-sweep.sh` and the harness's `edits` mode: whole
+  files edited at every offset (corpora) or every 97th (real files).
+
+### Fixed
+
+- A fenced code block's tag lookup allocated a buffer per fence per scan
+  (`_ds_try_compose_fenced_rules`), which the bump allocator never frees.
+  A document re-scans the fences near every edit, so it now reuses one.
+
+### Tests
+
+- 35 new assertions: the API on a small text (growing an identifier, a
+  quote opening a string to the end and closing again, deleting
+  everything, an empty text, an edit that does not fit its lengths); a
+  220 KB text edited mid-way re-scanning under three checkpoints' worth
+  and changing one token, then a `/*` that comments out the rest and its
+  undo; a heredoc terminator appended; a fence closed and broken; a
+  `</style>` broken and mended; python typed a byte at a time; and the
+  look-behind case below.
+- `fuzz/retokenize.fcyr` (CI): every offset of all 52 corpus inputs, in
+  1 KB windows each a document with checkpoints every 48 bytes, plus
+  every 61st offset of each whole file at 4096 and at 48. A marker
+  inserted (a quote, a comment opener, a fence, a heredoc line, `</style>`
+  …), 1 – 3 bytes deleted, or 1 – 2 replaced by a marker, each held to a
+  from-scratch tokenization, its changed range checked, and its undo
+  held to the original: 273,306 edits, about a minute.
+- Nine broken resyncs and restarts: six fail the fuzz (resync on offsets
+  alone, restart past the edit's start, resync inside the edit, the
+  region state left out, the state not restored, the tail not moved).
+  Leaving out the look-behind comparison fails a unit test, a grammar
+  where `#` is a comment after a blank but a preprocessor line after `!`.
+  Leaving out the pending-pair or watch comparison fails nothing: those
+  fields never change a token (ADR 0028); they are compared so that a
+  resync rests on plain state equality.
+
+### Verified
+
+- `edit-sweep.sh`: every offset of every whole corpus file, at the
+  default spacing and at 48 bytes (104 runs, 529,156 edits and their
+  undos, 0 fails), and 1,243
+  real files of 64 KB or less from the two samples, every 97th offset
+  (about 104,000 edits and their undos, 0 fails).
+- Paired benchmark against 2.9.10: every row within 3.3 %.
+
 ## [2.9.10] — 2026-10-27
 
 **Tokens inside a long, still-open compose region** (roadmap 2.9.10), the

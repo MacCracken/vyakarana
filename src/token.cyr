@@ -204,3 +204,54 @@ fn tokenbuf_drop_front(tb, n) {
     store64(tb + 8, keep);
     return 0;
 }
+
+# Move `nb` bytes (a multiple of 4) from `src` to `dst`, either way
+# round when they overlap: 8 bytes at a time, then the last 4.
+fn _tb_move(dst, src, nb) {
+    if ((nb <= 0) || (dst == src)) { return 0; }
+    var w = nb - (nb % 8);
+    if (dst < src) {
+        var i = 0;
+        while (i < w) {
+            store64(dst + i, load64(src + i));
+            i = i + 8;
+        }
+        if (w < nb) { store32(dst + w, load32(src + w)); }
+        return 0;
+    }
+    if (w < nb) { store32(dst + w, load32(src + w)); }
+    var j = w;
+    while (j > 0) {
+        j = j - 8;
+        store64(dst + j, load64(src + j));
+    }
+    return 0;
+}
+
+# Replace records [at, at + n_old) with every record of `src`, and add
+# `delta` to the start of each record after them — an edit's re-scanned
+# tokens in place of the old ones, and the rest moved by its length
+# (2.9.11, src/tokenize_doc.cyr). Returns 1, or 0 when the buffer could
+# not grow (then `tb` is unchanged).
+fn _tokenbuf_splice(tb, at, n_old, src, delta) {
+    var count = load64(tb + 8);
+    var n_new = load64(src + 8);
+    var total = count - n_old + n_new;
+    while (total * TOKEN_SIZE > load64(tb + 16)) {
+        if (_tokenbuf_grow(tb) == 0) { return 0; }
+    }
+    var data = load64(tb);
+    var tail = count - at - n_old;
+    _tb_move(data + (at + n_new) * TOKEN_SIZE, data + (at + n_old) * TOKEN_SIZE, tail * TOKEN_SIZE);
+    _tb_move(data + at * TOKEN_SIZE, load64(src), n_new * TOKEN_SIZE);
+    if (delta != 0) {
+        var k = at + n_new;
+        while (k < total) {
+            var slot = data + k * TOKEN_SIZE;
+            store32(slot + 4, load32(slot + 4) + delta);
+            k = k + 1;
+        }
+    }
+    store64(tb + 8, total);
+    return 1;
+}
