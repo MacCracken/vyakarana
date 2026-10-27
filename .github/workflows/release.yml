@@ -25,11 +25,11 @@ jobs:
   version-verify:
     name: Version verify
     needs: ci
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       version: ${{ steps.extract.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Extract VERSION / tag / cyml version
         id: extract
@@ -68,12 +68,12 @@ jobs:
       matrix:
         include:
           - target: x86_64-linux
-            runs-on: ubuntu-latest
+            runs-on: ubuntu-26.04
     env:
       CYRIUS_DCE: '1'             # dead-code-eliminated build
       VERSION: ${{ needs.version-verify.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Cyrius toolchain
         run: |
@@ -131,7 +131,7 @@ jobs:
           sha256sum *.tar.gz > SHA256SUMS.${{ matrix.target }}
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.target }}
           path: |
@@ -144,11 +144,11 @@ jobs:
   source:
     name: Source tarball
     needs: version-verify
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     env:
       VERSION: ${{ needs.version-verify.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Create source tarball
         run: |
@@ -160,7 +160,7 @@ jobs:
           sha256sum "vyakarana-${VERSION}-src.tar.gz" > SHA256SUMS.src
 
       - name: Upload source artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-source
           path: |
@@ -173,14 +173,14 @@ jobs:
   release:
     name: GitHub release
     needs: [build, source]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: write           # required to create the release
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download all release artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist-raw
 
@@ -195,7 +195,7 @@ jobs:
           ls -la
 
       - name: Create release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             out/*.tar.gz

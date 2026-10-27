@@ -22,6 +22,8 @@
 #   6. defaults.ident_start/ident_cont                → ident, or keyword
 #      via [[rules]] match="words" lookup, or — with a declared
 #      string prefix (ADR 0027) — one string: prefix + literal
+#   6b. a symbol-shaped string prefix + literal        → string
+#      (C# `@"…"`, `$"…"`; ADR 0027, 2.9.6)
 #   7. defaults.number_decimal/_0x/_0b/_0o            → number
 #      (shaped by number_float / _separator / _datetime /
 #       _tuple_index, ADR 0026)
@@ -685,6 +687,40 @@ fn _ds_prefixed_string(g, src, src_len, i, ilen) {
     if ((plain == 1) && (grammar_char_literal(g) == 1)) {
         var cl = _ds_try_char_literal(g, src, src_len, i + ilen);
         if (cl > 0) { return ilen + cl; }
+    }
+    return 0;
+}
+
+# A symbol-shaped string prefix at src[i] that a quote follows (ADR 0027,
+# 2.9.6): its length, or 0; `_ds_sym_raw` = 1 when it is a raw prefix
+# (C#'s verbatim `@"C:\"` ends at its quote). The streaming drain reads
+# string tokens' prefixes through this too.
+var _ds_sym_raw = 0;
+fn _ds_sym_prefix(g, src, src_len, i) {
+    _ds_sym_raw = 0;
+    var lt = grammar_sym_prefix_lead(g);
+    if (lt == 0) { return 0; }
+    if (i >= src_len) { return 0; }
+    if (char_class_match(lt, load8(src + i)) == 0) { return 0; }
+    var rl = _ds_sym_match(grammar_raw_string_prefixes(g), src, src_len, i);
+    if (rl > 0) {
+        _ds_sym_raw = 1;
+        return rl;
+    }
+    return _ds_sym_match(grammar_string_prefixes(g), src, src_len, i);
+}
+
+# The entry of `v` at src[i] that a quote follows: its length, or 0.
+fn _ds_sym_match(v, src, src_len, i) {
+    var k = 0;
+    while (k < vec_len(v)) {
+        var w = vec_get(v, k);
+        var wl = strlen(w);
+        if ((i + wl < src_len) && (memeq(src + i, w, wl) == 1)) {
+            var q = load8(src + i + wl);
+            if ((q == 34) || (q == 39) || (q == 96)) { return wl; }
+        }
+        k = k + 1;
     }
     return 0;
 }
@@ -2325,6 +2361,20 @@ fn tokenize_with_grammar(g, src, src_len, tb) {
                     } else {
                         kind = TK_IDENT;
                     }
+                }
+            }
+        }
+
+        # 6b. Symbol-shaped string prefixes (ADR 0027, 2.9.6): C#'s `@"…"`
+        # (raw: no escapes), `$"…"`, `$@"…"` — before the operator step,
+        # which would take the `@` or `$` alone.
+        if (len == 0) {
+            var spl = _ds_sym_prefix(g, src, src_len, i);
+            if (spl > 0) {
+                var spk = _ds_try_pair_rules_x(g, src, src_len, i + spl, _ds_sym_raw);
+                if ((spk != 0) && ((spk >> 56) == TK_STRING)) {
+                    kind = TK_STRING;
+                    len = spl + (spk & 0x00FFFFFFFFFFFFFF);
                 }
             }
         }

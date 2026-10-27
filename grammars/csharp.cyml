@@ -16,21 +16,19 @@
 # ident + `]`. No `@` prefix needed (C# uses `@` only for verbatim
 # strings `@"..."` and identifier escapes `@class`).
 #
-# Verbatim strings `@"..."` and interpolated strings `$"..."`:
-# both are NOT specially recognised by this grammar. `@` and `$`
-# are not in `ident_start`, so `@"text"` tokenizes as `@` op +
-# `"text"` string, and `$"text"` tokenizes as `$` op + `"text"`
-# string. Coverage holds. If a corpus needs unified tokens, add
-# pair rules with the prefix as part of the start string —
-# similar to TOML's [ADR 0008](../docs/adr/0008-toml-triple-quoted-strings.md).
-# Adding `$` to operators below so it doesn't fall to the error
-# fallback.
+# Verbatim strings `@"..."` and interpolated strings `$"..."`,
+# `$@"..."` / `@$"..."` are one string token with their prefix since
+# 2.9.6 — symbol-shaped string prefixes (ADR 0027): `$` a plain one,
+# the `@` forms raw, so a verbatim `@"C:\"` ends at its quote. Elsewhere
+# `@` (`@class`) and `$` stay operators.
 #
 # Known gaps (not triggered by the stand-in):
-#   - Verbatim strings `@"…"` and raw strings `"""…"""` (C# 11+).
-#     `@` and `$` prefixes tokenize as separate operators;
-#     regular `"…"` rule absorbs the body. Cosmetic; coverage
-#     holds.
+#   - A verbatim string's doubled quote (`@"say ""hi"""`) comes back as
+#     adjacent string tokens, as SQL's `''` does — the same bytes, all
+#     string. An interpolation hole holding a quote (`$"{(a ? "x" : "y")}"`)
+#     ends the string early (holes are not re-tokenized, ADR 0003).
+#   - Raw string literals `"""…"""` (C# 11+): the `"""` pair rule is not
+#     declared; they tokenize as strings split at each `""`.
 #   - Numeric suffixes (`42L`, `1.5m`) are number + ident. Floats
 #     and `1_000_000` are one number since 2.7.0 (ADR 0026).
 #   - Pattern-matching in switch expressions: `is`, `not`, `and`,
@@ -58,6 +56,10 @@ number_separator = "_"    # `1_000` (ADR 0026)
 
 special_vars = false
 unicode_ident = true
+# `$"…"` interpolated (escapes as usual); `@"…"`, `$@"…"`, `@$"…"`
+# verbatim — no backslash escapes (2.9.6, ADR 0027).
+string_prefixes = ["$"]
+raw_string_prefixes = ["@", "$@", "@$"]
 char_literal  = true
 
 # Operators in longest-match order. C#-specific: `??=` /

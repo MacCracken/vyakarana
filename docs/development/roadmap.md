@@ -42,13 +42,6 @@ a closeout audit at the end. Each entry ships only when the gates are
 green and, where it adds a gate, that gate is shown to fail on the
 release before.
 
-### 2.9.6 — Non-identifier string prefixes *(patch)*
-
-- C# verbatim and interpolated strings — `@"…"` (`""` escapes a quote),
-  `$"…"`, `$@"…"` / `@$"…"`. Today `@` and `$` are operators before an
-  ordinary string. The scanner has to try such a prefix before the
-  operator step; an ADR 0027 amendment.
-
 ### 2.9.7 — Number shapes *(patch)*
 
 - Leading- and trailing-dot floats (`.5`, `1.`) where the language has

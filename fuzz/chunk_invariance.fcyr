@@ -381,6 +381,14 @@ fn _ci_main() {
     if (_ci_every("cpp", "auto a = R\"(x \"y\" \\n)\";\nauto b = R\"d(a )\" b)d\";\nauto c = u8R\"(z)\"; auto R = 1;\n") != 0) { rc = 1; }
     if (_ci_every("ruby", "a = <<~EOS.strip\n  it\'s # not\n  EOS\nb = x << y\nclass << self\nend\nputs(<<-A, <<B)\n  one\n  A\ntwo\nB\nc = d <<e\n") != 0) { rc = 1; }
     if (_ci_every("php", "<?php\n$a = <<<EOT\n  it\'s $x\n  EOT;\n$b = <<<\'N\'\nraw\nN . \"z\";\n$c = 1 << 2;\n") != 0) { rc = 1; }
+    # 2.9.6 (ADR 0027): symbol-shaped string prefixes — C#'s verbatim
+    # strings end at their quote however they are split, a backslash
+    # before a line break included.
+    if (_ci_every("csharp", "var a = @\"C:\\dir\\\"; var b = $\"x {y}\\n\"; var c = $@\"p {q} \\\"; var d = @$\"r\"; var e = @class; var f = @\"say \"\"hi\"\"\"; var g = $ \"z\";\n") != 0) { rc = 1; }
+    if (_ci_every("csharp", "var p = @\"a\\\nb\\\"; var q = $@\"{x}\\\n\\\"; var r = $\"s\\\"t\";\n") != 0) { rc = 1; }
+    # Bodies longer than the drain's marker window, so a split inside takes
+    # the pending-pair fast path: it must scan a raw prefix's body raw.
+    if (_ci_every("csharp", "var p = @\"0123456789abcdefghij\\\n0123456789abcdefghij\\\"; var q = 1;\n") != 0) { rc = 1; }
     # Openers longer than the drain's marker window (12 bytes for rust,
     # swift and cpp, 4 for lua): only the scanner's cut-opener hold keeps
     # their first bytes from committing as an identifier or punctuation.

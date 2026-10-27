@@ -139,6 +139,11 @@ was removed in 2.0.0 (ADR 0017).
 
 ## Status
 
+**2.9.6** (2026-10-27) — C# verbatim and interpolated strings (`@"…"`,
+`$"…"`, `$@"…"`) are one string token each, and a verbatim
+`@"C:\dir\"` ends at its own quote. CI and release run on Ubuntu 26.04
+with the latest stable GitHub Actions. 1240/1240 tests.
+
 **2.9.5** (2026-10-27) — raw literals and more heredocs. Rust
 `r#"…"#`, Swift `#"…"#`, Lua `[==[…]==]` and C++ `R"d(…)d"` are one token
 each, ending where their opener says, and Ruby (`<<~EOS`) and PHP

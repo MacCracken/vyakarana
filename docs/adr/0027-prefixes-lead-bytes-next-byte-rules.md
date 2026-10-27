@@ -114,8 +114,24 @@ Two related changes ride along without new keys:
 ### When to revisit
 
 - C# verbatim / interpolated strings if a consumer asks (SQL `N'…'`
-  landed in 2.9.3) —
+  landed in 2.9.3) — *(Amended 2.9.6: done, see below.)*
   a non-identifier prefix would need the scanner to try it before the
   operator step.
 - Rust `r#"…"#` and C++ raw strings with the heredoc-rule extension.
   *(Amended 2.9.5: done — ADR 0030's inline heredoc bodies.)*
+
+## Amendment 2.9.6 — symbol-shaped prefixes
+
+A prefix may also be **symbol-shaped**: every byte printable ASCII, not
+a quote or `\`, and in neither identifier class. The loader takes either
+shape and rejects a mix (`@a`); a symbol prefix's first bytes go in a
+table on the grammar record (264 bytes), so the scanner tries them only
+where one could begin — at a new step 6b, after the identifier step and
+before the operator step, which would otherwise take the `@` or `$`
+alone. The streaming drain reads a string token's prefix through the
+same helper, so a long verbatim string still takes the pending-pair fast
+path, with escapes off. Opted in: csharp — `$"…"` plain, `@"…"`,
+`$@"…"`, `@$"…"` raw (a verbatim `@"C:\"` ends at its quote). A doubled
+quote inside a verbatim string (`@"a""b"`) comes back as adjacent string
+tokens, as SQL's `''` does; C# 11 raw strings (`"""…"""`) are not
+declared.

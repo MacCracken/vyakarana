@@ -76,7 +76,7 @@ path can never silently drift away from the M1 reference.
   compose_region / heredoc. `grammars/json.cyml` is the plainest
   example, `grammars/shell.cyml` the most specialised.
 - **`src/grammar.cyr`** — `Grammar` record and rule sub-records
-  (layouts in the file header; the record is 256 bytes at 2.9.3),
+  (layouts in the file header; the record is 264 bytes at 2.9.6),
   char-class tables (256-byte lookup), CYML parser (minimal TOML
   dialect; a malformed grammar is rejected, not loaded), and the
   in-memory registry.

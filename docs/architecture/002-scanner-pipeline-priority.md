@@ -25,6 +25,7 @@ the steps below in order. The first step that returns a non-zero
 | 4  | Special var `$X` (2-byte; X in `#?@!*$-` or `0`-`9`) | `[defaults] special_vars = true` (shell; digits since 2.6.0; makefile through 2.7.0) |
 | 5  | Lone `$` operator (1-byte, shell-only)       | falls out of step 4                                 |
 | 6  | Identifier / keyword — an `ident_lead` byte starts one only before an ident byte; a declared string prefix and the string after it are one `string` | `[defaults] ident_start` / `ident_cont` / `ident_lead` + `[[rules]] match="words"`; `string_prefixes` / `raw_string_prefixes` ([ADR 0027](../adr/0027-prefixes-lead-bytes-next-byte-rules.md), 2.7.1) |
+| 6b | Symbol-shaped string prefix + string — C#'s `@"…"` (raw), `$"…"` | `[defaults] string_prefixes` / `raw_string_prefixes` entries that are not identifiers ([ADR 0027](../adr/0027-prefixes-lead-bytes-next-byte-rules.md), amended 2.9.6) |
 | 7  | Number                                       | `[defaults] number_decimal/0x/0b/0o`; `number_float` / `number_separator` / `number_datetime` ([ADR 0026](../adr/0026-number-literal-shapes.md), 2.7.0); `number_tuple_index` (2.9.3) |
 | 7b | Char literal `'C'` / `'\…'` (≤ 12 bytes) / UTF-8 | `[defaults] char_literal = true` ([ADR 0010](../adr/0010-char-literal-default.md), escape forms [ADR 0024](../adr/0024-char-literal-escape-forms.md)) |
 | 7c | Heredoc opener — queues a body, consumes nothing | `[[rules]] match = "heredoc"` ([ADR 0023](../adr/0023-heredoc-rule.md)) |

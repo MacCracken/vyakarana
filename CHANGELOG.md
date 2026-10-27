@@ -4,6 +4,65 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.9.6] — 2026-10-27
+
+**Non-identifier string prefixes** (roadmap 2.9.6), the fourth of the 2.9.x
+arc — an ADR 0027 amendment — and the CI and release workflows moved to the
+latest stable actions and Ubuntu 26.04. Token output changes only in C#: in
+`tests/corpus/concept.cs` the five `$"…"` sites are now one string each, and
+1 of this host's 19 C# files changes, with no exit code or error count
+changed; over 2.9.4's 7,527-file sample (32 grammars, 2,000 extra shell
+scripts) nothing changes. 1240/1240 tests (16 new), fuzz 5/5 with three new
+every-offset shapes (also under `--poison=ab` and `--bounds`), lint+fmt
+exit 0, `cyrius distlib --check` clean. `vyk` 373,176 → 373,240 bytes; the
+shipped DCE build 278,968 → 283,128 — 2,858 bytes of code, the rest the
+data segment moving to the next page — 24,072 under the budget.
+
+### Added
+
+- **Symbol-shaped string prefixes** (ADR 0027, amended): `string_prefixes`
+  / `raw_string_prefixes` may list entries made of bytes that can neither
+  start nor continue an identifier, tried at a new scanner step 6b, before
+  the operator step. csharp opts in — `$"…"` interpolated (escapes as
+  usual), `@"…"`, `$@"…"` and `@$"…"` verbatim (raw: `@"C:\dir\"` ends at
+  its own quote, where 2.9.5 read `\"` as an escaped quote and ran on).
+  `@class` and `$ "x"` are unchanged. The streaming drain reads these
+  prefixes through the scanner's helper, so a long verbatim string takes
+  the pending-pair fast path with escapes off, and its marker window
+  covers a prefix that arrives without its quote.
+
+### Changed
+
+- **CI and release workflows** (`.github/workflows/ci.yml`, `release.yml`):
+  every job runs on `ubuntu-26.04` (it was `ubuntu-latest`, still 24.04);
+  `actions/checkout` v4 → v7, `actions/upload-artifact` v4 → v7,
+  `actions/download-artifact` v4 → v8, `softprops/action-gh-release` v2 →
+  v3 — each the latest stable major on 2026-10-27, all on the Node 24
+  runtime. None of their breaking changes reaches these workflows:
+  checkout v7 blocks fork checkouts only under `pull_request_target` /
+  `workflow_run`; download-artifact v8 fails on a digest mismatch (secure
+  by default) and v5's by-ID path change does not apply to a download of
+  every artifact; upload-artifact v7's unzipped uploads are opt-in. Proved
+  only by the next CI run.
+- **The loader's prefix check**: the 2.7.1 test that a non-identifier
+  prefix (`@`) rejects a grammar now asserts that a mixed one (`@a`) does;
+  a prefix holding a quote is rejected too.
+
+### Tests
+
+- A `2.9.6 symbol-shaped string prefixes` group, 16 assertions; against
+  2.9.5's sources 15 fail, beside the four record checks the larger
+  `Grammar` record (256 → 264 bytes) trips.
+- `fuzz/chunk_invariance.fcyr`: three csharp every-offset shapes. The one
+  with a verbatim body longer than the drain's marker window fails 38
+  times when the drain reads the `@` prefix as a plain one; the short
+  shapes do not (they never reach the pending fast path).
+- 1 MiB verbatim and interpolated strings at 64-byte chunks: 2.9.5 → 2.9.6
+  14.6 → 18.8 ms and 21.6 → 22.6 ms (harness `cutfirst`, min of 3).
+- Sweeps: `coverage-sweep.sh` over the 19 C# files, 0 fails, none with
+  an error token; `stream-sweep.sh` over them, 57 runs, and its fixed set,
+  164 runs — 0 fails.
+
 ## [2.9.5] — 2026-10-27
 
 **Variable-length delimiters** (roadmap 2.9.5), the third of the 2.9.x arc

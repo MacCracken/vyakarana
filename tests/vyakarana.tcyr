@@ -160,7 +160,7 @@ fn _t_route_ok(what, got, nm) {
 # without a spec entry fails there.
 var _t_diff_off = 0;    # top-level offset of the last mismatch found
 
-fn _t_grammar_spec() { return "svviittiiiiivvLPWiiiCFRHviiitvvi"; }
+fn _t_grammar_spec() { return "svviittiiiiivvLPWiiiCFRHviiitvvit"; }
 
 fn _t_sub_spec(code) {
     if (code == 76) { return "isstt"; }   # L  LineRule
@@ -4134,7 +4134,7 @@ fn main() {
     assert_eq(_t_len_at(gp7_sh, 30), 4, "shell <<'' ends at an empty line");
     assert_eq(_t_len_at(gp7_sh, 44), 5, "shell <<! ends at a line `!`");
     # Grammar validation: a repeated heredoc indent marker, an escape on a line
-    # rule, a followed_by on a pair rule, a non-identifier prefix.
+    # rule, a followed_by on a pair rule, a mixed-shape prefix.
     # (Several indent bytes are several markers since 2.9.5, ADR 0030 —
     # Ruby's `-~`; a repeated one is the mistake left to reject.)
     var gp7_b1 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"string\"\nmatch = \"heredoc\"\nstart = \"<<\"\nindent = \"--\"\n";
@@ -4143,8 +4143,10 @@ fn main() {
     assert_eq(_gp_parse(gp7_b2, strlen(gp7_b2)), 0, "an escape on a line rule rejects the grammar");
     var gp7_b3 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"string\"\nmatch = \"pair\"\nstart = \"'\"\nend = \"'\"\nfollowed_by = \"a\"\n";
     assert_eq(_gp_parse(gp7_b3, strlen(gp7_b3)), 0, "followed_by on a pair rule rejects the grammar");
-    var gp7_b4 = "[grammar]\nname = \"x\"\n[defaults]\nident_start = \"a-z\"\nident_cont = \"a-z\"\nstring_prefixes = [\"@\"]\n";
-    assert_eq(_gp_parse(gp7_b4, strlen(gp7_b4)), 0, "a non-identifier string prefix rejects the grammar");
+    var gp7_b4 = "[grammar]\nname = \"x\"\n[defaults]\nident_start = \"a-z\"\nident_cont = \"a-z\"\nstring_prefixes = [\"@a\"]\n";
+    # (`@` alone is a symbol-shaped prefix since 2.9.6, ADR 0027: C#'s
+    # `@"…"`. A prefix mixing symbol and identifier bytes is the mistake.)
+    assert_eq(_gp_parse(gp7_b4, strlen(gp7_b4)), 0, "a prefix mixing symbol and identifier bytes rejects the grammar");
     # No list in any grammar repeats an entry, and no word is in two words
     # rules (haskell `/=`, llvm `uwtable`, swift `import` / `associatedtype`
     # were, through 2.7.0).
@@ -4625,6 +4627,32 @@ fn main() {
     assert(_gp_parse(cc_ok0, strlen(cc_ok0)) != 0, "an inline heredoc with `repeat` and no `start` loads");
     var cc_ok1 = "[grammar]\nname = \"x\"\n[[rules]]\nkind = \"string\"\nmatch = \"heredoc\"\nstart = \"<<<\"\nindent_by = \"blanks\"\nindent_always = true\nterm_rest = true\ndelim = \"ident\"\nblanks = false\nindent = \"-~\"\n";
     assert(_gp_parse(cc_ok1, strlen(cc_ok1)) != 0, "a line heredoc with every option loads");
+
+
+    test_group("2.9.6 symbol-shaped string prefixes (ADR 0027)");
+    # C#'s verbatim strings are raw (no backslash escapes), interpolated
+    # ones plain; `@` and `$` stay operators where no quote follows.
+    var sp6 = _t_tokenize("var a = @\"C:\\dir\\\"; var b = $\"x {y}\\n\"; var c = $@\"p {q} \\\"; var d = @$\"r\"; var e = @class; var f = @\"say \"\"hi\"\"\"; var g = $ \"z\";\n", "csharp");
+    assert_eq(_t_kind_at(sp6, 8), TK_STRING, "csharp @\"C:\\dir\\\" ends at its own quote");
+    assert_eq(_t_len_at(sp6, 8), 10, "  ... its length");
+    assert_eq(_t_kind_at(sp6, 28), TK_STRING, "csharp $\"…\" interpolated, escapes as usual");
+    assert_eq(_t_len_at(sp6, 28), 10, "  ... its length");
+    assert_eq(_t_kind_at(sp6, 48), TK_STRING, "csharp $@\"…\" is verbatim");
+    assert_eq(_t_len_at(sp6, 48), 11, "  ... its length");
+    assert_eq(_t_kind_at(sp6, 69), TK_STRING, "csharp @$\"…\" is verbatim");
+    assert_eq(_t_len_at(sp6, 69), 5, "  ... its length");
+    assert_eq(_t_kind_at(sp6, 84), TK_OPERATOR, "csharp @class: @ stays an operator");
+    assert_eq(_t_len_at(sp6, 84), 1, "  ... its length");
+    assert_eq(_t_kind_at(sp6, 100), TK_STRING, "csharp @\"say \"\"hi\"\"\": a doubled quote splits it, as SQL\'s does");
+    assert_eq(_t_len_at(sp6, 100), 7, "  ... its length");
+    assert_eq(_t_kind_at(sp6, 123), TK_OPERATOR, "csharp `$ \"z\"`: no prefix across a blank");
+    assert_eq(_t_len_at(sp6, 123), 1, "  ... its length");
+    # Validation: a symbol-shaped prefix loads; one holding a quote, or
+    # mixing symbol and identifier bytes, does not.
+    var sp6_g1 = "[grammar]\nname = \"x\"\n[defaults]\nident_start = \"a-z\"\nident_cont = \"a-z\"\nraw_string_prefixes = [\"@\", \"$@\"]\n";
+    assert(_gp_parse(sp6_g1, strlen(sp6_g1)) != 0, "symbol-shaped string prefixes load");
+    var sp6_g2 = "[grammar]\nname = \"x\"\n[defaults]\nident_start = \"a-z\"\nident_cont = \"a-z\"\nstring_prefixes = [\"@\\\"\"]\n";
+    assert_eq(_gp_parse(sp6_g2, strlen(sp6_g2)), 0, "a prefix holding a quote rejects the grammar");
 
     return assert_summary();
 }

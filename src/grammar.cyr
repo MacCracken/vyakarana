@@ -54,8 +54,10 @@ var GRAMMAR_FILE_CAP = 32768;
 #  240  raw_string_prefixes Vec<cstr> — the same, with the string's escape off (ADR 0027)
 #  248  number_tuple_index  i64  (0/1) — a number right after a lone `.` takes no
 #                           fraction: Swift `t.0.1` is `t . 0 . 1` (ADR 0026, 2.9.3)
+#  256  sym_prefix_lead     ptr to char-class, or 0 — first bytes of the symbol-shaped
+#                           string prefixes: C#'s `@"…"`, `$"…"` (ADR 0027, 2.9.6)
 #  -----
-#  256 bytes total
+#  264 bytes total
 #
 # `extensions`, `filenames` and `shebangs` declare what
 # `src/detect.cyr` routes to this grammar. Detection does not read
@@ -64,7 +66,7 @@ var GRAMMAR_FILE_CAP = 32768;
 # (Fence-tag lookup does read `extensions` and `shebangs`:
 # `registry_find_fence_tag`, 2.9.1.)
 
-var GRAMMAR_SIZE = 256;
+var GRAMMAR_SIZE = 264;
 
 fn grammar_new() {
     var g = alloc(GRAMMAR_SIZE);
@@ -122,6 +124,7 @@ fn grammar_ident_lead(g)           { return load64(g + 224); }
 fn grammar_string_prefixes(g)      { return load64(g + 232); }
 fn grammar_raw_string_prefixes(g)  { return load64(g + 240); }
 fn grammar_number_tuple_index(g)   { return load64(g + 248); }
+fn grammar_sym_prefix_lead(g)      { return load64(g + 256); }
 
 # Here-document rule (ADR 0023): `start` opens it (`<<`); an optional
 # `indent` marker right after the start (`-` for `<<-`; several bytes
@@ -1085,6 +1088,30 @@ fn _gp_heredoc_opts_bad(mt, start, indent, acc) {
     return 0;
 }
 
+# A string prefix's shape (ADR 0027): 1 an identifier, 2 symbols — every
+# byte printable ASCII, not a quote or `\`, and in neither identifier
+# class (2.9.6) — 0 neither.
+fn _gp_prefix_shape(st, ct, pw) {
+    var n = strlen(pw);
+    if (char_class_match(st, load8(pw)) == 1) {
+        var pc = 1;
+        while (pc < n) {
+            if (char_class_match(ct, load8(pw + pc)) == 0) { return 0; }
+            pc = pc + 1;
+        }
+        return 1;
+    }
+    var k = 0;
+    while (k < n) {
+        var b = load8(pw + k);
+        if ((b <= 32) || (b >= 127)) { return 0; }
+        if ((b == 34) || (b == 39) || (b == 96) || (b == 92)) { return 0; }
+        if ((char_class_match(st, b) == 1) || (char_class_match(ct, b) == 1)) { return 0; }
+        k = k + 1;
+    }
+    return 2;
+}
+
 # Grammar-level checks once every key is read. Returns 1 if the
 # grammar is unusable (2.5.2 audit P2-4): the scanner reads
 # `ident_cont` whenever `ident_start` matches and reads both tables
@@ -1116,8 +1143,11 @@ fn _gp_validate(g) {
             lb = lb + 1;
         }
     }
-    # A string prefix is matched as a whole identifier (ADR 0027): one that
-    # is not identifier-shaped could never match, so reject it.
+    # A string prefix is matched as a whole identifier (ADR 0027), or —
+    # symbol-shaped (2.9.6) — as a run of bytes that can neither start nor
+    # continue one: C#'s `@`, `$`, `$@`. Anything else could never match,
+    # so reject it. The symbol prefixes' first bytes go in a table, so the
+    # scanner tries them only where one could begin.
     var pv = vec_new();
     vec_push(pv, grammar_string_prefixes(g));
     vec_push(pv, grammar_raw_string_prefixes(g));
@@ -1129,11 +1159,11 @@ fn _gp_validate(g) {
             var pw = vec_get(plist, pk);
             if (_gp_nonempty(pw) == 0) { return 1; }
             if ((st == 0) || (ct == 0)) { return 1; }
-            if (char_class_match(st, load8(pw)) == 0) { return 1; }
-            var pc = 1;
-            while (pc < strlen(pw)) {
-                if (char_class_match(ct, load8(pw + pc)) == 0) { return 1; }
-                pc = pc + 1;
+            var pshape = _gp_prefix_shape(st, ct, pw);
+            if (pshape == 0) { return 1; }
+            if (pshape == 2) {
+                if (load64(g + 256) == 0) { store64(g + 256, char_class_new(0)); }
+                store8(load64(g + 256) + load8(pw), 1);
             }
             pk = pk + 1;
         }

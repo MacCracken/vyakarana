@@ -656,6 +656,27 @@ fn _stream_max_marker(g) {
     if (grammar_char_literal(g) == 1) {
         if (DS_CHAR_LITERAL_MAX > best) { best = DS_CHAR_LITERAL_MAX; }
     }
+    # A symbol-shaped string prefix and its quote (2.9.6): `$@` arriving
+    # without its `"` is two operators, which must not commit.
+    var slt = grammar_sym_prefix_lead(g);
+    if (slt != 0) {
+        best = _stream_sym_marker(slt, grammar_string_prefixes(g), best);
+        best = _stream_sym_marker(slt, grammar_raw_string_prefixes(g), best);
+    }
+    return best;
+}
+
+# `best`, raised to cover each symbol-shaped prefix in `v` plus its quote.
+# (No allocation: this runs on every drain.)
+fn _stream_sym_marker(slt, v, best) {
+    var k = 0;
+    while (k < vec_len(v)) {
+        var w = vec_get(v, k);
+        if (char_class_match(slt, load8(w)) == 1) {
+            if (strlen(w) + 1 > best) { best = strlen(w) + 1; }
+        }
+        k = k + 1;
+    }
     return best;
 }
 
@@ -672,6 +693,12 @@ fn _stream_str_prefix(g, buf, t_start, t_len) {
     var rawv = grammar_raw_string_prefixes(g);
     var plv = grammar_string_prefixes(g);
     if ((vec_len(rawv) == 0) && (vec_len(plv) == 0)) { return 0; }
+    # A symbol-shaped prefix (C#'s `@"…"`, 2.9.6).
+    var spl = _ds_sym_prefix(g, buf, t_start + t_len, t_start);
+    if (spl > 0) {
+        _stream_pre_raw = _ds_sym_raw;
+        return spl;
+    }
     var st = grammar_ident_start(g);
     var ct = grammar_ident_cont(g);
     if ((st == 0) || (ct == 0) || (t_len < 2)) { return 0; }
