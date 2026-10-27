@@ -160,7 +160,7 @@ fn _t_route_ok(what, got, nm) {
 # without a spec entry fails there.
 var _t_diff_off = 0;    # top-level offset of the last mismatch found
 
-fn _t_grammar_spec() { return "svviittiiiiivvLPWiiiCFRHviiitvvit"; }
+fn _t_grammar_spec() { return "svviittiiiiivvLPWiiiCFRHviiitvvitiiv"; }
 
 fn _t_sub_spec(code) {
     if (code == 76) { return "isstt"; }   # L  LineRule
@@ -4052,17 +4052,20 @@ fn main() {
     assert_eq(_t_len_at(nl7_py, 13), 5, "python 1_000 is one number");
     assert_eq(_t_len_at(nl7_py, 21), 5, "python 0x_FF: the separator works in hex");
     assert_eq(_t_len_at(nl7_py, 29), 1, "1.max: a dot not followed by a digit stays a dot");
-    assert_eq(_t_len_at(nl7_py, 37), 1, "2j: the suffix stays an identifier");
+    # (2.9.7: python declares `j` / `J`, so `2j` is one number — ADR 0026.)
+    assert_eq(_t_len_at(nl7_py, 37), 2, "2j: an imaginary suffix joins the number (2.9.7)");
     var nl7_rs = _t_tokenize("let r = 0..10; t.0.1; 1_000u32; 2.5e10_f64;\n", "rust");
     assert_eq(_t_len_at(nl7_rs, 8), 1, "rust 0..10 stays a range");
     assert_eq(_t_len_at(nl7_rs, 17), 3, "rust t.0.1 lexes 0.1 as one float, as rustc does");
-    assert_eq(_t_len_at(nl7_rs, 22), 5, "rust 1_000u32: number then suffix");
-    assert_eq(_t_len_at(nl7_rs, 32), 6, "rust 2.5e10_f64: the `_f` is no separator");
+    # (2.9.7: rust declares its type suffixes, after one `_` at most.)
+    assert_eq(_t_len_at(nl7_rs, 22), 8, "rust 1_000u32: one number with its suffix (2.9.7)");
+    assert_eq(_t_len_at(nl7_rs, 32), 10, "rust 2.5e10_f64: the suffix after its `_` joins too (2.9.7)");
     var nl7_cpp = _t_tokenize("int x = 1'000'000; char c = 'a';\n", "cpp");
     assert_eq(_t_len_at(nl7_cpp, 8), 9, "c++ 1'000'000 is one number");
     assert_eq(_t_kind_at(nl7_cpp, 28), TK_STRING, "  ... and 'a' is still a char literal");
     var nl7_c = _t_tokenize("x = 1.; y = 1_000;\n", "c");
-    assert_eq(_t_len_at(nl7_c, 4), 1, "c 1. (trailing dot) is not a float (needs a digit)");
+    # (2.9.7: c opts in to `number_trail_dot`.)
+    assert_eq(_t_len_at(nl7_c, 4), 2, "c 1. is a trailing-dot float (2.9.7)");
     assert_eq(_t_len_at(nl7_c, 12), 1, "c has no `_` separator");
     var nl7_toml = _t_tokenize("d = 1979-05-27T07:32:00Z\ne = 1979-05-27 07:32:00\nt = 07:32:00.5\n", "toml");
     assert_eq(_t_len_at(nl7_toml, 4), 20, "toml offset datetime is one token");
@@ -4653,6 +4656,98 @@ fn main() {
     assert(_gp_parse(sp6_g1, strlen(sp6_g1)) != 0, "symbol-shaped string prefixes load");
     var sp6_g2 = "[grammar]\nname = \"x\"\n[defaults]\nident_start = \"a-z\"\nident_cont = \"a-z\"\nstring_prefixes = [\"@\\\"\"]\n";
     assert_eq(_gp_parse(sp6_g2, strlen(sp6_g2)), 0, "a prefix holding a quote rejects the grammar");
+
+
+    test_group("2.9.7 number shapes — leading / trailing dots, type suffixes (ADR 0026)");
+    var ns_c = _t_tokenize("x = .5 + 1. + 1.e5 + 10UL + 1.5f + .5f + 1.f + 0xFFu + a.b + t[0].5 + 1.x;\n", "c");
+    assert_eq(_t_kind_at(ns_c, 4), TK_NUMBER, "c .5 is a leading-dot float");
+    assert_eq(_t_len_at(ns_c, 4), 2, "  ... its length");
+    assert_eq(_t_kind_at(ns_c, 9), TK_NUMBER, "c 1. is a trailing-dot float");
+    assert_eq(_t_len_at(ns_c, 9), 2, "  ... its length");
+    assert_eq(_t_kind_at(ns_c, 14), TK_NUMBER, "c 1.e5: the exponent after a trailing dot");
+    assert_eq(_t_len_at(ns_c, 14), 4, "  ... its length");
+    assert_eq(_t_kind_at(ns_c, 21), TK_NUMBER, "c 10UL: the suffix joins");
+    assert_eq(_t_len_at(ns_c, 21), 4, "  ... its length");
+    assert_eq(_t_kind_at(ns_c, 28), TK_NUMBER, "c 1.5f");
+    assert_eq(_t_len_at(ns_c, 28), 4, "  ... its length");
+    assert_eq(_t_kind_at(ns_c, 35), TK_NUMBER, "c .5f");
+    assert_eq(_t_len_at(ns_c, 35), 3, "  ... its length");
+    assert_eq(_t_kind_at(ns_c, 41), TK_NUMBER, "c 1.f: a suffix after a trailing dot");
+    assert_eq(_t_len_at(ns_c, 41), 3, "  ... its length");
+    assert_eq(_t_kind_at(ns_c, 47), TK_NUMBER, "c 0xFFu: a suffix after hex digits");
+    assert_eq(_t_len_at(ns_c, 47), 5, "  ... its length");
+    assert_eq(_t_kind_at(ns_c, 65), TK_PUNCTUATION, "c t[0].5: no leading dot after a ]");
+    assert_eq(_t_len_at(ns_c, 65), 1, "  ... its length");
+    assert_eq(_t_kind_at(ns_c, 70), TK_NUMBER, "c 1.x: no trailing dot before an identifier");
+    assert_eq(_t_len_at(ns_c, 70), 1, "  ... its length");
+    var ns_rs = _t_tokenize("let a = 1u32 + 1_u32 + 2.5f64 + 0xFFu8 + 1. + 0..10 + 1.max(2) + t.0.1 + 1usizex;\n", "rust");
+    assert_eq(_t_kind_at(ns_rs, 8), TK_NUMBER, "rust 1u32");
+    assert_eq(_t_len_at(ns_rs, 8), 4, "  ... its length");
+    assert_eq(_t_kind_at(ns_rs, 15), TK_NUMBER, "rust 1_u32: one separator before the suffix");
+    assert_eq(_t_len_at(ns_rs, 15), 5, "  ... its length");
+    assert_eq(_t_kind_at(ns_rs, 23), TK_NUMBER, "rust 2.5f64");
+    assert_eq(_t_len_at(ns_rs, 23), 6, "  ... its length");
+    assert_eq(_t_kind_at(ns_rs, 32), TK_NUMBER, "rust 0xFFu8");
+    assert_eq(_t_len_at(ns_rs, 32), 6, "  ... its length");
+    assert_eq(_t_kind_at(ns_rs, 41), TK_NUMBER, "rust 1. is a float");
+    assert_eq(_t_len_at(ns_rs, 41), 2, "  ... its length");
+    assert_eq(_t_kind_at(ns_rs, 46), TK_NUMBER, "rust 0..10 stays a range");
+    assert_eq(_t_len_at(ns_rs, 46), 1, "  ... its length");
+    assert_eq(_t_kind_at(ns_rs, 54), TK_NUMBER, "rust 1.max stays a method call");
+    assert_eq(_t_len_at(ns_rs, 54), 1, "  ... its length");
+    assert_eq(_t_kind_at(ns_rs, 67), TK_NUMBER, "rust t.0.1 still lexes 0.1 whole");
+    assert_eq(_t_len_at(ns_rs, 67), 3, "  ... its length");
+    assert_eq(_t_kind_at(ns_rs, 73), TK_NUMBER, "rust 1usizex: not a suffix, so split");
+    assert_eq(_t_len_at(ns_rs, 73), 1, "  ... its length");
+    var ns_py = _t_tokenize("x = .5 + 1. + 2j + 1.5J + 1.j + 1..__add__ + x.real + 1if y else 2\n", "python");
+    assert_eq(_t_kind_at(ns_py, 4), TK_NUMBER, "python .5");
+    assert_eq(_t_len_at(ns_py, 4), 2, "  ... its length");
+    assert_eq(_t_kind_at(ns_py, 14), TK_NUMBER, "python 2j");
+    assert_eq(_t_len_at(ns_py, 14), 2, "  ... its length");
+    assert_eq(_t_kind_at(ns_py, 19), TK_NUMBER, "python 1.5J");
+    assert_eq(_t_len_at(ns_py, 19), 4, "  ... its length");
+    assert_eq(_t_kind_at(ns_py, 26), TK_NUMBER, "python 1.j");
+    assert_eq(_t_len_at(ns_py, 26), 3, "  ... its length");
+    assert_eq(_t_kind_at(ns_py, 54), TK_NUMBER, "python 1if: if is no suffix");
+    assert_eq(_t_len_at(ns_py, 54), 1, "  ... its length");
+    var ns_js = _t_tokenize("const b = 10n + .5 + 1. + 1.toFixed(2) + 1..toString() + x.5;\n", "javascript");
+    assert_eq(_t_kind_at(ns_js, 10), TK_NUMBER, "javascript 10n (BigInt)");
+    assert_eq(_t_len_at(ns_js, 10), 3, "  ... its length");
+    assert_eq(_t_kind_at(ns_js, 26), TK_NUMBER, "javascript 1.toFixed stays a call");
+    assert_eq(_t_len_at(ns_js, 26), 1, "  ... its length");
+    assert_eq(_t_kind_at(ns_js, 58), TK_PUNCTUATION, "javascript x.5: no leading dot after an identifier");
+    assert_eq(_t_len_at(ns_js, 58), 1, "  ... its length");
+    var ns_css = _t_tokenize("a { opacity: .5; margin: -.5em 1.5px; }\n.x5 { }\n", "css");
+    assert_eq(_t_kind_at(ns_css, 13), TK_NUMBER, "css opacity: .5");
+    assert_eq(_t_len_at(ns_css, 13), 2, "  ... its length");
+    assert_eq(_t_kind_at(ns_css, 26), TK_NUMBER, "css -.5em: the - is a sign, not an identifier byte");
+    assert_eq(_t_len_at(ns_css, 26), 2, "  ... its length");
+    assert_eq(_t_kind_at(ns_css, 40), TK_PUNCTUATION, "css .x5 stays a class selector");
+    assert_eq(_t_len_at(ns_css, 40), 1, "  ... its length");
+    var ns_ml = _t_tokenize("x = 1. +. 2.5 +. 1.e3 in let n = 10L and m = 3l\n", "ocaml");
+    assert_eq(_t_kind_at(ns_ml, 4), TK_NUMBER, "ocaml 1.");
+    assert_eq(_t_len_at(ns_ml, 4), 2, "  ... its length");
+    assert_eq(_t_kind_at(ns_ml, 17), TK_NUMBER, "ocaml 1.e3");
+    assert_eq(_t_len_at(ns_ml, 17), 4, "  ... its length");
+    assert_eq(_t_kind_at(ns_ml, 33), TK_NUMBER, "ocaml 10L (int64)");
+    assert_eq(_t_len_at(ns_ml, 33), 3, "  ... its length");
+    var ns_ps = _t_tokenize("$x = -.5 + (.25) * $y.5\nGet-Item -Path .\\a.ps1\n", "powershell");
+    assert_eq(_t_kind_at(ns_ps, 6), TK_NUMBER, "powershell -.5: the - is a sign");
+    assert_eq(_t_len_at(ns_ps, 6), 2, "  ... its length");
+    assert_eq(_t_kind_at(ns_ps, 21), TK_PUNCTUATION, "powershell $y.5: no leading dot after an identifier");
+    assert_eq(_t_len_at(ns_ps, 21), 1, "  ... its length");
+    # Validation: the dot keys need floats, suffixes decimal numbers and
+    # an identifier's shape.
+    var ns_g1 = "[grammar]\nname = \"x\"\n[defaults]\nnumber_decimal = true\nnumber_lead_dot = true\n";
+    assert_eq(_gp_parse(ns_g1, strlen(ns_g1)), 0, "number_lead_dot without number_float rejects the grammar");
+    var ns_g2 = "[grammar]\nname = \"x\"\n[defaults]\nnumber_decimal = true\nnumber_trail_dot = true\n";
+    assert_eq(_gp_parse(ns_g2, strlen(ns_g2)), 0, "number_trail_dot without number_float rejects the grammar");
+    var ns_g3 = "[grammar]\nname = \"x\"\n[defaults]\nident_start = \"a-z\"\nident_cont = \"a-z\"\nnumber_decimal = true\nnumber_suffixes = [\"_u\"]\n";
+    assert_eq(_gp_parse(ns_g3, strlen(ns_g3)), 0, "a suffix that is not an identifier rejects the grammar");
+    var ns_g4 = "[grammar]\nname = \"x\"\n[defaults]\nident_start = \"a-z\"\nident_cont = \"a-z\"\nnumber_suffixes = [\"u\"]\n";
+    assert_eq(_gp_parse(ns_g4, strlen(ns_g4)), 0, "number_suffixes without decimal numbers rejects the grammar");
+    var ns_g5 = "[grammar]\nname = \"x\"\n[defaults]\nident_start = \"a-z\"\nident_cont = \"a-z\"\nnumber_decimal = true\nnumber_float = true\nnumber_lead_dot = true\nnumber_trail_dot = true\nnumber_suffixes = [\"u\", \"ul\"]\n";
+    assert(_gp_parse(ns_g5, strlen(ns_g5)) != 0, "the three keys together load");
 
     return assert_summary();
 }

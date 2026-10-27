@@ -31,7 +31,7 @@
 #     shape gap as Lua's `[==[…]==]`, Ruby/PHP heredocs, Swift
 #     raw strings.
 #   - `1_000_000` and floats (`1.5`, `1e5`) are one number since
-#     2.7.0 (ADR 0026); OCaml's trailing-dot float `1.` still splits.
+#     2.7.0 (ADR 0026); the trailing-dot `1.` and `10L` since 2.9.7.
 
 [grammar]
 name = "ocaml"
@@ -49,6 +49,9 @@ number_0x      = true
 number_0b      = true
 number_0o      = true
 number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
+number_trail_dot = true   # `1.`, `1.e5`; `1..2` and `1.max` stay split (2.9.7)
+# Type suffixes join the literal: int32 `1l`, int64 `1L`, nativeint `1n` (2.9.7).
+number_suffixes = ["l", "L", "n"]
 number_separator = "_"    # `1_000` (ADR 0026)
 
 special_vars = false

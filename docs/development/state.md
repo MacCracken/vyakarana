@@ -8,14 +8,14 @@
 > 2.6.2 it carried a "What X changed" block for every release back to
 > 1.13.0 — trimmed in 2.7.0; the CHANGELOG has all of it.)
 >
-> **Last refresh:** 2026-10-27, at 2.9.6. Read this first, then run the
+> **Last refresh:** 2026-10-27, at 2.9.7. Read this first, then run the
 > gates (CLAUDE.md §Gates) — do not take the "green" below on trust.
 
 ---
 
 ## Current status
 
-- **Version:** `2.9.6` — `VERSION`, `src/version_str.cyr`,
+- **Version:** `2.9.7` — `VERSION`, `src/version_str.cyr`,
   `dist/vyakarana.cyr`, the CHANGELOG header and `docs/man/vyk.1`
   agree.
 - **Toolchain pin:** `cyrius = "6.7.18"` in `cyrius.cyml`, the single
@@ -41,21 +41,21 @@
   of four stdlib leaves (alloc, string, vec, io). The embedded grammars
   are compacted — comments and blanks outside strings dropped — by a
   POSIX sh + awk generator (ADR 0029); `grammars/` is the readable copy.
-- **Size:** the shipped (`CYRIUS_DCE=1`) `vyk` is 283,128 bytes against a
+- **Size:** the shipped (`CYRIUS_DCE=1`) `vyk` is 288,808 bytes against a
   307,200-byte budget that `scripts/check-size.sh` enforces in CI and at
-  release (ADR 0029); the default build is 373,240.
-- **Next release:** 2.9.7, number shapes — the fifth of the 2.9.x arc,
-  which runs to incremental retokenization at 2.9.11 and a closeout
-  audit at 2.9.12 ([roadmap](./roadmap.md)). The last audit's report:
+  release (ADR 0029); the default build is 383,016.
+- **Next release:** 2.9.8, detection for consumers — the sixth of the
+  2.9.x arc, which runs to incremental retokenization at 2.9.11 and a
+  closeout audit at 2.9.12 ([roadmap](./roadmap.md)). The last audit's report:
   [2.9.x](../audit/2026-10-21-2.9.x-closeout-audit.md).
 
-## Gates (green at 2.9.6, 2026-10-27)
+## Gates (green at 2.9.7, 2026-10-27)
 
-- `cyrius build` OK, 0 warnings · `cyrius test` **1240/1240** · smoke
+- `cyrius build` OK, 0 warnings · `cyrius test` **1315/1315** · smoke
   OK (it runs `scripts/check-detect.sh`) · `scripts/lint-fmt.sh`
   exit 0 (a lint warning fails it; covers `src/` and
   `scripts/audit/`) · `scripts/check-size.sh` OK · `cyrius fuzz`
-  **5/5** (71 every-offset shapes), also clean under `--poison=ab` and
+  **5/5** (79 every-offset shapes), also clean under `--poison=ab` and
   `--bounds` · `cyrius distlib --check` clean.
 - The audit sweeps are in `scripts/audit/` — real-file coverage,
   poison A/B, streaming invariance, mutation fuzz over vidya — with
@@ -85,7 +85,8 @@
   `blanks`); line rules may also require or forbid a next
   byte (`followed_by` / `not_followed_by`, ADR 0027). `[defaults]`
   includes `number_float`, `number_separator`, `number_datetime`,
-  `number_tuple_index` (ADR 0026), `string_prefixes` / `raw_string_prefixes`
+  `number_tuple_index`, `number_lead_dot`, `number_trail_dot`,
+  `number_suffixes` (ADR 0026), `string_prefixes` / `raw_string_prefixes`
   (identifier- or symbol-shaped) and
   `ident_lead` (ADR 0027). `extensions` / `filenames` / `shebangs`
   declare detection (ADR 0025).
@@ -125,9 +126,10 @@
 
 Each names the 2.9.x arc release that takes it on ([roadmap](./roadmap.md)).
 
-- **Numbers:** a leading- or trailing-dot float (`.5`, `1.`), hex
-  floats and every suffix (`1.5f`, `2j`, `1u32`) split (ADR 0026) —
-  2.9.7.
+- **Numbers** (ADR 0026): hex floats, CSS units (`10px` is number +
+  ident), C++ user-defined literals (`10ms`) and PowerShell multipliers
+  (`10kb`) split; so does a trailing dot before another `.`
+  (`1..__add__`). Not scheduled.
 - **String prefixes** are declared per grammar, identifier- or
   symbol-shaped (ADR 0027): Julia string macros other than Base's `raw`
   / `r` / `b` / `v` are not declared (prefix + string); a C# verbatim

@@ -37,8 +37,8 @@
 #
 # Known gaps (not triggered by the stand-in):
 #   - Floats (`1.5rem`, `0.25`) are number + unit since 2.7.0
-#     (`number_float`, ADR 0026). A leading-dot `.5em` still
-#     splits — `.` also starts class selectors.
+#     (`number_float`, ADR 0026), and leading-dot `.5em` since 2.9.7
+#     (`number_lead_dot`; `.x5` is still a class selector).
 #   - URL functions `url(...)` body parsing. `url` is just an
 #     ident; the `(...)` body tokenizes as nested
 #     punctuation + string.
@@ -65,6 +65,7 @@ number_0x      = false
 number_0b      = false
 number_0o      = false
 number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
+number_lead_dot = true    # `.5` (ADR 0026, 2.9.7)
 
 special_vars = false
 unicode_ident = true

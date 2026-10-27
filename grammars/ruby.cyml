@@ -63,6 +63,8 @@ number_0x      = true
 number_0b      = true
 number_0o      = true
 number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
+# Type suffixes join the literal: rational `2r`, imaginary `3i` (2.9.7).
+number_suffixes = ["r", "i", "ri"]
 number_separator = "_"    # `1_000` (ADR 0026)
 
 special_vars = false

@@ -47,6 +47,8 @@ number_0x      = true
 number_0b      = false
 number_0o      = false
 number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
+number_lead_dot = true    # `.5` (ADR 0026, 2.9.7)
+number_trail_dot = true   # `1.`, `1.e5`; `1..2` and `1.max` stay split (2.9.7)
 
 special_vars = false
 unicode_ident = true

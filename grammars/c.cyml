@@ -36,6 +36,10 @@ number_0x      = true
 number_0b      = false
 number_0o      = false
 number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
+number_lead_dot = true    # `.5` (ADR 0026, 2.9.7)
+number_trail_dot = true   # `1.`, `1.e5`; `1..2` and `1.max` stay split (2.9.7)
+# Type suffixes join the literal: `10u`, `10UL`, `1.5f` — C's integer and float suffixes (2.9.7).
+number_suffixes = ["u", "U", "l", "L", "ll", "LL", "ul", "lu", "uL", "Lu", "ull", "llu", "uLL", "LLu", "Ul", "lU", "UL", "LU", "Ull", "llU", "ULL", "LLU", "f", "F"]
 # `L"wide"`, `u8"…"`, `u'x'` join their prefix (2.7.1, ADR 0027).
 string_prefixes = ["L", "u", "U", "u8"]
 

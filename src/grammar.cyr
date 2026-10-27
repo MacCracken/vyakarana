@@ -56,8 +56,12 @@ var GRAMMAR_FILE_CAP = 32768;
 #                           fraction: Swift `t.0.1` is `t . 0 . 1` (ADR 0026, 2.9.3)
 #  256  sym_prefix_lead     ptr to char-class, or 0 — first bytes of the symbol-shaped
 #                           string prefixes: C#'s `@"…"`, `$"…"` (ADR 0027, 2.9.6)
+#  264  number_lead_dot     i64  (0/1) — `.5` is a number (ADR 0026, 2.9.7)
+#  272  number_trail_dot    i64  (0/1) — `1.` is a number (ADR 0026, 2.9.7)
+#  280  number_suffixes     Vec<cstr> — identifiers that join a number right after
+#                           it: `10L`, `1.5f`, `2j`, `1u32` (ADR 0026, 2.9.7)
 #  -----
-#  264 bytes total
+#  288 bytes total
 #
 # `extensions`, `filenames` and `shebangs` declare what
 # `src/detect.cyr` routes to this grammar. Detection does not read
@@ -66,7 +70,7 @@ var GRAMMAR_FILE_CAP = 32768;
 # (Fence-tag lookup does read `extensions` and `shebangs`:
 # `registry_find_fence_tag`, 2.9.1.)
 
-var GRAMMAR_SIZE = 264;
+var GRAMMAR_SIZE = 288;
 
 fn grammar_new() {
     var g = alloc(GRAMMAR_SIZE);
@@ -89,6 +93,7 @@ fn grammar_new() {
     store64(g + 192, vec_new());   # filenames (2.6.2)
     store64(g + 232, vec_new());   # string_prefixes (2.7.1)
     store64(g + 240, vec_new());   # raw_string_prefixes (2.7.1)
+    store64(g + 280, vec_new());   # number_suffixes (2.9.7)
     return g;
 }
 
@@ -125,6 +130,9 @@ fn grammar_string_prefixes(g)      { return load64(g + 232); }
 fn grammar_raw_string_prefixes(g)  { return load64(g + 240); }
 fn grammar_number_tuple_index(g)   { return load64(g + 248); }
 fn grammar_sym_prefix_lead(g)      { return load64(g + 256); }
+fn grammar_number_lead_dot(g)      { return load64(g + 264); }
+fn grammar_number_trail_dot(g)     { return load64(g + 272); }
+fn grammar_number_suffixes(g)      { return load64(g + 280); }
 
 # Here-document rule (ADR 0023): `start` opens it (`<<`); an optional
 # `indent` marker right after the start (`-` for `<<-`; several bytes
@@ -598,6 +606,20 @@ fn _gp_apply_kv(g, current_rule, section, buf, len, key_pos, key_len, value_pos)
         if (_gp_slice_eq(buf, key_pos, key_len, "number_float") == 1) {
             _gp_parse_bool(buf, len, value_pos, out_bool_slot);
             store64(g + 200, load64(out_bool_slot));
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "number_lead_dot") == 1) {
+            _gp_parse_bool(buf, len, value_pos, out_bool_slot);
+            store64(g + 264, load64(out_bool_slot));
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "number_trail_dot") == 1) {
+            _gp_parse_bool(buf, len, value_pos, out_bool_slot);
+            store64(g + 272, load64(out_bool_slot));
+            return 0;
+        }
+        if (_gp_slice_eq(buf, key_pos, key_len, "number_suffixes") == 1) {
+            _gp_parse_string_array(buf, len, value_pos, grammar_number_suffixes(g));
             return 0;
         }
         if (_gp_slice_eq(buf, key_pos, key_len, "number_tuple_index") == 1) {
@@ -1126,9 +1148,23 @@ fn _gp_validate(g) {
     # Keys that would be accepted and then do nothing (2.9.1 audit,
     # reviewer C): a float or datetime shape without decimal numbers, a
     # tuple index without floats (2.9.3), a lead byte that `ident_start`
-    # does not hold.
+    # does not hold — and the 2.9.7 number keys below.
     if ((grammar_number_decimal(g) == 0) && (grammar_number_float(g) == 1)) { return 1; }
     if ((grammar_number_float(g) == 0) && (grammar_number_tuple_index(g) == 1)) { return 1; }
+    # 2.9.7: lead / trailing dots without floats, suffixes without decimal
+    # numbers; a suffix must be an identifier (it is matched as one).
+    if ((grammar_number_float(g) == 0) && (grammar_number_lead_dot(g) == 1)) { return 1; }
+    if ((grammar_number_float(g) == 0) && (grammar_number_trail_dot(g) == 1)) { return 1; }
+    var nsx = grammar_number_suffixes(g);
+    if ((vec_len(nsx) > 0) && (grammar_number_decimal(g) == 0)) { return 1; }
+    var nsk = 0;
+    while (nsk < vec_len(nsx)) {
+        var nsw = vec_get(nsx, nsk);
+        if (_gp_nonempty(nsw) == 0) { return 1; }
+        if ((grammar_ident_start(g) == 0) || (grammar_ident_cont(g) == 0)) { return 1; }
+        if (_gp_prefix_shape(grammar_ident_start(g), grammar_ident_cont(g), nsw) != 1) { return 1; }
+        nsk = nsk + 1;
+    }
     if ((grammar_number_decimal(g) == 0) && (grammar_number_datetime(g) == 1)) { return 1; }
     var st = grammar_ident_start(g);
     var ct = grammar_ident_cont(g);

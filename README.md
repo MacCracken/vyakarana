@@ -139,6 +139,11 @@ was removed in 2.0.0 (ADR 0017).
 
 ## Status
 
+**2.9.7** (2026-10-27) — number shapes: `.5` and `1.` are floats where
+the language has them, and type suffixes are part of the literal
+(`10UL`, `1.5f`, `1u32`, `2j`, `10n`), while ranges (`0..10`) and method
+calls (`1.max`) stay split. 1315/1315 tests.
+
 **2.9.6** (2026-10-27) — C# verbatim and interpolated strings (`@"…"`,
 `$"…"`, `$@"…"`) are one string token each, and a verbatim
 `@"C:\dir\"` ends at its own quote. CI and release run on Ubuntu 26.04

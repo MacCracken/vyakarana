@@ -547,7 +547,8 @@ fn _stream_run_class(g, buf, t_kind, t_start, t_len) {
 # Bytes past a NUMBER token's end that can still extend it (ADR 0026):
 # a separator + digit (2), `e` + sign + digit (3), and for datetimes the
 # longest step — `-MM-DD` after `YYYY`, `THH:MM` after a date, an
-# `+HH:MM` offset (6). Zero for a grammar with none of the three, which
+# `+HH:MM` offset (6); since 2.9.7 a trailing dot's `.e+5` (4) and a
+# type suffix (below). Zero for a grammar with none of these, which
 # keeps every pre-2.7.0 grammar's drain unchanged. Without it, `1.` at
 # the end of a feed committed `1` and the next feed's `5` became a
 # second number — a plain number token ends before the buffer does, so
@@ -556,7 +557,20 @@ fn _stream_num_lookahead(g) {
     var la = 0;
     if (grammar_number_sep(g) > 0) { la = 2; }
     if (grammar_number_float(g) == 1) { la = 3; }
+    # A trailing dot and its exponent, `.e+5` (2.9.7).
+    if (grammar_number_trail_dot(g) == 1) { la = 4; }
     if (grammar_number_datetime(g) == 1) { la = 6; }
+    # A suffix (2.9.7): a separator, the longest suffix, and the byte that
+    # shows it ends there (`1_u32` vs `1_u32x`) — after a trailing dot, one
+    # more.
+    var sv = grammar_number_suffixes(g);
+    var sk = 0;
+    while (sk < vec_len(sv)) {
+        var sl = strlen(vec_get(sv, sk)) + 2;
+        if (grammar_number_trail_dot(g) == 1) { sl = sl + 1; }
+        if (sl > la) { la = sl; }
+        sk = sk + 1;
+    }
     return la;
 }
 

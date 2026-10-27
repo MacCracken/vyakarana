@@ -119,3 +119,35 @@ none of the three, so their drains are unchanged.
   the number step.
 - Numeric suffixes as part of the number, if a theme wants `1.5f`
   coloured as one literal: a per-grammar suffix set, not a regex.
+
+## Amendment 2.9.7 — dots and type suffixes
+
+The "out of scope, so still split" shapes of the Decision, as three more
+keys:
+
+- **`number_lead_dot = true`** — `.5`, `.5e3`: a `.` a digit follows
+  starts a number unless the byte before it could end an operand — a
+  letter, digit, `_`, non-ASCII identifier byte, identifier-start byte
+  (less `ident_lead` ones, so CSS's `-.5em` is a sign and a number), `.`,
+  closing bracket or quote. `x.5`, `a..5`, `t[0].5` stay split; one byte
+  back, as streaming already keeps.
+- **`number_trail_dot = true`** — `1.`, `1.e5`, C's `1.f`: the `.` after a
+  decimal run joins it unless the next byte is a `.` (`1..2`), a digit (a
+  fraction) or an identifier that is neither an exponent nor a declared
+  suffix (`1.max`).
+- **`number_suffixes = [...]`** — identifiers that join the literal right
+  after it, in any base, after one digit separator at most: `10UL`,
+  `1.5f`, `1e5f`, `0xFFu8`, `1_u32`, `2j`, `10n`. Only an exact entry
+  joins (`10px`, `1usizex` stay split); an entry must be an identifier.
+
+The keys need `number_float` (the dots) or `number_decimal` (suffixes),
+else the grammar is rejected. Opted in — lead: c, cpp, csharp, java,
+javascript, typescript, python, kotlin, go, php, lua, julia, sql, css,
+scss, powershell; trail: c, cpp, java, javascript, typescript, python,
+go, php, lua, ocaml, rust, sql; suffixes: c, cpp, csharp, java, kotlin,
+javascript, typescript, python, rust, go, ruby, crystal, ocaml. A number
+now commits after up to four bytes for `.e+5`, or the longest suffix plus
+two (its separator and the byte that ends it). Not done: hex floats, CSS
+units, C++ user-defined literals, PowerShell multipliers (`10kb`), and a
+trailing dot before another `.` — `1..__add__` reads `1` `.` `.`, as it
+must for a range.

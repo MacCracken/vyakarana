@@ -14,7 +14,7 @@
 #
 # Known gaps for future ADRs (not triggered by the vidya sample):
 #   - `1_000_000` and floats are one number since 2.7.0 (ADR 0026);
-#     imaginary suffixes (`2i`) are number + ident.
+#     `.5`, `1.` and imaginary `2i` since 2.9.7.
 #   - Predeclared identifiers (`true`, `false`, `nil`, `iota`,
 #     `len`, `cap`, `make`, `new`, `append`, `panic`, …) tokenize
 #     as `ident`, not `keyword`. Same call as ADR 0004 for shell
@@ -37,6 +37,10 @@ number_0x      = true
 number_0b      = true
 number_0o      = true
 number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
+number_lead_dot = true    # `.5` (ADR 0026, 2.9.7)
+number_trail_dot = true   # `1.`, `1.e5`; `1..2` and `1.max` stay split (2.9.7)
+# Type suffixes join the literal: imaginary `2i` (2.9.7).
+number_suffixes = ["i"]
 number_separator = "_"    # `1_000` (ADR 0026)
 
 special_vars = false

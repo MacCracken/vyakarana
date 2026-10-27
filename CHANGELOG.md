@@ -4,6 +4,69 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.9.7] — 2026-10-27
+
+**Number shapes** (roadmap 2.9.7), the fifth of the 2.9.x arc — an ADR 0026
+amendment. Token output changes only inside numbers: over 2.9.4's
+7,527-file sample, 189 files change — every new token a number (CSS `.7`
+×1,081 and its HTML-embedded copies, Rust `100u32` / `4usize` / `0.0_f32`,
+Python `0.` / `1j`, C and C++ `0u` / `1UL` / `1.0f` / `0xDEADBEEFULL`,
+TypeScript `0x40_0000n`, …) — with no exit code or error count changed.
+In the corpora, Java's, Kotlin's and C#'s `3L`-style longs. 1315/1315 tests
+(75 new), fuzz 5/5 with eight new every-offset shapes (also under
+`--poison=ab` and `--bounds`), lint+fmt exit 0, `cyrius distlib --check`
+clean. `vyk` 373,240 → 383,016 bytes; the shipped DCE build 283,128 →
+288,808, 18,392 under the budget — of its `.text` growth (+7,682), 1,842
+bytes are the grammars' new keys (mostly suffix lists), the rest code.
+
+### Added
+
+- **Leading-dot floats** — `number_lead_dot`: `.5`, `.5e3`, `.5f`, unless
+  the byte before the `.` could end an operand (a letter, digit, `_`,
+  identifier-start byte other than an `ident_lead` one, `.`, closing
+  bracket or quote): `x.5`, `a..5`, `t[0].5` stay split, CSS's `-.5em` and
+  PowerShell's `-.5` are a sign and a number. c, cpp, csharp, java,
+  javascript, typescript, python, kotlin, go, php, lua, julia, sql, css,
+  scss, powershell.
+- **Trailing-dot floats** — `number_trail_dot`: `1.`, `1.e5`, `1.f`; not
+  before another `.` (`0..10`) or an identifier that is neither an
+  exponent nor a suffix (`1.max`, `1.toFixed`). c, cpp, java, javascript,
+  typescript, python, go, php, lua, ocaml, rust, sql.
+- **Type suffixes** — `number_suffixes`: an exact entry right after the
+  literal, in any base, after one digit separator at most, joins it —
+  `10UL`, `1.5f`, `1e5f`, `0xFFu8`, `1_u32`, `2.5f64`, `2j`, `10n`, `2i`,
+  `3r`, `1L`. `10px`, `1usizex`, `1if` stay split. c, cpp (with C++23's
+  `uz` / `f16` …), csharp, java, kotlin, javascript, typescript (BigInt),
+  python (imaginary), rust, go, ruby, crystal, ocaml.
+- The loader rejects the dot keys without `number_float`, suffixes without
+  `number_decimal`, and a suffix that is not an identifier. The `Grammar`
+  record grows 264 → 288 bytes.
+
+### Changed
+
+- **Streaming:** a number now commits only once the bytes that could still
+  extend it have arrived — four for a trailing dot's `.e+5`, and the
+  longest suffix plus two (its separator, and the byte that shows it ends
+  there). A leading dot looks one byte back, as `start_after` does.
+- **Four 2.7.0 tests** asserted the old reading (`2j` and Rust's `u32` as
+  identifiers, C's `1.` not a float); they assert the new one.
+
+### Tests
+
+- A `2.9.7 number shapes` group, 75 assertions (c, rust, python,
+  javascript, css, ocaml, powershell, and validation); against 2.9.6's
+  sources 38 fail, beside the four record checks.
+- `fuzz/chunk_invariance.fcyr`: eight every-offset shapes. With 2.9.6's
+  number lookahead, Python's (a 3-byte marker window: no char literals)
+  fails 4 times on `1.e+5`; the others are held by their grammars' wider
+  windows either way.
+- Sweeps: `coverage-sweep.sh` over the 7,527 files, 0 fails (23 have
+  error tokens, as at 2.9.6); `stream-sweep.sh` over the 189 changed
+  files, 567 runs, and its fixed set, 164 runs — 0 fails.
+- 1 MiB of dense literals at 64-byte chunks (harness `cutfirst`), 2.9.6 →
+  2.9.7: c 983 → 1,009 ms, rust 880 → 908, python 1,127 → 1,134 — the
+  per-chunk drain dominates; the lookahead costs nothing visible.
+
 ## [2.9.6] — 2026-10-27
 
 **Non-identifier string prefixes** (roadmap 2.9.6), the fourth of the 2.9.x

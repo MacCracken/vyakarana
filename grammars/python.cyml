@@ -43,6 +43,10 @@ number_0x      = true
 number_0b      = true
 number_0o      = true
 number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
+number_lead_dot = true    # `.5` (ADR 0026, 2.9.7)
+number_trail_dot = true   # `1.`, `1.e5`; `1..2` and `1.max` stay split (2.9.7)
+# Type suffixes join the literal: imaginary `2j` (2.9.7).
+number_suffixes = ["j", "J"]
 number_separator = "_"    # `1_000` (ADR 0026)
 # f / r / b / u prefixes, any case, join the string (2.7.1, ADR 0027);
 # so do 3.14's template strings, `t` and the raw `tr` / `rt` (PEP 750,

@@ -381,6 +381,18 @@ fn _ci_main() {
     if (_ci_every("cpp", "auto a = R\"(x \"y\" \\n)\";\nauto b = R\"d(a )\" b)d\";\nauto c = u8R\"(z)\"; auto R = 1;\n") != 0) { rc = 1; }
     if (_ci_every("ruby", "a = <<~EOS.strip\n  it\'s # not\n  EOS\nb = x << y\nclass << self\nend\nputs(<<-A, <<B)\n  one\n  A\ntwo\nB\nc = d <<e\n") != 0) { rc = 1; }
     if (_ci_every("php", "<?php\n$a = <<<EOT\n  it\'s $x\n  EOT;\n$b = <<<\'N\'\nraw\nN . \"z\";\n$c = 1 << 2;\n") != 0) { rc = 1; }
+    # 2.9.7 (ADR 0026): leading / trailing dots and type suffixes — a
+    # number the next bytes can still extend must not commit early.
+    if (_ci_every("c", "x = .5 + 1. + 1.e5 + 10UL + 1.5f + .5f + 1.f + 0xFFu + a.b + t[0].5 + 1.x + 1..2;\n") != 0) { rc = 1; }
+    if (_ci_every("rust", "let a = 1u32 + 1_u32 + 2.5f64 + 0xFFu8 + 1. + 0..10 + 1.max(2) + t.0.1 + 1usizex + 7usize;\n") != 0) { rc = 1; }
+    if (_ci_every("python", "x = .5 + 1. + 2j + 1.5J + 1.j + x.real + 1if y else 2\n") != 0) { rc = 1; }
+    if (_ci_every("javascript", "const b = 10n + .5 + 1. + 1.toFixed(2) + x.5;\n") != 0) { rc = 1; }
+    if (_ci_every("css", "a { opacity: .5; margin: -.5em 1.5px; }\n.x5 { }\n") != 0) { rc = 1; }
+    if (_ci_every("ocaml", "x = 1. +. 2.5 +. 1.e3 in let n = 10L and m = 3l\n") != 0) { rc = 1; }
+    if (_ci_every("powershell", "$x = -.5 + (.25) * $y.5\n") != 0) { rc = 1; }
+    # Python's marker window is 3 bytes (no char literals), so only the
+    # number lookahead holds `1.` until `.e+5` has all arrived.
+    if (_ci_every("python", "y = 1.e+5 + 2.E-3 + 3.j + 4.\n") != 0) { rc = 1; }
     # 2.9.6 (ADR 0027): symbol-shaped string prefixes — C#'s verbatim
     # strings end at their quote however they are split, a backslash
     # before a line break included.

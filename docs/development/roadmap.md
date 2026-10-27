@@ -42,13 +42,6 @@ a closeout audit at the end. Each entry ships only when the gates are
 green and, where it adds a gate, that gate is shown to fail on the
 release before.
 
-### 2.9.7 — Number shapes *(patch)*
-
-- Leading- and trailing-dot floats (`.5`, `1.`) where the language has
-  them, and type suffixes as part of the literal (`1.5f`, `10L`, `2j`,
-  `1u32`, `1e5f`) — per-grammar `[defaults]` keys, an ADR 0026
-  extension. Ranges (`0..10`) and member access (`1.max`) stay split.
-
 ### 2.9.8 — Detection for consumers *(patch)*
 
 - `detect_language_registered(path)` — an additive public function that

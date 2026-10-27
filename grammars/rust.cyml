@@ -18,10 +18,10 @@
 #   - (Not a gap since 2.9.5: raw strings with hashes, `r#"..."#`,
 #     `br##"..."##`, are one string token — ADR 0030. `r"..."`, `b"..."`,
 #     `br"..."`, `c"..."` and byte chars `b'x'` are since 2.7.1, ADR 0027.)
-#   - Numeric literal suffixes (`42u32`, `42_u32`, `3.14_f64`) are
-#     number + ident: a `_` joins a number only before a digit.
-#     Floats and `1_000` are one number since 2.7.0 (ADR 0026);
-#     `t.0.1` lexes `0.1` as one float, exactly as rustc does.
+#   - (Not a gap since 2.9.7: suffixes `42u32`, `42_u32`, `3.14_f64` and
+#     the trailing-dot `1.` join the number, ADR 0026.) Floats and
+#     `1_000` are one number since 2.7.0; `t.0.1` lexes `0.1` as one
+#     float, exactly as rustc does.
 
 [grammar]
 name = "rust"
@@ -43,6 +43,9 @@ number_0x      = true
 number_0b      = true
 number_0o      = true
 number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
+number_trail_dot = true   # `1.`, `1.e5`; `1..2` and `1.max` stay split (2.9.7)
+# Type suffixes join the literal: `1u32`, `1_u32`, `2.5f64` (2.9.7).
+number_suffixes = ["u8", "u16", "u32", "u64", "u128", "usize", "i8", "i16", "i32", "i64", "i128", "isize", "f32", "f64"]
 number_separator = "_"    # `1_000` (ADR 0026)
 # `b"…"` / `b'\n'` / `c"…"` join their prefix; `r"…"` raw strings end at
 # their quote with no escapes. `r#"…"#` is still split (2.7.1, ADR 0027).

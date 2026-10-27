@@ -29,8 +29,8 @@
 #     ends the string early (holes are not re-tokenized, ADR 0003).
 #   - Raw string literals `"""…"""` (C# 11+): the `"""` pair rule is not
 #     declared; they tokenize as strings split at each `""`.
-#   - Numeric suffixes (`42L`, `1.5m`) are number + ident. Floats
-#     and `1_000_000` are one number since 2.7.0 (ADR 0026).
+#   - (Not a gap since 2.9.7: numeric suffixes, `42L`, `1.5m`, join the
+#     number; floats and `1_000_000` are one since 2.7.0, ADR 0026.)
 #   - Pattern-matching in switch expressions: `is`, `not`, `and`,
 #     `or` patterns. Only `is` is in the keyword list; `not` /
 #     `and` / `or` are contextual and tokenize as plain idents.
@@ -52,6 +52,9 @@ number_0x      = true
 number_0b      = true
 number_0o      = false
 number_float   = true      # `1.5`, `1e5`, `2.5e-3` as one number (ADR 0026)
+number_lead_dot = true    # `.5` (ADR 0026, 2.9.7)
+# Type suffixes join the literal: `10UL`, `1.5f`, `2.5m` (2.9.7).
+number_suffixes = ["u", "U", "l", "L", "ul", "uL", "Ul", "UL", "lu", "lU", "Lu", "LU", "f", "F", "d", "D", "m", "M"]
 number_separator = "_"    # `1_000` (ADR 0026)
 
 special_vars = false
